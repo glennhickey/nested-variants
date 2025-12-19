@@ -161,6 +161,6 @@ if (cumulative) {
 }
 
 # Save the plot
-ggsave(output, plot = p, width = 8, height = 6, dpi = 300)
+ggsave(output, plot = p, width = 8, height = 6, dpi = 300, device = "png", type = "cairo")
 
 cat("Histogram saved to", output, "\n")
