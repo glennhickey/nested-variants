@@ -9,10 +9,10 @@ args <- commandArgs(trailingOnly = TRUE)
 
 # Check minimum number of arguments
 if (length(args) < 2) {
-  cat("Usage: Rscript offref-length-hist.R <output.png> <data1.tsv> [data2.tsv] [...] [min_threshold] [cumulative]\n")
-  cat("Example: Rscript offref-length-hist.R result.png file1.tsv file2.tsv file3.tsv 50 TRUE\n")
+  cat("Usage: Rscript offref-length-hist.R <output.png> <data1.tsv|bed> [data2.tsv|bed] [...] [min_threshold] [cumulative]\n")
+  cat("Example: Rscript offref-length-hist.R result.png file1.tsv file2.bed file3.tsv 50 TRUE\n")
   cat("  output.png: Output filename for the plot\n")
-  cat("  data files: One or more TSV files where length is calculated as COLUMN3 - COLUMN2\n")
+  cat("  data files: One or more TSV/BED files where length is calculated as COLUMN3 - COLUMN2\n")
   cat("  min_threshold: Optional minimum value threshold (values below this will be excluded)\n")
   cat("  cumulative: Optional TRUE/FALSE for cumulative distribution (default: FALSE)\n")
   cat("  Labels are auto-generated from filenames (basename without extension)\n")
@@ -22,14 +22,14 @@ if (length(args) < 2) {
 output <- args[1]
 
 # Find where data files end and optional parameters begin
-# Data files are those that exist and end with .tsv or .txt
+# Data files are those that exist and end with .tsv, .txt, or .bed
 data_files <- c()
 opt_start <- length(args) + 1
 
 for (i in 2:length(args)) {
   arg <- args[i]
-  # Check if this looks like a file (ends with .tsv or .txt and exists)
-  if ((grepl("\\.tsv$", arg, ignore.case = TRUE) || grepl("\\.txt$", arg, ignore.case = TRUE)) && file.exists(arg)) {
+  # Check if this looks like a file (ends with .tsv, .txt, or .bed and exists)
+  if ((grepl("\\.(tsv|txt|bed)$", arg, ignore.case = TRUE)) && file.exists(arg)) {
     data_files <- c(data_files, arg)
   } else {
     opt_start <- i

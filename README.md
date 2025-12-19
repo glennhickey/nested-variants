@@ -20,13 +20,13 @@ To create these files, `vg deconstruct` must be run on `.vg` (and not `.gbz`) fi
 wait
 ```
 
-Minigraph can produce something similar to the TSV and FASTA output above, so we get the BEDs for comparison
+Minigraph can produce something similar to the TSV and FASTA output above, so we get the BEDs for comparison.  The `grep` commands filter out the reference contigs (to be consistent with above) and the `sed` mess is to accommodate the v1.1 data which has the native cactus prefixes in the minigraph files, as opposed to PANSN.
 
 ```
-gfatools gfa2bed -s /private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-chm13.sv.gfa.gz | grep -v CHM13 > hprc-v2.0-mc-chm13.sv.offref.bed
-gfatools gfa2bed -s /private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-grch38.sv.gfa.gz | grep -v GRCh38 > hprc-v2.0-mc-grch38.sv.offref.bed
-gfatools gfa2bed -s /private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-chm13.sv.gfa.gz | grep -v CHM13 > hprc-v2.0-mc-chm13.sv.offref.bed
-gfatools gfa2bed -s /private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-grch38.sv.gfa.gz | grep -v CHM13 > hprc-v2.0-mc-grch38.sv.offref.bed
+gfatools gfa2bed -s /private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.sv.gfa.gz | grep -v ^CHM13 > hprc-v2.0-mc-chm13.sv.offref.bed
+gfatools gfa2bed -s /private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-grch38/hprc-v2.0-mc-grch38.sv.gfa.gz | grep -v ^GRCh38 > hprc-v2.0-mc-grch38.sv.offref.bed
+gfatools gfa2bed -s /private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-chm13/hprc-v1.1-mc-chm13.sv.gfa.gz | sed -E 's/id=([[:alnum:]]+)\.([0-9])\|/\1#\2#/g; s/id=([[:alnum:]]+)\|/\1#0#/g' | grep -v ^CHM13 > hprc-v1.1-mc-chm13.sv.offref.bed
+gfatools gfa2bed -s /private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-grch38/hprc-v1.1-mc-grch38.sv.gfa.gz | sed -E 's/id=([[:alnum:]]+)\.([0-9])\|/\1#\2#/g; s/id=([[:alnum:]]+)\|/\1#0#/g' | grep -v ^GRCh38 > hprc-v1.1-mc-grch38.sv.offref.bed
 
 ```
 
@@ -54,6 +54,8 @@ wait
 The size distribution of the off-reference variants can be computed from the tsv files
 
 ```
-./offref-length-hist.R 
+./offref-length-hist.R grch38-offref-lengths.png ../construction/hprc-v1.1-mc-grch38.nested.95.fa.nesting.tsv ../construction/hprc-v2.0-mc-grch38.nested.95.fa.nesting.tsv ../construction/hprc-v1.1-mc-grch38.sv.offref.bed ../construction/hprc-v2.0-mc-grch38.sv.offref.bed  50 TRUE
+
+./offref-length-hist.R grch38-offref-lengths.png ../construction/hprc-v1.1-mc-grch38.nested.95.fa.nesting.tsv ../construction/hprc-v2.0-mc-grch38.nested.95.fa.nesting.tsv ../construction/hprc-v1.1-mc-grch38.sv.offref.bed ../construction/hprc-v2.0-mc-grch38.sv.offref.bed  50 TRUE
 ```
 
