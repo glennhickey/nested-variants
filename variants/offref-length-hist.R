@@ -160,7 +160,20 @@ if (cumulative) {
     guides(color = "none")
 }
 
-# Save the plot
-ggsave(output, plot = p, width = 8, height = 6, dpi = 300, device = "png", type = "cairo")
+# Save the plot - use ragg if available, otherwise fall back to cairo
+tryCatch({
+  if (requireNamespace("ragg", quietly = TRUE)) {
+    ragg::agg_png(output, width = 8, height = 6, units = "in", res = 300)
+    print(p)
+    dev.off()
+  } else {
+    ggsave(output, plot = p, width = 8, height = 6, dpi = 300, device = grDevices::png, type = "cairo")
+  }
+}, error = function(e) {
+  # Fall back to basic cairo device
+  grDevices::png(output, width = 8*300, height = 6*300, res = 300, type = "cairo")
+  print(p)
+  dev.off()
+})
 
 cat("Histogram saved to", output, "\n")
