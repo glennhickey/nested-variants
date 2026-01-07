@@ -49,13 +49,43 @@ wait
 
 (all commands run in `./variants')
 
+### Splitting the VCF
+
+Before analyzing variants, split the nested VCF into three categories:
+- **onref**: All variants on the reference (contigs starting with the reference prefix)
+- **nestedref**: Nested variants on the reference (on-reference contigs with LV>0)
+- **offref**: Variants on off-reference contigs (contigs NOT starting with the reference prefix)
+
+```
+./split-ref.sh -v ../construction/hprc-v2.0-mc-chm13.nested.95.vcf.gz -p CHM13
+```
+
+This creates three indexed VCF files in the current directory that can be used for downstream analysis.
+
 ### Size Distribution
 
-The size distribution of the off-reference variants can be computed from the tsv files
+The size distribution of the off-reference variants can be computed from the TSV nesting files. The script calculates lengths from the last 3 columns (reference contig, start, end) and generates cumulative distribution plots:
 
 ```
-./offref-length-hist.R grch38-offref-lengths.png ../construction/hprc-v1.1-mc-grch38.nested.95.fa.nesting.tsv ../construction/hprc-v2.0-mc-grch38.nested.95.fa.nesting.tsv ../construction/hprc-v1.1-mc-grch38.sv.offref.bed ../construction/hprc-v2.0-mc-grch38.sv.offref.bed  50 TRUE
+# Single dataset example
+./offref-length-hist.R chm13-offref-lengths.png ../construction/hprc-v1.1-mc-chm13.nested.95.fa.nesting.tsv 50 TRUE
 
-./offref-length-hist.R chm13-offref-lengths.png ../construction/hprc-v1.1-mc-chm13.nested.95.fa.nesting.tsv ../construction/hprc-v2.0-mc-chm13.nested.95.fa.nesting.tsv ../construction/hprc-v1.1-mc-chm13.sv.offref.bed ../construction/hprc-v2.0-mc-chm13.sv.offref.bed  50 TRUE
+# Multiple datasets for comparison (if .sv.offref.bed files from minigraph are available)
+./offref-length-hist.R chm13-offref-lengths.png ../construction/hprc-v1.1-mc-chm13.nested.95.fa.nesting.tsv ../construction/hprc-v1.1-mc-chm13.sv.offref.bed 50 TRUE
 ```
 
+### Chromosome Positions
+
+We can plot the placement of off-reference sites relative to the reference (effectively displaying large insertions) using the nesting TSV files:
+
+```
+./chrom-density-tsv.R ../construction/hprc-v1.1-mc-chm13.nested.95.fa.nesting.tsv chm13-offref-sites.png "CHM13 Off-Reference Sites" 50
+```
+
+And we can also plot the positions of the actual off-reference variants (nested variants).  These will be inside the regions displayed above, but these plots will give a notion of which regions have more nested variants.
+
+```
+./chrom-density-vcf.R hprc-v2.0-mc-chm13.nested.95.offref.vcf.gz hprc-v2.0-mc-chm13.nested.95.offref.png "CHM13 Nested Variants" 50
+
+./chrom-density-vcf.R hprc-v2.0-mc-chm13.nested.95.nestedref.vcf.gz hprc-v2.0-mc-chm13.nested.95.nestedref.png "CHM13 Nested Reference Variants" 50
+```
