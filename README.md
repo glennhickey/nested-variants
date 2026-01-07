@@ -56,6 +56,6 @@ The size distribution of the off-reference variants can be computed from the tsv
 ```
 ./offref-length-hist.R grch38-offref-lengths.png ../construction/hprc-v1.1-mc-grch38.nested.95.fa.nesting.tsv ../construction/hprc-v2.0-mc-grch38.nested.95.fa.nesting.tsv ../construction/hprc-v1.1-mc-grch38.sv.offref.bed ../construction/hprc-v2.0-mc-grch38.sv.offref.bed  50 TRUE
 
-./offref-length-hist.R grch38-offref-lengths.png ../construction/hprc-v1.1-mc-grch38.nested.95.fa.nesting.tsv ../construction/hprc-v2.0-mc-grch38.nested.95.fa.nesting.tsv ../construction/hprc-v1.1-mc-grch38.sv.offref.bed ../construction/hprc-v2.0-mc-grch38.sv.offref.bed  50 TRUE
+./offref-length-hist.R chm13-offref-lengths.png ../construction/hprc-v1.1-mc-chm13.nested.95.fa.nesting.tsv ../construction/hprc-v2.0-mc-chm13.nested.95.fa.nesting.tsv ../construction/hprc-v1.1-mc-chm13.sv.offref.bed ../construction/hprc-v2.0-mc-chm13.sv.offref.bed  50 TRUE
 ```
 
