@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 
-# Chromosome density plot as ideograms for variants using reference coordinates from VCF INFO field
-# Usage: ./chrom-density-vcf-ideogram.R <input.vcf.gz> <output.png> [title] [min_length]
+# Chromosome density plot as ideograms for nested variants from TSV file
+# Usage: ./chrom-density-tsv.R <input.tsv> <output.png> [title] [min_length] [bed_file]
 
 suppressPackageStartupMessages({
   library(ggplot2)
@@ -14,70 +14,56 @@ suppressPackageStartupMessages({
 # Parse command line arguments
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 2) {
-  cat("Usage: ./chrom-density-vcf-ideogram.R <input.vcf.gz> <output.png> [title] [min_length] [bed_file] [scale]\n")
-  cat("Example: ./chrom-density-vcf-ideogram.R off-ref-calls/hprc-v2.0-mc-chm13.nested.95.offref.vcf.gz chrom-density-ideogram.png \"Title\" 50 hprc-v2.0-mc-chm13.refgaps.bed log1p\n")
-  cat("\nScale options: log1p (default), sqrt, log, identity (linear)\n")
+  cat("Usage: ./chrom-density-tsv.R <input.tsv> <output.png> [title] [min_length] [bed_file] [scale]\n")
+  cat("Example: ./chrom-density-tsv.R ../construction/hprc-v1.1-mc-chm13.nested.95.fa.nesting.tsv chrom-density.png \"Nested Variants\" 50 hprc-v2.0-mc-chm13.refgaps.bed log1p\n")
+  cat("\nInput TSV format: Uses last 3 columns (ref_contig, ref_start, ref_end)\n")
+  cat("Scale options: log1p (default), sqrt, log, identity (linear)\n")
   quit(status = 1)
 }
 
-input_vcf <- args[1]
+input_tsv <- args[1]
 output_file <- args[2]
-plot_title <- if (length(args) >= 3) args[3] else "Chromosome Density of Variants"
+plot_title <- if (length(args) >= 3) args[3] else "Chromosome Density of Nested Variants"
 min_length <- if (length(args) >= 4) as.numeric(args[4]) else 50
 bed_file <- if (length(args) >= 5) args[5] else NULL
 scale_type <- if (length(args) >= 6) args[6] else "log1p"
 
-cat("Reading VCF from:", input_vcf, "\n")
+cat("Reading TSV from:", input_tsv, "\n")
 
-# Read VCF using data.table (skip header lines starting with #)
-# We need columns: CHROM (1), POS (2), and INFO (8)
-vcf_data <- fread(cmd = paste0("zcat ", input_vcf, " | grep -v '^#'"),
+# Read TSV file - we only need the last 3 columns (5, 6, 7)
+# Column 5: ref_contig (e.g., CHM13#chr10)
+# Column 6: ref_start
+# Column 7: ref_end
+tsv_data <- fread(input_tsv,
                   header = FALSE, sep = "\t",
-                  select = c(1, 2, 8),
-                  col.names = c("chrom", "pos", "info"),
+                  select = c(5, 6, 7),
+                  col.names = c("ref_contig", "ref_start", "ref_end"),
                   showProgress = TRUE)
 
-cat("Read", nrow(vcf_data), "VCF variants\n")
+cat("Read", nrow(tsv_data), "rows\n")
 
-# Extract RC, RS, RD (note: user said RE but it's actually RD in the VCF) from INFO field
-cat("Extracting reference coordinates from INFO field...\n")
-
-# Function to extract INFO field value
-extract_info <- function(info_string, tag) {
-  pattern <- paste0(tag, "=([^;]+)")
-  matches <- regmatches(info_string, regexec(pattern, info_string))
-  sapply(matches, function(x) if(length(x) >= 2) x[2] else NA_character_)
-}
-
-vcf_data$ref_contig <- extract_info(vcf_data$info, "RC")
-vcf_data$ref_start <- as.integer(extract_info(vcf_data$info, "RS"))
-vcf_data$ref_end <- as.integer(extract_info(vcf_data$info, "RD"))
-vcf_data$ref_length <- as.integer(extract_info(vcf_data$info, "RL"))
-
-# Remove rows with missing reference coordinates
-vcf_data <- vcf_data %>%
-  filter(!is.na(ref_contig) & !is.na(ref_start) & !is.na(ref_end))
-
-cat("Extracted reference coordinates for", nrow(vcf_data), "variants\n")
+# Calculate length
+tsv_data$ref_length <- tsv_data$ref_end - tsv_data$ref_start
 
 # Filter by minimum length
 cat("Filtering for regions >=", min_length, "bp\n")
-vcf_data <- vcf_data %>%
+tsv_data <- tsv_data %>%
   filter(ref_length >= min_length)
 
-cat("After length filter:", nrow(vcf_data), "rows\n")
+cat("After length filter:", nrow(tsv_data), "rows\n")
 
-# Extract chromosome from ref_contig (format: reference#haplotype#chr)
-vcf_data$chromosome <- sub(".*#", "", vcf_data$ref_contig)
+# Extract chromosome from ref_contig (format: reference#chr)
+tsv_data$chromosome <- sub(".*#", "", tsv_data$ref_contig)
 
-# Filter to standard chromosomes (chr1-chr22, chrX, chrY, excluding chrM)
+# Filter to standard chromosomes (chr1-chr22, chrX, chrY, chrM)
 cat("Filtering to standard chromosomes\n")
-vcf_data <- vcf_data %>%
+tsv_data <- tsv_data %>%
   filter(grepl("^chr", chromosome)) %>%
   mutate(
     chrom_num = case_when(
       chromosome == "chrX" ~ 23,
       chromosome == "chrY" ~ 24,
+      chromosome == "chrM" ~ 25,
       grepl("^chr[0-9]+$", chromosome) ~ as.numeric(sub("chr", "", chromosome)),
       TRUE ~ NA_real_
     )
@@ -86,12 +72,12 @@ vcf_data <- vcf_data %>%
 
 # Create chromosome factor with proper ordering (excluding chrM)
 chrom_levels <- paste0("chr", c(1:22, "X", "Y"))
-vcf_data$chromosome <- factor(vcf_data$chromosome, levels = chrom_levels)
-vcf_data <- vcf_data %>% filter(!is.na(chromosome))
+tsv_data$chromosome <- factor(tsv_data$chromosome, levels = chrom_levels)
+tsv_data <- tsv_data %>% filter(!is.na(chromosome))
 
-cat("Filtered to", nrow(vcf_data), "rows on standard chromosomes\n")
+cat("Filtered to", nrow(tsv_data), "rows on standard chromosomes\n")
 
-if (nrow(vcf_data) == 0) {
+if (nrow(tsv_data) == 0) {
   cat("ERROR: No data remaining after filtering\n")
   quit(status = 1)
 }
@@ -108,22 +94,17 @@ chrom_lengths <- data.frame(
   )
 )
 
-# Centromeres or other regions will come from BED file if provided
-
 # Calculate density using bins
 bin_size <- 1e6  # 1 Mb bins
 cat("Calculating density with", bin_size / 1e6, "Mb bins\n")
 
 # Create bins for each chromosome (use data.table for speed)
-data_dt <- as.data.table(vcf_data)
+data_dt <- as.data.table(tsv_data)
 chrom_lengths_dt <- as.data.table(chrom_lengths)
 
 # Fast binning with data.table - use ref_start for binning position
 data_dt[, bin := floor(ref_start / bin_size)]
 density_data <- data_dt[, .(count = .N, total_bp = sum(ref_length)), by = .(chromosome, bin)]
-
-# Keep all bins (don't filter out zeros) to show full chromosome coverage
-# Bins with zero will show as background gray
 
 # Join with chromosome lengths
 density_data <- merge(density_data, chrom_lengths_dt, by = "chromosome")
@@ -147,7 +128,7 @@ if (!is.null(bed_file) && file.exists(bed_file)) {
                     col.names = c("contig", "start", "end"),
                     colClasses = c("character", "integer", "integer"))
 
-  # Extract chromosome from contig (same format as VCF)
+  # Extract chromosome from contig (same format as TSV)
   bed_data$chromosome <- sub(".*#", "", bed_data$contig)
 
   # Filter to standard chromosomes
@@ -248,7 +229,7 @@ cat("Done!\n")
 
 # Print summary statistics
 cat("\nSummary by chromosome:\n")
-summary_stats <- vcf_data %>%
+summary_stats <- tsv_data %>%
   group_by(chromosome) %>%
   summarise(
     n_variants = n(),

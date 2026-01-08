@@ -49,6 +49,13 @@ wait
 
 (all commands run in `./variants')
 
+Note that the "refgaps" bedfiles are used to black out regions not in the graph like centromeres.  They are optional but can be found, here for example. 
+
+```
+https://s3-us-west-2.amazonaws.com/human-pangenomics/pangenomes/scratch/2025_02_28_minigraph_cactus/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.refgaps.bed
+https://s3-us-west-2.amazonaws.com/human-pangenomics/pangenomes/scratch/2025_02_28_minigraph_cactus/hprc-v2.0-mc-grch38/hprc-v2.0-mc-grch38.refgaps.bed
+```
+
 ### Splitting the VCF
 
 Before analyzing variants, split the nested VCF into three categories:
@@ -61,6 +68,10 @@ Before analyzing variants, split the nested VCF into three categories:
 ```
 
 This creates three indexed VCF files in the current directory that can be used for downstream analysis.
+
+### Reference Gaps
+
+We black out parts of the reference chromosomes that aren't aligned in the graph.  These are mostly from centromeres etc.  The BED files used are found in the same places as the HPRC data and are generated with [refgaps.sh](https://raw.githubusercontent.com/glennhickey/pg-stuff/8f197691a6fc795ba45a0b146446b0fb6f00c16e/refgaps.sh).
 
 ### Size Distribution
 
@@ -79,13 +90,13 @@ The size distribution of the off-reference variants can be computed from the TSV
 We can plot the placement of off-reference sites relative to the reference (effectively displaying large insertions) using the nesting TSV files:
 
 ```
-./chrom-density-tsv.R ../construction/hprc-v1.1-mc-chm13.nested.95.fa.nesting.tsv chm13-offref-sites.png "CHM13 Off-Reference Sites" 50
+./chrom-density-tsv.R ../construction/hprc-v1.1-mc-chm13.nested.95.fa.nesting.tsv chm13-offref-sites.png "CHM13 Off-Reference Sites" 50 ../construction/hprc-v1.1-mc-chm13.refgaps.bed
 ```
 
 And we can also plot the positions of the actual off-reference variants (nested variants).  These will be inside the regions displayed above, but these plots will give a notion of which regions have more nested variants.
 
 ```
-./chrom-density-vcf.R hprc-v2.0-mc-chm13.nested.95.offref.vcf.gz hprc-v2.0-mc-chm13.nested.95.offref.png "CHM13 Nested Variants" 50
+./chrom-density-vcf.R hprc-v2.0-mc-chm13.nested.95.offref.vcf.gz hprc-v2.0-mc-chm13.nested.95.offref.png "CHM13 Nested Variants" 50 ../construction/hprc-v2.0-mc-chm13.refgaps.bed
 
-./chrom-density-vcf.R hprc-v2.0-mc-chm13.nested.95.nestedref.vcf.gz hprc-v2.0-mc-chm13.nested.95.nestedref.png "CHM13 Nested Reference Variants" 50
+./chrom-density-vcf.R hprc-v2.0-mc-chm13.nested.95.nestedref.vcf.gz hprc-v2.0-mc-chm13.nested.95.nestedref.png "CHM13 Nested Reference Variants" 50 ../construction/hprc-v2.0-mc-chm13.refgaps.bed
 ```
