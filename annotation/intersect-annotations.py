@@ -36,10 +36,11 @@ def extract_coordinates(nesting_file, offref_bed, onref_bed):
         onref_bed: Output BED file for on-reference coordinates (columns 5-7)
 
     Returns:
-        Tuple of (total_offref_bp, total_onref_bp)
+        Tuple of (total_offref_bp, total_onref_bp, num_skipped)
     """
     total_offref_bp = 0
     total_onref_bp = 0
+    num_skipped = 0
 
     with open(nesting_file) as infile, \
          open(offref_bed, 'w') as offref_out, \
@@ -52,21 +53,29 @@ def extract_coordinates(nesting_file, offref_bed, onref_bed):
 
             # Extract off-reference coordinates (columns 1-3, 0-indexed: 0-2)
             offref_contig = fields[0]
-            offref_start = fields[1]
-            offref_end = fields[2]
+            offref_start = int(fields[1])
+            offref_end = int(fields[2])
 
             # Extract on-reference coordinates (columns 5-7, 0-indexed: 4-6)
             onref_contig = fields[4]
-            onref_start = fields[5]
-            onref_end = fields[6]
+            onref_start = int(fields[5])
+            onref_end = int(fields[6])
+
+            # Skip records with invalid coordinates (negative or zero-length)
+            if offref_start < 0 or offref_end < 0 or onref_start < 0 or onref_end < 0:
+                num_skipped += 1
+                continue
+            if offref_start >= offref_end or onref_start >= onref_end:
+                num_skipped += 1
+                continue
 
             offref_out.write(f'{offref_contig}\t{offref_start}\t{offref_end}\n')
             onref_out.write(f'{onref_contig}\t{onref_start}\t{onref_end}\n')
 
-            total_offref_bp += int(offref_end) - int(offref_start)
-            total_onref_bp += int(onref_end) - int(onref_start)
+            total_offref_bp += offref_end - offref_start
+            total_onref_bp += onref_end - onref_start
 
-    return total_offref_bp, total_onref_bp
+    return total_offref_bp, total_onref_bp, num_skipped
 
 
 def run_bedtools_intersect(coords_bed, annot_bed, output_file=None):
@@ -348,10 +357,13 @@ def main(command_line=None):
         offref_tmp.close()
         onref_tmp.close()
 
-    total_offref_bp, total_onref_bp = extract_coordinates(options.nesting_file, offref_bed, onref_bed)
+    total_offref_bp, total_onref_bp, num_skipped = extract_coordinates(options.nesting_file, offref_bed, onref_bed)
 
     sys.stderr.write(f"Total off-reference bp: {total_offref_bp:,}\n")
-    sys.stderr.write(f"Total on-reference bp: {total_onref_bp:,}\n\n")
+    sys.stderr.write(f"Total on-reference bp: {total_onref_bp:,}\n")
+    if num_skipped > 0:
+        sys.stderr.write(f"Warning: Skipped {num_skipped:,} records with invalid coordinates (negative or zero-length)\n")
+    sys.stderr.write("\n")
 
     # Process annotations for both coordinate sets
     offref_stats = {}
