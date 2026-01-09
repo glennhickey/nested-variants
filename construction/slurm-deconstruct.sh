@@ -23,7 +23,7 @@ set -e
 VG_FILES=()
 REF=""
 L=""
-OUTPUT_DIR=""
+OUTPUT_DIR="."
 OUTPUT_NAME=""
 
 # SLURM resource defaults
@@ -124,11 +124,6 @@ fi
 
 if [ -z "$L" ]; then
     echo "Error: --L is required"
-    exit 1
-fi
-
-if [ -z "$OUTPUT_DIR" ]; then
-    echo "Error: --out-dir is required"
     exit 1
 fi
 

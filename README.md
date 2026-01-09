@@ -19,10 +19,10 @@ shopt -s extglob
 # Set the identity threshold
 L=0.95
 
-./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.chroms/!(*.d9).vg" --ref CHM13 --L ${L} --out-dir $(pwd) --out-name hprc-v2.0-mc-chm13 --cpus 8 &
-./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-grch38/hprc-v2.0-mc-grch38.chroms/!(*.d9).vg" --ref GRCh38 --L ${L} --out-dir $(pwd) --out-name hprc-v2.0-mc-grch38 --cpus 8 &
-./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-chm13/hprc-v1.1-mc-chm13.chroms/!(*.d9).vg" --ref CHM13 --L ${L} --out-dir $(pwd) --out-name hprc-v1.1-mc-chm13 --cpus 8 &
-./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-grch38/hprc-v1.1-mc-grch38.chroms/!(*.d9).vg" --ref GRCh38 --L ${L} --out-dir $(pwd) --out-name hprc-v1.1-mc-grch38 --cpus 8 &
+./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.chroms/!(*.d9).vg" --ref CHM13 --L ${L} --out-name hprc-v2.0-mc-chm13.nested.${L}.vcf.gz --cpus 8 &
+./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-grch38/hprc-v2.0-mc-grch38.chroms/!(*.d9).vg" --ref GRCh38 --L ${L} --out-name hprc-v2.0-mc-grch38.nested.${L}.vcf.gz --cpus 8 &
+./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-chm13/hprc-v1.1-mc-chm13.chroms/!(*.d9).vg" --ref CHM13 --L ${L} --out-name hprc-v1.1-mc-chm13.nested.${L}.vcf.gz --cpus 8 &
+./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-grch38/hprc-v1.1-mc-grch38.chroms/!(*.d9).vg" --ref GRCh38 --L ${L} --out-name hprc-v1.1-mc-grch38.nested.${L}.vcf.gz --cpus 8 &
 wait
 ```
 
@@ -47,10 +47,10 @@ Todo: script to summarize results here
 shopt -s extglob
 
 for L in 0.75 0.90 0.99 1.00; do
-./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.chroms/!(*.d9).vg" --ref CHM13 --L ${L} --out-dir $(pwd) --out-name hprc-v2.0-mc-chm13 --cpus 8 &
-./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-grch38/hprc-v2.0-mc-grch38.chroms/!(*.d9).vg" --ref GRCh38 --L ${L} --out-dir $(pwd) --out-name hprc-v2.0-mc-grch38 --cpus 8 &
-./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-chm13/hprc-v1.1-mc-chm13.chroms/!(*.d9).vg" --ref CHM13 --L ${L} --out-dir $(pwd) --out-name hprc-v1.1-mc-chm13 --cpus 8 &
-./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-grch38/hprc-v1.1-mc-grch38.chroms/!(*.d9).vg" --ref GRCh38 --L ${L} --out-dir $(pwd) --out-name hprc-v1.1-mc-grch38 --cpus 8 &
+./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.chroms/!(*.d9).vg" --ref CHM13 --L ${L} --out-name hprc-v2.0-mc-chm13.nested.${L}.vcf.gz --cpus 8 &
+./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-grch38/hprc-v2.0-mc-grch38.chroms/!(*.d9).vg" --ref GRCh38 --L ${L} --out-name hprc-v2.0-mc-grch38.nested.${L}.vcf.gz --cpus 8 &
+./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-chm13/hprc-v1.1-mc-chm13.chroms/!(*.d9).vg" --ref CHM13 --L ${L} --out-name hprc-v1.1-mc-chm13.nested.${L}.vcf.gz --cpus 8 &
+./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-grch38/hprc-v1.1-mc-grch38.chroms/!(*.d9).vg" --ref GRCh38 --L ${L} --out-name hprc-v1.1-mc-grch38.nested.${L}.vcf.gz --cpus 8 &
 wait
 done
 ```
