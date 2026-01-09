@@ -143,15 +143,19 @@ OUTPUT_FA="${OUTPUT_NAME%.vcf.gz}.fa"
 set -x
 
 mkdir -p "$OUTPUT_DIR"
-rm -rf "${OUTPUT_DIR}"/*.vcf*
+
+# Create a temporary working directory for intermediate files
+WORK_DIR="${OUTPUT_DIR}/.tmp_deconstruct_$$"
+mkdir -p "$WORK_DIR"
+rm -rf "${WORK_DIR}"/*.vcf*
 
 # Process each VG file
 for VG in "${VG_FILES[@]}"; do
     BASE=$(basename "$VG")
     if [[ $BASE != "chrEBV.vg" ]]; then
 	BASE=${BASE%.vg}
-	VCF="${OUTPUT_DIR}/${BASE}.${REF}.${L}.vcf.gz"
-	FASTA="${OUTPUT_DIR}/${BASE}.${REF}.${L}.fa"
+	VCF="${WORK_DIR}/${BASE}.${REF}.${L}.vcf.gz"
+	FASTA="${WORK_DIR}/${BASE}.${REF}.${L}.fa"
 
 	# Build the command to run
 	CMD="vg deconstruct \"$VG\" -R -n -L ${L} -P ${REF} -f \"${FASTA}\" -t ${CPUS} | bgzip > \"${VCF}\" && tabix -fp vcf \"${VCF}\""
@@ -172,16 +176,16 @@ done
 
 wait
 
-cat "${OUTPUT_DIR}"/*.fa | bgzip > "${OUTPUT_FA}.gz"
-cat "${OUTPUT_DIR}"/*.fa.nesting.tsv | bgzip > "${OUTPUT_FA}.nesting.tsv.gz"
+cat "${WORK_DIR}"/*.fa | bgzip > "${OUTPUT_DIR}/${OUTPUT_FA}.gz"
+cat "${WORK_DIR}"/*.fa.nesting.tsv | bgzip > "${OUTPUT_DIR}/${OUTPUT_FA}.nesting.tsv.gz"
 
 # Handle sample normalization for chromosomes that may have missing samples
 for VG in "${VG_FILES[@]}"; do
     BASE=$(basename "$VG")
     if [[ $BASE == *"X.vg" || $BASE == *"Y.vg" || $BASE == *"M.vg" || $BASE == *[Oo]ther.vg ]]; then
 	BASE=${BASE%.vg}
-	VCF="${OUTPUT_DIR}/${BASE}.${REF}.${L}.vcf.gz"
-	CHR1_VCF="${OUTPUT_DIR}/chr1.${REF}.${L}.vcf.gz"
+	VCF="${WORK_DIR}/${BASE}.${REF}.${L}.vcf.gz"
+	CHR1_VCF="${WORK_DIR}/chr1.${REF}.${L}.vcf.gz"
 	# get the samples from chr1
 	bcftools query -l "${CHR1_VCF}" | sort > "${OUTPUT_NAME}.all-samples"
 	# get the samples from the vcf
@@ -195,14 +199,16 @@ for VG in "${VG_FILES[@]}"; do
 	    bcftools merge "${VCF}" "${OUTPUT_NAME}.missing-header.vcf.gz" -Oz > "${VCF}.merge.vcf.gz"
 	    tabix -fp vcf  "${VCF}.merge.vcf.gz"
 	    # finally, sort these samples to be same as chr1
-	    bcftools view "${VCF}.merge.vcf.gz" -S "${OUTPUT_NAME}.all-samples" -Oz > "${OUTPUT_DIR}/${BASE}.${REF}.${L}.vcf.gz"
-	    tabix -fp vcf "${OUTPUT_DIR}/${BASE}.${REF}.${L}.vcf.gz"
+	    bcftools view "${VCF}.merge.vcf.gz" -S "${OUTPUT_NAME}.all-samples" -Oz > "${WORK_DIR}/${BASE}.${REF}.${L}.vcf.gz"
+	    tabix -fp vcf "${WORK_DIR}/${BASE}.${REF}.${L}.vcf.gz"
 	    # remove temp stuff since we're using wildcards below
 	    rm -f  "${VCF}.merge.vcf.gz" "${OUTPUT_NAME}.missing-header.vcf.gz"
 	fi
     fi
 done
 
-bcftools concat "${OUTPUT_DIR}"/*.vcf.gz | bgzip > "${OUTPUT_NAME}"
-tabix -fp vcf "${OUTPUT_NAME}"
-rm -rf "${OUTPUT_DIR}"
+bcftools concat "${WORK_DIR}"/*.vcf.gz | bgzip > "${OUTPUT_DIR}/${OUTPUT_NAME}"
+tabix -fp vcf "${OUTPUT_DIR}/${OUTPUT_NAME}"
+
+# Clean up temporary working directory
+rm -rf "${WORK_DIR}"
