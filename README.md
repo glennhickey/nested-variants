@@ -12,19 +12,26 @@ Right now, the off-reference sequence (ie rGFA cover) is computed within `vg dec
 
 To create these files, `vg deconstruct` must be run on `.vg` (and not `.gbz`) files.  For the HPRC graphs, these are normally found in the `.chroms` subdirectory alongside the main output.  This repo contains a script to help with this:
 
-```
+```bash
 # Enable extended globbing to exclude .d9.vg files
 shopt -s extglob
 
-# Set the identity threshold
-L=0.95
+# Set the identity threshold (0-100 for percentage, 0-1 for decimal)
+L=95
 
-./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.chroms/!(*.d9).vg" --ref CHM13 --L ${L} --out-name hprc-v2.0-mc-chm13.nested.${L}.vcf.gz --cpus 8 &
-./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-grch38/hprc-v2.0-mc-grch38.chroms/!(*.d9).vg" --ref GRCh38 --L ${L} --out-name hprc-v2.0-mc-grch38.nested.${L}.vcf.gz --cpus 8 &
-./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-chm13/hprc-v1.1-mc-chm13.chroms/!(*.d9).vg" --ref CHM13 --L ${L} --out-name hprc-v1.1-mc-chm13.nested.${L}.vcf.gz --cpus 8 &
-./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-grch38/hprc-v1.1-mc-grch38.chroms/!(*.d9).vg" --ref GRCh38 --L ${L} --out-name hprc-v1.1-mc-grch38.nested.${L}.vcf.gz --cpus 8 &
+# Run deconstruction for each graph (outputs to current directory)
+./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.chroms/!(*.d9).vg" --ref CHM13 --L ${L} --out-dir $(pwd) --out-name hprc-v2.0-mc-chm13.nested.${L} --cpus 8 &
+./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-grch38/hprc-v2.0-mc-grch38.chroms/!(*.d9).vg" --ref GRCh38 --L ${L} --out-dir $(pwd) --out-name hprc-v2.0-mc-grch38.nested.${L} --cpus 8 &
+./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-chm13/hprc-v1.1-mc-chm13.chroms/!(*.d9).vg" --ref CHM13 --L ${L} --out-dir $(pwd) --out-name hprc-v1.1-mc-chm13.nested.${L} --cpus 8 &
+./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-grch38/hprc-v1.1-mc-grch38.chroms/!(*.d9).vg" --ref GRCh38 --L ${L} --out-dir $(pwd) --out-name hprc-v1.1-mc-grch38.nested.${L} --cpus 8 &
 wait
 ```
+
+**Output Files**: For each run, the script generates four files with the specified `--out-name` as prefix:
+- `<out-name>.vcf.gz` - Nested VCF with variants on and off reference
+- `<out-name>.vcf.gz.tbi` - Tabix index for the VCF
+- `<out-name>.fa.gz` - Off-reference FASTA contigs
+- `<out-name>.fa.nesting.tsv.gz` - TSV mapping off-reference contigs to reference intervals
 
 Minigraph can produce something similar to the TSV and FASTA output above, so we get the BEDs for comparison.  The `grep` commands filter out the reference contigs (to be consistent with above) and the `sed` mess is to accommodate the v1.1 data which has the native cactus prefixes in the minigraph files, as opposed to PANSN.
 
@@ -38,19 +45,19 @@ gfatools gfa2bed -s /private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-
 
 ### Variant Identity Threshold
 
-The `-L` option sets a threshold for merging similar SV alt alleles.  This helps simplify the output VCF.  I've been using `0.95` but it could be interesting to compare other values (I've also tried 75,90,99,100).
+The `--L` option sets a threshold for merging similar SV alt alleles.  This helps simplify the output VCF.  I've been using `95` (95% identity) but it could be interesting to compare other values.
 
 Todo: script to summarize results here
 
-```
+```bash
 # Enable extended globbing to exclude .d9.vg files
 shopt -s extglob
 
-for L in 0.75 0.90 0.99 1.00; do
-./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.chroms/!(*.d9).vg" --ref CHM13 --L ${L} --out-name hprc-v2.0-mc-chm13.nested.${L}.vcf.gz --cpus 8 &
-./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-grch38/hprc-v2.0-mc-grch38.chroms/!(*.d9).vg" --ref GRCh38 --L ${L} --out-name hprc-v2.0-mc-grch38.nested.${L}.vcf.gz --cpus 8 &
-./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-chm13/hprc-v1.1-mc-chm13.chroms/!(*.d9).vg" --ref CHM13 --L ${L} --out-name hprc-v1.1-mc-chm13.nested.${L}.vcf.gz --cpus 8 &
-./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-grch38/hprc-v1.1-mc-grch38.chroms/!(*.d9).vg" --ref GRCh38 --L ${L} --out-name hprc-v1.1-mc-grch38.nested.${L}.vcf.gz --cpus 8 &
+for L in 75 90 95 99 100; do
+./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.chroms/!(*.d9).vg" --ref CHM13 --L ${L} --out-dir $(pwd) --out-name hprc-v2.0-mc-chm13.nested.${L} --cpus 8 &
+./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-grch38/hprc-v2.0-mc-grch38.chroms/!(*.d9).vg" --ref GRCh38 --L ${L} --out-dir $(pwd) --out-name hprc-v2.0-mc-grch38.nested.${L} --cpus 8 &
+./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-chm13/hprc-v1.1-mc-chm13.chroms/!(*.d9).vg" --ref CHM13 --L ${L} --out-dir $(pwd) --out-name hprc-v1.1-mc-chm13.nested.${L} --cpus 8 &
+./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-grch38/hprc-v1.1-mc-grch38.chroms/!(*.d9).vg" --ref GRCh38 --L ${L} --out-dir $(pwd) --out-name hprc-v1.1-mc-grch38.nested.${L} --cpus 8 &
 wait
 done
 ```

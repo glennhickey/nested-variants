@@ -132,6 +132,11 @@ if [ -z "$OUTPUT_NAME" ]; then
     exit 1
 fi
 
+# Ensure OUTPUT_NAME has .vcf.gz extension
+if [[ ! "$OUTPUT_NAME" =~ \.vcf\.gz$ ]]; then
+    OUTPUT_NAME="${OUTPUT_NAME}.vcf.gz"
+fi
+
 # Extract base name for FASTA output
 OUTPUT_FA="${OUTPUT_NAME%.vcf.gz}.fa"
 
@@ -140,7 +145,7 @@ set -x
 mkdir -p "$OUTPUT_DIR"
 
 # Create a temporary working directory for intermediate files
-WORK_DIR="${OUTPUT_DIR}/.tmp_deconstruct_$$"
+WORK_DIR="${OUTPUT_DIR}/tmp_deconstruct_$$"
 mkdir -p "$WORK_DIR"
 rm -rf "${WORK_DIR}"/*.vcf*
 
@@ -155,7 +160,7 @@ for VG in "${VG_FILES[@]}"; do
 	# Build the command to run
 	CMD="vg deconstruct \"$VG\" -R -n -L ${L} -P ${REF} -f \"${FASTA}\" -t ${CPUS} | bgzip > \"${VCF}\" && tabix -fp vcf \"${VCF}\""
 
-	# Submit SLURM job with resource requirements
+	# Submit SLURM job with resource requirements (no log files)
 	sbatch -W \
 	    --job-name="${JOB_NAME}" \
 	    --partition="${PARTITION}" \
@@ -164,7 +169,7 @@ for VG in "${VG_FILES[@]}"; do
 	    --cpus-per-task="${CPUS}" \
 	    --mem="${MEM}" \
 	    --time="${TIME}" \
-	    --output="deconstruct_${BASE}_%j.log" \
+	    --output=/dev/null \
 	    --wrap="$CMD" &
     fi
 done
@@ -182,22 +187,22 @@ for VG in "${VG_FILES[@]}"; do
 	VCF="${WORK_DIR}/${BASE}.${REF}.${L}.vcf.gz"
 	CHR1_VCF="${WORK_DIR}/chr1.${REF}.${L}.vcf.gz"
 	# get the samples from chr1
-	bcftools query -l "${CHR1_VCF}" | sort > "${OUTPUT_NAME}.all-samples"
+	bcftools query -l "${CHR1_VCF}" | sort > "${WORK_DIR}/all-samples"
 	# get the samples from the vcf
-	bcftools query -l "${VCF}"  | sort > "${OUTPUT_NAME}.chrom.samples"
-	if [[ $(diff "${OUTPUT_NAME}.all-samples" "${OUTPUT_NAME}.chrom.samples") != 0 ]]; then
+	bcftools query -l "${VCF}"  | sort > "${WORK_DIR}/chrom.samples"
+	if [[ $(diff "${WORK_DIR}/all-samples" "${WORK_DIR}/chrom.samples") != 0 ]]; then
 	    # samples that are missing from this chromosome
-	    comm -32 "${OUTPUT_NAME}.all-samples" "${OUTPUT_NAME}.chrom.samples" | awk '{print $1}' > "${OUTPUT_NAME}.missing-samples"
-	    bcftools view -h "${CHR1_VCF}" -S "${OUTPUT_NAME}.missing-samples" | bgzip > "${OUTPUT_NAME}.missing-header.vcf.gz"
-	    tabix -fp vcf  "${OUTPUT_NAME}.missing-header.vcf.gz"
+	    comm -32 "${WORK_DIR}/all-samples" "${WORK_DIR}/chrom.samples" | awk '{print $1}' > "${WORK_DIR}/missing-samples"
+	    bcftools view -h "${CHR1_VCF}" -S "${WORK_DIR}/missing-samples" | bgzip > "${WORK_DIR}/missing-header.vcf.gz"
+	    tabix -fp vcf  "${WORK_DIR}/missing-header.vcf.gz"
 	    # add these samples to the header
-	    bcftools merge "${VCF}" "${OUTPUT_NAME}.missing-header.vcf.gz" -Oz > "${VCF}.merge.vcf.gz"
+	    bcftools merge "${VCF}" "${WORK_DIR}/missing-header.vcf.gz" -Oz > "${VCF}.merge.vcf.gz"
 	    tabix -fp vcf  "${VCF}.merge.vcf.gz"
 	    # finally, sort these samples to be same as chr1
-	    bcftools view "${VCF}.merge.vcf.gz" -S "${OUTPUT_NAME}.all-samples" -Oz > "${WORK_DIR}/${BASE}.${REF}.${L}.vcf.gz"
+	    bcftools view "${VCF}.merge.vcf.gz" -S "${WORK_DIR}/all-samples" -Oz > "${WORK_DIR}/${BASE}.${REF}.${L}.vcf.gz"
 	    tabix -fp vcf "${WORK_DIR}/${BASE}.${REF}.${L}.vcf.gz"
 	    # remove temp stuff since we're using wildcards below
-	    rm -f  "${VCF}.merge.vcf.gz" "${OUTPUT_NAME}.missing-header.vcf.gz"
+	    rm -f  "${VCF}.merge.vcf.gz" "${WORK_DIR}/missing-header.vcf.gz" "${WORK_DIR}/missing-header.vcf.gz.tbi"
 	fi
     fi
 done
