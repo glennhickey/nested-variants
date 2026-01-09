@@ -13,10 +13,16 @@ Right now, the off-reference sequence (ie rGFA cover) is computed within `vg dec
 To create these files, `vg deconstruct` must be run on `.vg` (and not `.gbz`) files.  For the HPRC graphs, these are normally found in the `.chroms` subdirectory alongside the main output.  This repo contains a script to help with this:
 
 ```
-./slurm-deconstruct.sh --vg /private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.chroms/*.vg --ref CHM13 -L ${L} --out-dir $(pwd) --out-name hprc-v2.0-mc-chm13 --cpus 8 &
-./slurm-deconstruct.sh --vg /private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.chroms/*.vg --ref CHM13 -L ${L} --out-dir $(pwd) --out-name hprc-v2.0-mc-chm13 --cpus 8 &
-./slurm-deconstruct.sh --vg /private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v2.0-mc-chm13/hprc-v1.1-mc-chm13.chroms/*.vg --ref CHM13 -L ${L} --out-dir $(pwd) --out-name hprc-v1.1-mc-chm13 --cpus 8 &
-./slurm-deconstruct.sh --vg /private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v2.0-mc-chm13/hprc-v1.1-mc-chm13.chroms/*.vg --ref CHM13 -L ${L} --out-dir $(pwd) --out-name hprc-v1.1-mc-chm13 --cpus 8 &
+# Enable extended globbing to exclude .d9.vg files
+shopt -s extglob
+
+# Set the identity threshold
+L=0.95
+
+./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.chroms/!(*.d9).vg" --ref CHM13 --L ${L} --out-dir $(pwd) --out-name hprc-v2.0-mc-chm13 --cpus 8 &
+./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-grch38/hprc-v2.0-mc-grch38.chroms/!(*.d9).vg" --ref GRCh38 --L ${L} --out-dir $(pwd) --out-name hprc-v2.0-mc-grch38 --cpus 8 &
+./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-chm13/hprc-v1.1-mc-chm13.chroms/!(*.d9).vg" --ref CHM13 --L ${L} --out-dir $(pwd) --out-name hprc-v1.1-mc-chm13 --cpus 8 &
+./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-grch38/hprc-v1.1-mc-grch38.chroms/!(*.d9).vg" --ref GRCh38 --L ${L} --out-dir $(pwd) --out-name hprc-v1.1-mc-grch38 --cpus 8 &
 wait
 ```
 
@@ -37,12 +43,16 @@ The `-L` option sets a threshold for merging similar SV alt alleles.  This helps
 Todo: script to summarize results here
 
 ```
+# Enable extended globbing to exclude .d9.vg files
+shopt -s extglob
+
 for L in 0.75 0.90 0.99 1.00; do
-./slurm-deconstruct.sh --vg /private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.chroms/*.vg --ref CHM13 -L ${L} --out-dir $(pwd) --out-name hprc-v2.0-mc-chm13 --cpus 8 &
-./slurm-deconstruct.sh --vg /private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.chroms/*.vg --ref CHM13 -L ${L} --out-dir $(pwd) --out-name hprc-v2.0-mc-chm13 --cpus 8 &
-./slurm-deconstruct.sh --vg /private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v2.0-mc-chm13/hprc-v1.1-mc-chm13.chroms/*.vg --ref CHM13 -L ${L} --out-dir $(pwd) --out-name hprc-v1.1-mc-chm13 --cpus 8 &
-./slurm-deconstruct.sh --vg /private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v2.0-mc-chm13/hprc-v1.1-mc-chm13.chroms/*.vg --ref CHM13 -L ${L} --out-dir $(pwd) --out-name hprc-v1.1-mc-chm13 --cpus 8 &
+./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.chroms/!(*.d9).vg" --ref CHM13 --L ${L} --out-dir $(pwd) --out-name hprc-v2.0-mc-chm13 --cpus 8 &
+./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-grch38/hprc-v2.0-mc-grch38.chroms/!(*.d9).vg" --ref GRCh38 --L ${L} --out-dir $(pwd) --out-name hprc-v2.0-mc-grch38 --cpus 8 &
+./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-chm13/hprc-v1.1-mc-chm13.chroms/!(*.d9).vg" --ref CHM13 --L ${L} --out-dir $(pwd) --out-name hprc-v1.1-mc-chm13 --cpus 8 &
+./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-grch38/hprc-v1.1-mc-grch38.chroms/!(*.d9).vg" --ref GRCh38 --L ${L} --out-dir $(pwd) --out-name hprc-v1.1-mc-grch38 --cpus 8 &
 wait
+done
 ```
 
 ## Off-reference Variant Stats
@@ -100,3 +110,4 @@ And we can also plot the positions of the actual off-reference variants (nested 
 
 ./chrom-density-vcf.R hprc-v2.0-mc-chm13.nested.95.nestedref.vcf.gz hprc-v2.0-mc-chm13.nested.95.nestedref.png "CHM13 Nested Reference Variants" 50 ../construction/hprc-v2.0-mc-chm13.refgaps.bed
 ```
+

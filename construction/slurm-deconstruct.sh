@@ -38,11 +38,12 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         --vg)
             # Expand glob patterns and add all matching files
-            shopt -s nullglob
+            # Enable extended globbing for patterns like !(*.d9).vg
+            shopt -s nullglob extglob
             for file in $2; do
                 VG_FILES+=("$file")
             done
-            shopt -u nullglob
+            shopt -u nullglob extglob
             shift 2
             ;;
         --ref)
