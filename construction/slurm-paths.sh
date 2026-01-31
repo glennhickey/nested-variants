@@ -107,13 +107,13 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Examples:"
             echo "  # Basic usage"
-            echo "  $0 --vg chr*.vg --ref GRCh38 --out-dir ./output --out-name merged.gfa.gz"
+            echo "  $0 --vg 'chr*.vg' --ref GRCh38 --out-dir ./output --out-name merged.gfa.gz"
             echo ""
             echo "  # With custom min-augref-len"
-            echo "  $0 --vg chr*.vg --ref GRCh38 --out-dir ./output --out-name merged.gfa.gz --min-augref-len 100"
+            echo "  $0 --vg 'chr*.vg' --ref GRCh38 --out-dir ./output --out-name merged.gfa.gz --min-augref-len 100"
             echo ""
             echo "  # With custom SLURM resources"
-            echo "  $0 --vg chr*.vg --ref GRCh38 --out-dir ./output --out-name merged.gfa.gz --cpus 16 --mem 100gb --time 8:00:00"
+            echo "  $0 --vg 'chr*.vg' --ref GRCh38 --out-dir ./output --out-name merged.gfa.gz --cpus 16 --mem 100gb --time 8:00:00"
             exit 0
             ;;
         *)
