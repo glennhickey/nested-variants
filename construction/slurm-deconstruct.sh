@@ -170,5 +170,6 @@ else
         --mem="${MEM}" \
         --time="${TIME}" \
         --output=/dev/null \
+        --error="${OUTPUT_DIR}/${OUTPUT_NAME%.vcf.gz}.deconstruct.log" \
         --wrap="$CMD"
 fi

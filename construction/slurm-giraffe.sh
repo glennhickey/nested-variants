@@ -26,7 +26,7 @@ OUTPUT_NAME=""
 
 # SLURM resource defaults
 CPUS="16"
-MEM="128"
+MEM="128gb"
 TIME="16:00:00"
 PARTITION="long"
 JOB_NAME="giraffe"
@@ -93,11 +93,9 @@ while [[ $# -gt 0 ]]; do
             echo "Execution Options:"
             echo "  --local               Run commands locally instead of via SLURM"
             echo ""
-            echo "Resource Options (used for both local and SLURM):"
-            echo "  --cpus <N>            CPUs/threads (default: 16)"
-            echo "  --mem <N>             Memory in GB (default: 128)"
-            echo ""
-            echo "SLURM-specific Options:"
+            echo "SLURM Resource Options (optional, with defaults):"
+            echo "  --cpus <N>            CPUs per task (default: 16)"
+            echo "  --mem <size>          Memory per job (default: 128gb)"
             echo "  --time <time>         Wall clock limit (default: 16:00:00)"
             echo "  --partition <p>       SLURM partition/queue (default: long)"
             echo ""
@@ -154,11 +152,14 @@ mkdir -p "$OUTPUT_DIR"
 
 GAM="${OUTPUT_DIR}/${OUTPUT_NAME}"
 
+# Extract numeric value from MEM for kmc (e.g., "128gb" -> "128")
+MEM_NUM=$(echo "$MEM" | sed 's/[^0-9]//g')
+
 # Build the command to run
 # Use TMPDIR if set, otherwise use output directory for temp files
 CMD_TMPDIR="\${TMPDIR:-${OUTPUT_DIR}}"
 CMD="WORK_TMPDIR=${CMD_TMPDIR} && \\
-kmc -k29 -m${MEM} -okff -t${CPUS} -hp \"${READS}\" \"\${WORK_TMPDIR}/${SAMPLE}\" \"\${WORK_TMPDIR}\" && \\
+kmc -k29 -m${MEM_NUM} -okff -t${CPUS} -hp \"${READS}\" \"\${WORK_TMPDIR}/${SAMPLE}\" \"\${WORK_TMPDIR}\" && \\
 vg giraffe -p -t ${CPUS} -Z \"${GBZ}\" --haplotype-name \"${HAPL}\" --kmer-name \"\${WORK_TMPDIR}/${SAMPLE}.kff\" \\
     -N ${SAMPLE} -i -f \"${READS}\" > \"${GAM}\" && \\
 rm -f \"\${WORK_TMPDIR}/${SAMPLE}.kff\" \"\${WORK_TMPDIR}/${SAMPLE}.kff.kmc_pre\" \"\${WORK_TMPDIR}/${SAMPLE}.kff.kmc_suf\""
@@ -174,8 +175,9 @@ else
         --nodes=1 \
         --ntasks=1 \
         --cpus-per-task="${CPUS}" \
-        --mem="${MEM}gb" \
+        --mem="${MEM}" \
         --time="${TIME}" \
         --output=/dev/null \
+        --error="${OUTPUT_DIR}/${OUTPUT_NAME%.gam}.giraffe.log" \
         --wrap="$CMD"
 fi

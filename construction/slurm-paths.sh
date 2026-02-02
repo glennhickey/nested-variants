@@ -174,7 +174,7 @@ for VG in "${VG_FILES[@]}"; do
             # Run locally in background
             bash -c "$CMD" &
         else
-            # Submit SLURM job with resource requirements (no log files)
+            # Submit SLURM job with resource requirements
             sbatch -W \
                 --job-name="${JOB_NAME}" \
                 --partition="${PARTITION}" \
@@ -184,6 +184,7 @@ for VG in "${VG_FILES[@]}"; do
                 --mem="${MEM}" \
                 --time="${TIME}" \
                 --output=/dev/null \
+                --error="${WORK_DIR}/${OUTPUT_NAME%.gfa.gz}.${BASE}.log" \
                 --wrap="$CMD" &
         fi
     fi
@@ -229,6 +230,7 @@ else
         --mem="${MEM}" \
         --time="${TIME}" \
         --output=/dev/null \
+        --error="${OUTPUT_DIR}/${OUTPUT_NAME%.gfa.gz}.gbz.log" \
         --wrap="$CMD"
 fi
 
