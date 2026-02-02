@@ -85,7 +85,7 @@ while [[ $# -gt 0 ]]; do
             echo "Required Options:"
             echo "  --gbz <file>          GBZ graph file"
             echo "  --hapl <file>         Haplotype index file (.hapl)"
-            echo "  --reads <file>        Input reads file (fastq or fastq.gz)"
+            echo "  --reads <file>        Input reads index (file containing list of fastq paths)"
             echo "  --sample <name>       Sample name"
             echo "  --out-dir <dir>       Output directory for GAM file"
             echo "  --out-name <name>     Output name for GAM file"
@@ -159,7 +159,7 @@ MEM_NUM=$(echo "$MEM" | sed 's/[^0-9]//g')
 # Use TMPDIR if set, otherwise use output directory for temp files
 CMD_TMPDIR="\${TMPDIR:-${OUTPUT_DIR}}"
 CMD="WORK_TMPDIR=${CMD_TMPDIR} && \\
-kmc -k29 -m${MEM_NUM} -okff -t${CPUS} -hp \"${READS}\" \"\${WORK_TMPDIR}/${SAMPLE}\" \"\${WORK_TMPDIR}\" && \\
+kmc -k29 -m${MEM_NUM} -okff -t${CPUS} -hp \"@${READS}\" \"\${WORK_TMPDIR}/${SAMPLE}\" \"\${WORK_TMPDIR}\" && \\
 vg giraffe -p -t ${CPUS} -Z \"${GBZ}\" --haplotype-name \"${HAPL}\" --kmer-name \"\${WORK_TMPDIR}/${SAMPLE}.kff\" \\
     -N ${SAMPLE} -i -f \"${READS}\" > \"${GAM}\" && \\
 rm -f \"\${WORK_TMPDIR}/${SAMPLE}.kff\" \"\${WORK_TMPDIR}/${SAMPLE}.kff.kmc_pre\" \"\${WORK_TMPDIR}/${SAMPLE}.kff.kmc_suf\""
