@@ -155,7 +155,7 @@ PACK="${OUTPUT_DIR}/${OUTPUT_NAME%.vcf.gz}.pack"
 
 # Build the command to run
 CMD="vg pack -x \"${GBZ}\" -g \"${GAM}\" -o \"${PACK}\" -t ${CPUS} && \\
-vg call \"${GBZ}\" -k \"${PACK}\" -a -P ${REF} -s ${SAMPLE} -t ${CPUS} | bgzip > \"${VCF}\" && \\
+vg call \"${GBZ}\" -k \"${PACK}\" -a -S ${REF} -s ${SAMPLE} -t ${CPUS} | bgzip > \"${VCF}\" && \\
 tabix -fp vcf \"${VCF}\""
 
 if $LOCAL; then
