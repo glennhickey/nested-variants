@@ -160,7 +160,7 @@ MEM_NUM=$(echo "$MEM" | sed 's/[^0-9]//g')
 CMD_TMPDIR="\${TMPDIR:-${OUTPUT_DIR}}"
 CMD="WORK_TMPDIR=${CMD_TMPDIR} && \\
 kmc -k29 -m${MEM_NUM} -okff -t${CPUS} -hp \"@${READS}\" \"\${WORK_TMPDIR}/${SAMPLE}\" \"\${WORK_TMPDIR}\" && \\
-vg giraffe -p -t ${CPUS} -Z \"${GBZ}\" --haplotype-name \"${HAPL}\" --kmer-name \"\${WORK_TMPDIR}/${SAMPLE}.kff\" \\
+vg giraffe -p -t ${CPUS} -Z \"${GBZ}\" --haplotype-name \"${HAPL}\" --kff-name \"\${WORK_TMPDIR}/${SAMPLE}.kff\" \\
     -N ${SAMPLE} -i -f \"${READS}\" > \"${GAM}\" && \\
 rm -f \"\${WORK_TMPDIR}/${SAMPLE}.kff\" \"\${WORK_TMPDIR}/${SAMPLE}.kff.kmc_pre\" \"\${WORK_TMPDIR}/${SAMPLE}.kff.kmc_suf\""
 
