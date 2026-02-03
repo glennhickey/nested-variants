@@ -155,13 +155,19 @@ GAM="${OUTPUT_DIR}/${OUTPUT_NAME}"
 # Extract numeric value from MEM for kmc (e.g., "128gb" -> "128")
 MEM_NUM=$(echo "$MEM" | sed 's/[^0-9]//g')
 
+# Read the two fastq paths from the index file and build -f arguments for giraffe
+FASTQ_ARGS=""
+while read -r fq; do
+    FASTQ_ARGS="${FASTQ_ARGS} -f \"${fq}\""
+done < "${READS}"
+
 # Build the command to run
 # Use TMPDIR if set, otherwise use output directory for temp files
 CMD_TMPDIR="\${TMPDIR:-${OUTPUT_DIR}}"
 CMD="WORK_TMPDIR=${CMD_TMPDIR} && \\
 kmc -k29 -m${MEM_NUM} -okff -t${CPUS} -hp \"@${READS}\" \"\${WORK_TMPDIR}/${SAMPLE}\" \"\${WORK_TMPDIR}\" && \\
 vg giraffe -p -t ${CPUS} -Z \"${GBZ}\" --haplotype-name \"${HAPL}\" --kff-name \"\${WORK_TMPDIR}/${SAMPLE}.kff\" \\
-    -N ${SAMPLE} -i -f \"${READS}\" > \"${GAM}\" && \\
+    -N ${SAMPLE} -i ${FASTQ_ARGS} > \"${GAM}\" && \\
 rm -f \"\${WORK_TMPDIR}/${SAMPLE}.kff\" \"\${WORK_TMPDIR}/${SAMPLE}.kff.kmc_pre\" \"\${WORK_TMPDIR}/${SAMPLE}.kff.kmc_suf\""
 
 if $LOCAL; then
