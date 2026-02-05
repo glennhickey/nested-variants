@@ -168,7 +168,7 @@ for VG in "${VG_FILES[@]}"; do
         GFA_FILES+=("$GFA")
 
         # Build the command to run
-        CMD="vg paths -x \"$VG\" -Q ${REF} --compute-augref --min-augref-len ${MIN_AUGREF_LEN} --augref-sample ${AUGREF_SAMPLE} -t ${CPUS} | vg convert -f - | bgzip > \"${GFA}\""
+        CMD="/usr/bin/time -v vg paths -x \"$VG\" -Q ${REF} --compute-augref --min-augref-len ${MIN_AUGREF_LEN} --augref-sample ${AUGREF_SAMPLE} -t ${CPUS} | /usr/bin/time -v vg convert -f - | bgzip > \"${GFA}\""
 
         if $LOCAL; then
             # Run locally in background
@@ -218,9 +218,9 @@ zcat "${MERGED}" > "${MERGED_UNCOMPRESSED}"
 
 if $LOCAL; then
     # Run locally
-    vg gbwt -G "${MERGED_UNCOMPRESSED}" --gbz-format -g "${GBZ_OUTPUT}"
+    /usr/bin/time -v vg gbwt -G "${MERGED_UNCOMPRESSED}" --gbz-format -g "${GBZ_OUTPUT}"
 else
-    CMD="vg gbwt -G \"${MERGED_UNCOMPRESSED}\" --gbz-format -g \"${GBZ_OUTPUT}\""
+    CMD="/usr/bin/time -v vg gbwt -G \"${MERGED_UNCOMPRESSED}\" --gbz-format -g \"${GBZ_OUTPUT}\""
     sbatch -W \
         --job-name="gbz" \
         --partition="${PARTITION}" \

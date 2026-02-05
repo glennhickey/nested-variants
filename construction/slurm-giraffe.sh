@@ -166,7 +166,7 @@ done < "${READS}"
 CMD_TMPDIR="\${TMPDIR:-${OUTPUT_DIR}}"
 CMD="WORK_TMPDIR=${CMD_TMPDIR} && \\
 kmc -k29 -m${MEM_NUM} -okff -t${CPUS} -hp \"@${READS}\" \"\${WORK_TMPDIR}/${SAMPLE}\" \"\${WORK_TMPDIR}\" && \\
-vg giraffe -p -t ${CPUS} -Z \"${GBZ}\" --haplotype-name \"${HAPL}\" --kff-name \"\${WORK_TMPDIR}/${SAMPLE}.kff\" \\
+/usr/bin/time -v vg giraffe -p -t ${CPUS} -Z \"${GBZ}\" --haplotype-name \"${HAPL}\" --kff-name \"\${WORK_TMPDIR}/${SAMPLE}.kff\" \\
     --index-basename \"${OUTPUT_DIR}/${OUTPUT_NAME%.gam}.${SAMPLE}\" -N ${SAMPLE} ${FASTQ_ARGS} > \"${GAM}\" && \\
 rm -f \"\${WORK_TMPDIR}/${SAMPLE}.kff\" \"\${WORK_TMPDIR}/${SAMPLE}.kff.kmc_pre\" \"\${WORK_TMPDIR}/${SAMPLE}.kff.kmc_suf\""
 
