@@ -21,6 +21,7 @@ REF=""
 OUTPUT_DIR="."
 OUTPUT_NAME=""
 CLUSTER=""
+SNARLS=""
 STAR_ALLELE=false
 
 # SLURM resource defaults
@@ -78,6 +79,10 @@ while [[ $# -gt 0 ]]; do
             STAR_ALLELE=true
             shift
             ;;
+        --snarls)
+            SNARLS="$2"
+            shift 2
+            ;;
         -h|--help)
             echo "Usage: $0 --gbz <file.gbz> --ref <ref> --out-dir <dir> --out-name <name> [options]"
             echo ""
@@ -89,6 +94,7 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Deconstruct Options:"
             echo "  --cluster <F>         Cluster traversals with Jaccard >= F (passed to -L)"
+            echo "  --snarls <file>       Snarls file for variant site definition (passed to -r)"
             echo "  --star-allele         Use *-alleles for spanning haplotypes (passed to -R)"
             echo ""
             echo "Execution Options:"
@@ -150,6 +156,9 @@ VCF="${OUTPUT_DIR}/${OUTPUT_NAME}"
 DECONSTRUCT_OPTS="-P ${REF} -a -t ${CPUS}"
 if [ -n "$CLUSTER" ]; then
     DECONSTRUCT_OPTS="${DECONSTRUCT_OPTS} -L ${CLUSTER}"
+fi
+if [ -n "$SNARLS" ]; then
+    DECONSTRUCT_OPTS="${DECONSTRUCT_OPTS} -r ${SNARLS}"
 fi
 if $STAR_ALLELE; then
     DECONSTRUCT_OPTS="${DECONSTRUCT_OPTS} -R"
