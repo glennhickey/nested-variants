@@ -64,8 +64,12 @@ Splits the nested VCF into three categories based on reference context:
 
 Aligns reads to the graph with `vg giraffe` and calls variants with `vg call`. Requires `READS`, `HAPL`, and `SAMPLE` to be set.
 
+- `READS` — a text file listing input FASTQ paths (one per line, typically two lines for paired-end reads). This is user-provided sequencing data.
+- `HAPL` — haplotype index file (`.hapl`) for the graph, typically distributed alongside the HPRC pangenome release.
+- `SAMPLE` — sample name to embed in the output GAM/VCF.
+
 ```bash
-make genotype READS=data/reads.idx HAPL=data/graph.hapl SAMPLE=NA12878
+make genotype READS=data/HG002.reads.idx HAPL=data/graph.hapl SAMPLE=HG002
 ```
 
 ## Configuration
