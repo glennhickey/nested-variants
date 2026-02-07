@@ -101,25 +101,31 @@ When `EXEC_MODE=slurm`, each pipeline step submits SLURM jobs via `sbatch -W` an
 Override `VG`, `REF`, `OUT_DIR`, and `OUT_NAME` on the command line to run different inputs into separate output directories. The `VG` variable accepts glob patterns (including bash extended globs like `!(*.d9).vg`).
 
 ```bash
-# HPRC v2.0 CHM13
-make paths deconstruct split-vcf plots \
+# HPRC v2.0 CHM13 — full pipeline including genotyping
+make paths deconstruct genotype split-vcf plots call-plots \
   EXEC_MODE=slurm \
   REF=CHM13 \
   VG='/path/to/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.chroms/!(*.d9).vg' \
   OUT_DIR=output/v2-chm13 \
   OUT_NAME=hprc-v2.0-mc-chm13.nested.95 \
+  READS=data/HG002.reads.idx \
+  HAPL=data/hprc-v2.0-mc-chm13.hapl \
+  SAMPLE=HG002 \
   REFGAPS_BED=data/hprc-v2.0-mc-chm13.refgaps.bed
 
-# HPRC v2.0 GRCh38
-make paths deconstruct split-vcf plots \
+# HPRC v2.0 GRCh38 — full pipeline including genotyping
+make paths deconstruct genotype split-vcf plots call-plots \
   EXEC_MODE=slurm \
   REF=GRCh38 \
   VG='/path/to/hprc-v2.0-mc-grch38/hprc-v2.0-mc-grch38.chroms/!(*.d9).vg' \
   OUT_DIR=output/v2-grch38 \
   OUT_NAME=hprc-v2.0-mc-grch38.nested.95 \
+  READS=data/HG002.reads.idx \
+  HAPL=data/hprc-v2.0-mc-grch38.hapl \
+  SAMPLE=HG002 \
   REFGAPS_BED=data/hprc-v2.0-mc-grch38.refgaps.bed
 
-# HPRC v1.1 CHM13
+# HPRC v1.1 CHM13 — without genotyping
 make paths deconstruct split-vcf plots \
   EXEC_MODE=slurm \
   REF=CHM13 \
@@ -134,11 +140,15 @@ Each run gets its own output directory with the full set of outputs:
 output/v2-chm13/
 ├── hprc-v2.0-mc-chm13.nested.95.gbz              # augmented reference graph
 ├── hprc-v2.0-mc-chm13.nested.95.augref-segs.tsv   # augref segment table
-├── hprc-v2.0-mc-chm13.nested.95.vcf.gz            # nested VCF
+├── hprc-v2.0-mc-chm13.nested.95.vcf.gz            # nested VCF (deconstruct)
 ├── hprc-v2.0-mc-chm13.nested.95.onref.vcf.gz      # on-reference variants
 ├── hprc-v2.0-mc-chm13.nested.95.nestedref.vcf.gz  # nested-reference variants
 ├── hprc-v2.0-mc-chm13.nested.95.offref.vcf.gz     # off-reference variants
-└── hprc-v2.0-mc-chm13.nested.95.offref.png        # density ideogram
+├── hprc-v2.0-mc-chm13.nested.95.offref.png        # deconstruct density ideogram
+├── HG002.gam                                       # read alignments (genotype)
+├── HG002.pack                                      # coverage pileup
+├── HG002.vcf.gz                                    # genotyped VCF (vg call)
+└── HG002.call-density.png                          # genotyped density ideogram
 ```
 
 ### Genotyping a sample
