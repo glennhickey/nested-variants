@@ -1,120 +1,216 @@
 # nested-variants
 
-## Finding the off-reference sequence
+Discover and analyze off-reference (nested) variants in pangenome graphs built with [vg](https://github.com/vgteam/vg) and [Minigraph-Cactus](https://github.com/ComparativeGenomicsToolkit/cactus). The pipeline computes augmented reference paths from VG files, deconstructs the graph into a nested VCF, splits variants by reference context, and produces chromosome-density ideogram plots.
 
-(all commands run in `./construction')
+## Prerequisites
 
-Right now, the off-reference sequence (ie rGFA cover) is computed within `vg deconstruct`.  It is output in three inter-related files:
+| Tool | Required for | Install |
+|------|-------------|---------|
+| **vg** (>= 1.56) | `make paths`, `make deconstruct`, `make genotype` | [vg releases](https://github.com/vgteam/vg/releases) |
+| **bcftools** | `make split-vcf` | `apt install bcftools` / `conda install bcftools` |
+| **bgzip / tabix** (htslib) | VCF compression & indexing | `apt install tabix` / `conda install htslib` |
+| **make** | Pipeline orchestration | Usually pre-installed |
+| Rscript | `make plots` (optional) | `apt install r-base` |
+| kmc | `make genotype` (optional) | [kmc releases](https://github.com/refresh-bio/KMC) |
+| shellcheck | `make test` | `apt install shellcheck` |
 
-* Nested VCF (contains variant calls both on and off the chosen reference)
-* Off-reference FASTA (contains all off-reference contigs used by the VCF)
-* Off-reference TSV (essentially a BED-formatted version of the Fasta, with some additional fields linking back to reference intervals)
-
-To create these files, `vg deconstruct` must be run on `.vg` (and not `.gbz`) files.  For the HPRC graphs, these are normally found in the `.chroms` subdirectory alongside the main output.  This repo contains a script to help with this:
-
-```bash
-# Enable extended globbing to exclude .d9.vg files
-shopt -s extglob
-
-# Set the identity threshold (0-100 for percentage, 0-1 for decimal)
-L=95
-
-# Run deconstruction for each graph (outputs to current directory)
-./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.chroms/!(*.d9).vg" --ref CHM13 --L ${L} --out-dir $(pwd) --out-name hprc-v2.0-mc-chm13.nested.${L} --cpus 8 &
-./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-grch38/hprc-v2.0-mc-grch38.chroms/!(*.d9).vg" --ref GRCh38 --L ${L} --out-dir $(pwd) --out-name hprc-v2.0-mc-grch38.nested.${L} --cpus 8 &
-./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-chm13/hprc-v1.1-mc-chm13.chroms/!(*.d9).vg" --ref CHM13 --L ${L} --out-dir $(pwd) --out-name hprc-v1.1-mc-chm13.nested.${L} --cpus 8 &
-./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-grch38/hprc-v1.1-mc-grch38.chroms/!(*.d9).vg" --ref GRCh38 --L ${L} --out-dir $(pwd) --out-name hprc-v1.1-mc-grch38.nested.${L} --cpus 8 &
-wait
-```
-
-**Output Files**: For each run, the script generates four files with the specified `--out-name` as prefix:
-- `<out-name>.vcf.gz` - Nested VCF with variants on and off reference
-- `<out-name>.vcf.gz.tbi` - Tabix index for the VCF
-- `<out-name>.fa.gz` - Off-reference FASTA contigs
-- `<out-name>.fa.nesting.tsv.gz` - TSV mapping off-reference contigs to reference intervals
-
-Minigraph can produce something similar to the TSV and FASTA output above, so we get the BEDs for comparison.  The `grep` commands filter out the reference contigs (to be consistent with above) and the `sed` mess is to accommodate the v1.1 data which has the native cactus prefixes in the minigraph files, as opposed to PANSN.
-
-```
-gfatools gfa2bed -s /private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.sv.gfa.gz | grep -v ^CHM13 > hprc-v2.0-mc-chm13.sv.offref.bed
-gfatools gfa2bed -s /private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-grch38/hprc-v2.0-mc-grch38.sv.gfa.gz | grep -v ^GRCh38 > hprc-v2.0-mc-grch38.sv.offref.bed
-gfatools gfa2bed -s /private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-chm13/hprc-v1.1-mc-chm13.sv.gfa.gz | sed -E 's/id=([[:alnum:]]+)\.([0-9])\|/\1#\2#/g; s/id=([[:alnum:]]+)\|/\1#0#/g' | grep -v ^CHM13 > hprc-v1.1-mc-chm13.sv.offref.bed
-gfatools gfa2bed -s /private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-grch38/hprc-v1.1-mc-grch38.sv.gfa.gz | sed -E 's/id=([[:alnum:]]+)\.([0-9])\|/\1#\2#/g; s/id=([[:alnum:]]+)\|/\1#0#/g' | grep -v ^GRCh38 > hprc-v1.1-mc-grch38.sv.offref.bed
-
-```
-
-### Variant Identity Threshold
-
-The `--L` option sets a threshold for merging similar SV alt alleles.  This helps simplify the output VCF.  I've been using `95` (95% identity) but it could be interesting to compare other values.
-
-Todo: script to summarize results here
+## Quick Start
 
 ```bash
-# Enable extended globbing to exclude .d9.vg files
-shopt -s extglob
+# 1. Copy or symlink chr20 test data into data/
+mkdir -p data
+cp ~/dev/work/test-altpaths-chr20/chr20.vg data/
 
-for L in 75 90 95 99 100; do
-./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.chroms/!(*.d9).vg" --ref CHM13 --L ${L} --out-dir $(pwd) --out-name hprc-v2.0-mc-chm13.nested.${L} --cpus 8 &
-./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-grch38/hprc-v2.0-mc-grch38.chroms/!(*.d9).vg" --ref GRCh38 --L ${L} --out-dir $(pwd) --out-name hprc-v2.0-mc-grch38.nested.${L} --cpus 8 &
-./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-chm13/hprc-v1.1-mc-chm13.chroms/!(*.d9).vg" --ref CHM13 --L ${L} --out-dir $(pwd) --out-name hprc-v1.1-mc-chm13.nested.${L} --cpus 8 &
-./slurm-deconstruct.sh --vg "/private/groups/cgl/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-grch38/hprc-v1.1-mc-grch38.chroms/!(*.d9).vg" --ref GRCh38 --L ${L} --out-dir $(pwd) --out-name hprc-v1.1-mc-grch38.nested.${L} --cpus 8 &
-wait
-done
+# 2. Run the pipeline (local mode, chr20 defaults)
+make paths          # VG → GBZ
+make deconstruct    # GBZ → VCF
+make split-vcf      # VCF → onref / nestedref / offref
+make plots          # offref VCF → ideogram PNG
+# or simply:
+make all            # runs split-vcf + plots (requires deconstruct output)
 ```
 
-## Off-reference Variant Stats
+## Pipeline Stages
 
-(all commands run in `./variants')
+### 1. Augmented Reference Paths (`make paths`)
 
-Note that the "refgaps" bedfiles are used to black out regions not in the graph like centromeres.  They are optional but can be found, here for example. 
+Runs `vg paths` on each input VG file to compute augmented reference paths, then merges and converts to GBZ format.
 
-```
-https://s3-us-west-2.amazonaws.com/human-pangenomics/pangenomes/scratch/2025_02_28_minigraph_cactus/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.refgaps.bed
-https://s3-us-west-2.amazonaws.com/human-pangenomics/pangenomes/scratch/2025_02_28_minigraph_cactus/hprc-v2.0-mc-grch38/hprc-v2.0-mc-grch38.refgaps.bed
-```
+- **Input:** VG file(s) (`data/chr20.vg`)
+- **Output:** `output/chr20.nested.gbz`
+- **Script:** `scripts/paths.sh`
 
-### Splitting the VCF
+### 2. Deconstruct (`make deconstruct`)
 
-Before analyzing variants, split the nested VCF into three categories:
-- **onref**: All variants on the reference (contigs starting with the reference prefix)
-- **nestedref**: Nested variants on the reference (on-reference contigs with LV>0)
-- **offref**: Variants on off-reference contigs (contigs NOT starting with the reference prefix)
+Runs `vg deconstruct` on the GBZ to produce a nested VCF with on-reference and off-reference variant calls.
 
-```
-./split-ref.sh -v ../construction/hprc-v2.0-mc-chm13.nested.95.vcf.gz -p CHM13
-```
+- **Input:** GBZ from stage 1
+- **Output:** `output/chr20.nested.vcf.gz` (+ .tbi index)
+- **Script:** `scripts/deconstruct.sh`
 
-This creates three indexed VCF files in the current directory that can be used for downstream analysis.
+### 3. Split VCF (`make split-vcf`)
 
-### Reference Gaps
+Splits the nested VCF into three categories based on reference context:
 
-We black out parts of the reference chromosomes that aren't aligned in the graph.  These are mostly from centromeres etc.  The BED files used are found in the same places as the HPRC data and are generated with [refgaps.sh](https://raw.githubusercontent.com/glennhickey/pg-stuff/8f197691a6fc795ba45a0b146446b0fb6f00c16e/refgaps.sh).
+| Category | File suffix | Description |
+|----------|-----------|-------------|
+| On-reference | `.onref.vcf.gz` | Variants on contigs starting with the reference prefix |
+| Nested-reference | `.nestedref.vcf.gz` | On-reference variants at nesting level > 0 |
+| Off-reference | `.offref.vcf.gz` | Variants on non-reference contigs |
 
-### Size Distribution
+- **Script:** `scripts/split-ref.sh`
 
-The size distribution of the off-reference variants can be computed from the TSV nesting files. The script calculates lengths from the last 3 columns (reference contig, start, end) and generates cumulative distribution plots:
+### 4. Genotype (optional, `make genotype`)
 
-```
-# Single dataset example
-./offref-length-hist.R chm13-offref-lengths.png ../construction/hprc-v1.1-mc-chm13.nested.95.fa.nesting.tsv 50 TRUE
+Aligns reads to the graph with `vg giraffe` and calls variants with `vg call`. Requires `READS`, `HAPL`, and `SAMPLE` to be set.
 
-# Multiple datasets for comparison (if .sv.offref.bed files from minigraph are available)
-./offref-length-hist.R chm13-offref-lengths.png ../construction/hprc-v1.1-mc-chm13.nested.95.fa.nesting.tsv ../construction/hprc-v1.1-mc-chm13.sv.offref.bed 50 TRUE
+```bash
+make genotype READS=data/reads.idx HAPL=data/graph.hapl SAMPLE=NA12878
 ```
 
-### Chromosome Positions
+## Configuration
 
-We can plot the placement of off-reference sites relative to the reference (effectively displaying large insertions) using the nesting TSV files:
+All settings live in `config.mk` (committed defaults) and can be overridden in `config.local.mk` (gitignored) or on the command line.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `EXEC_MODE` | `local` | `local` or `slurm` |
+| `REF` | `GRCh38` | Reference name for vg (`GRCh38`, `CHM13`, etc.) |
+| `VG` | `data/chr20.vg` | Input VG file(s) |
+| `OUT_DIR` | `output` | Output directory |
+| `OUT_NAME` | `chr20.nested` | Output filename prefix |
+| `MIN_AUGREF_LEN` | `50` | Minimum augref fragment length |
+| `REFGAPS_BED` | *(empty)* | BED file for reference gap overlay on plots |
+
+See `config.mk` for the full list.
+
+## Testing
+
+```bash
+make test          # shellcheck + --help flag tests
+```
+
+The test suite runs [shellcheck](https://www.shellcheck.net/) on all shell scripts and verifies that each script's `--help` flag exits cleanly. Full pipeline tests require `vg` and test data.
+
+## Cluster Usage
+
+When `EXEC_MODE=slurm`, each pipeline step submits SLURM jobs via `sbatch -W` and waits for completion before proceeding to the next step. SLURM resources (`CPUS`, `MEM`, `TIME`, `PARTITION`) are all configurable.
+
+### Running multiple graphs
+
+Override `VG`, `REF`, `OUT_DIR`, and `OUT_NAME` on the command line to run different inputs into separate output directories. The `VG` variable accepts glob patterns (including bash extended globs like `!(*.d9).vg`).
+
+```bash
+# HPRC v2.0 CHM13
+make paths deconstruct split-vcf plots \
+  EXEC_MODE=slurm \
+  REF=CHM13 \
+  VG='/path/to/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.chroms/!(*.d9).vg' \
+  OUT_DIR=output/v2-chm13 \
+  OUT_NAME=hprc-v2.0-mc-chm13.nested.95 \
+  REFGAPS_BED=data/hprc-v2.0-mc-chm13.refgaps.bed
+
+# HPRC v2.0 GRCh38
+make paths deconstruct split-vcf plots \
+  EXEC_MODE=slurm \
+  REF=GRCh38 \
+  VG='/path/to/hprc-v2.0-mc-grch38/hprc-v2.0-mc-grch38.chroms/!(*.d9).vg' \
+  OUT_DIR=output/v2-grch38 \
+  OUT_NAME=hprc-v2.0-mc-grch38.nested.95 \
+  REFGAPS_BED=data/hprc-v2.0-mc-grch38.refgaps.bed
+
+# HPRC v1.1 CHM13
+make paths deconstruct split-vcf plots \
+  EXEC_MODE=slurm \
+  REF=CHM13 \
+  VG='/path/to/hprc-v1.1-mc-chm13/hprc-v1.1-mc-chm13.chroms/!(*.d9).vg' \
+  OUT_DIR=output/v1-chm13 \
+  OUT_NAME=hprc-v1.1-mc-chm13.nested.95 \
+  REFGAPS_BED=data/hprc-v1.1-mc-chm13.refgaps.bed
+```
+
+Each run gets its own output directory with the full set of outputs:
+```
+output/v2-chm13/
+├── hprc-v2.0-mc-chm13.nested.95.gbz              # augmented reference graph
+├── hprc-v2.0-mc-chm13.nested.95.augref-segs.tsv   # augref segment table
+├── hprc-v2.0-mc-chm13.nested.95.vcf.gz            # nested VCF
+├── hprc-v2.0-mc-chm13.nested.95.onref.vcf.gz      # on-reference variants
+├── hprc-v2.0-mc-chm13.nested.95.nestedref.vcf.gz  # nested-reference variants
+├── hprc-v2.0-mc-chm13.nested.95.offref.vcf.gz     # off-reference variants
+└── hprc-v2.0-mc-chm13.nested.95.offref.png        # density ideogram
+```
+
+### Genotyping a sample
+
+To genotype a sample against the augmented reference and plot the results:
+
+```bash
+make genotype call-plots \
+  EXEC_MODE=slurm \
+  REF=CHM13 \
+  OUT_DIR=output/v2-chm13 \
+  OUT_NAME=hprc-v2.0-mc-chm13.nested.95 \
+  READS=data/sample.reads.idx \
+  HAPL=data/graph.hapl \
+  SAMPLE=NA12878
+```
+
+### SLURM resource tuning
+
+The default SLURM resources can be overridden per run:
+
+```bash
+make paths EXEC_MODE=slurm CPUS=32 MEM=400gb TIME=24:00:00 PARTITION=long ...
+```
+
+### Using config.local.mk
+
+For repeated use, create a `config.local.mk` with your common settings:
+
+```bash
+cp config.local.mk.example config.local.mk
+# Edit config.local.mk with your defaults
+```
+
+Then override only what changes per run:
+
+```bash
+make paths deconstruct split-vcf plots \
+  REF=CHM13 \
+  VG='/path/to/chm13-chroms/!(*.d9).vg' \
+  OUT_DIR=output/v2-chm13 \
+  OUT_NAME=hprc-v2.0-mc-chm13.nested.95
+```
+
+## Repository Structure
 
 ```
-./chrom-density-tsv.R ../construction/hprc-v1.1-mc-chm13.nested.95.fa.nesting.tsv chm13-offref-sites.png "CHM13 Off-Reference Sites" 50 ../construction/hprc-v1.1-mc-chm13.refgaps.bed
+nested-variants/
+├── Makefile                    Pipeline orchestrator
+├── config.mk                   Default config (chr20 local test)
+├── config.local.mk.example     Template for cluster config
+├── scripts/
+│   ├── paths.sh                VG → GBZ (augmented reference paths)
+│   ├── deconstruct.sh          GBZ → VCF (vg deconstruct)
+│   ├── giraffe.sh              GBZ + reads → GAM (vg giraffe)
+│   ├── call.sh                 GBZ + GAM → VCF (vg call)
+│   ├── split-ref.sh            VCF → onref/nestedref/offref VCFs
+│   ├── offref-length-hist.R    Size distribution histograms
+│   ├── chrom-density-common.R  Shared ideogram plotting code
+│   ├── chrom-density-tsv.R     Ideogram from TSV nesting files
+│   ├── chrom-density-vcf.R     Ideogram from VCF INFO fields
+│   └── chrom-density-call.R    Ideogram from genotyped VCF (vg call)
+├── annotation/
+│   ├── download-hprc-annotations.py
+│   └── intersect-annotations.py
+├── test/
+│   └── test-pipeline.sh        CI test script
+├── data/                        Gitignored; put input data here
+├── .github/workflows/ci.yml
+└── LICENSE
 ```
 
-And we can also plot the positions of the actual off-reference variants (nested variants).  These will be inside the regions displayed above, but these plots will give a notion of which regions have more nested variants.
+## License
 
-```
-./chrom-density-vcf.R hprc-v2.0-mc-chm13.nested.95.offref.vcf.gz hprc-v2.0-mc-chm13.nested.95.offref.png "CHM13 Nested Variants" 50 ../construction/hprc-v2.0-mc-chm13.refgaps.bed
-
-./chrom-density-vcf.R hprc-v2.0-mc-chm13.nested.95.nestedref.vcf.gz hprc-v2.0-mc-chm13.nested.95.nestedref.png "CHM13 Nested Reference Variants" 50 ../construction/hprc-v2.0-mc-chm13.refgaps.bed
-```
-
+MIT License. See [LICENSE](LICENSE).

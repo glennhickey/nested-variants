@@ -90,8 +90,8 @@ while [[ $# -gt 0 ]]; do
             echo "  --vg <file>           VG file or glob pattern (e.g., chr*.vg) to process"
             echo "                        Can be specified multiple times"
             echo "  --ref <ref>           Reference name (passed to -Q)"
-            echo "  --out-dir <dir>       Output directory for final merged GFA file"
-            echo "  --out-name <name>     Output name for merged GFA file"
+            echo "  --out-dir <dir>       Output directory for final merged GFA and GBZ files"
+            echo "  --out-name <name>     Output name prefix (produces .gfa.gz, .gbz, .augref-segs.tsv)"
             echo ""
             echo "Augmented Reference Options:"
             echo "  --min-augref-len <N>  Minimum augref fragment length (default: 50)"
@@ -167,8 +167,10 @@ for VG in "${VG_FILES[@]}"; do
         GFA="${WORK_DIR}/${BASE}.augref.gfa.gz"
         GFA_FILES+=("$GFA")
 
+        SEGS="${WORK_DIR}/${BASE}.augref-segs.tsv"
+
         # Build the command to run
-        CMD="/usr/bin/time -v vg paths -x \"$VG\" -Q ${REF} --compute-augref --min-augref-len ${MIN_AUGREF_LEN} --augref-sample ${AUGREF_SAMPLE} -t ${CPUS} | /usr/bin/time -v vg convert -f - | bgzip > \"${GFA}\""
+        CMD="/usr/bin/time -v vg paths -x \"$VG\" -Q ${REF} --compute-augref --min-augref-len ${MIN_AUGREF_LEN} --augref-sample ${AUGREF_SAMPLE} --augref-segs \"${SEGS}\" -t ${CPUS} | /usr/bin/time -v vg convert -f - | bgzip > \"${GFA}\""
 
         if $LOCAL; then
             # Run locally in background
@@ -205,6 +207,21 @@ for GFA in "${GFA_FILES[@]}"; do
         zcat "$GFA" | tail -n +2
     fi
 done | bgzip > "$MERGED"
+
+# Merge per-chromosome augref segment tables into one file
+SEGS_MERGED="${OUTPUT_DIR}/${OUTPUT_NAME%.gfa.gz}.augref-segs.tsv"
+FIRST=true
+for SEGS in "$WORK_DIR"/*.augref-segs.tsv; do
+    if [ -f "$SEGS" ]; then
+        if $FIRST; then
+            cat "$SEGS"
+            FIRST=false
+        else
+            # Skip header line from subsequent files
+            tail -n +2 "$SEGS"
+        fi
+    fi
+done > "$SEGS_MERGED"
 
 # Clean up temporary working directory
 rm -rf "$WORK_DIR"

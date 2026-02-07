@@ -1,0 +1,26 @@
+# config.local.mk.example — Template for HPRC cluster configuration
+# Copy this file to config.local.mk and edit paths for your environment.
+# config.local.mk is gitignored.
+
+EXEC_MODE   = slurm
+REF         = CHM13
+
+# Input VG files (use glob for whole-genome)
+VG          = /private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.chroms/!(*.d9).vg
+
+OUT_DIR     = output
+OUT_NAME    = hprc-v2.0-mc-chm13.nested.95
+
+# Deconstruct options
+CLUSTER     =
+SNARLS      =
+STAR_ALLELE =
+
+# Reference gap overlay for plots
+REFGAPS_BED = data/hprc-v2.0-mc-chm13.refgaps.bed
+
+# SLURM resources
+CPUS        = 20
+MEM         = 200gb
+TIME        = 16:00:00
+PARTITION   = long
