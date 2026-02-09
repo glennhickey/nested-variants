@@ -62,14 +62,19 @@ Splits the nested VCF into three categories based on reference context:
 
 ### 4. Genotype (optional, `make genotype`)
 
-Aligns reads to the graph with `vg giraffe` and calls variants with `vg call`. Requires `READS`, `HAPL`, and `SAMPLE` to be set.
+Aligns reads to the graph with `vg giraffe` and calls variants with `vg call`. Requires `MAP_GBZ`, `READS`, `HAPL`, and `SAMPLE` to be set.
 
+- `MAP_GBZ` — pre-built GBZ for read mapping. The `.hapl` index must match this GBZ (i.e., the original pangenome GBZ distributed with the HPRC release, **not** the augmented-reference GBZ built by `make paths`). Giraffe uses this for alignment; `vg call` then uses the augmented GBZ for variant calling.
 - `READS` — a text file listing input FASTQ paths (one per line, typically two lines for paired-end reads). This is user-provided sequencing data.
 - `HAPL` — haplotype index file (`.hapl`) for the graph, typically distributed alongside the HPRC pangenome release.
 - `SAMPLE` — sample name to embed in the output GAM/VCF.
 
 ```bash
-make genotype READS=data/HG002.reads.idx HAPL=data/graph.hapl SAMPLE=HG002
+make genotype \
+  MAP_GBZ=data/hprc-v2.0-mc-chm13.gbz \
+  READS=data/HG002.reads.idx \
+  HAPL=data/hprc-v2.0-mc-chm13.hapl \
+  SAMPLE=HG002
 ```
 
 ## Configuration
@@ -84,6 +89,7 @@ All settings live in `config.mk` (committed defaults) and can be overridden in `
 | `OUT_DIR` | `output` | Output directory |
 | `OUT_NAME` | `chr20.nested` | Output filename prefix |
 | `MIN_AUGREF_LEN` | `50` | Minimum augref fragment length |
+| `MAP_GBZ` | *(empty)* | Pre-built GBZ for read mapping (must match `.hapl`); falls back to pipeline GBZ if unset |
 | `REFGAPS_BED` | *(empty)* | BED file for reference gap overlay on plots |
 
 See `config.mk` for the full list.
@@ -112,6 +118,7 @@ make paths deconstruct genotype split-vcf plots call-plots \
   VG='/path/to/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.chroms/!(*.d9).vg' \
   OUT_DIR=output/v2-chm13 \
   OUT_NAME=hprc-v2.0-mc-chm13.nested.95 \
+  MAP_GBZ=/path/to/hprc-v2.0-mc-chm13.gbz \
   READS=data/HG002.reads.idx \
   HAPL=data/hprc-v2.0-mc-chm13.hapl \
   SAMPLE=HG002 \
@@ -124,6 +131,7 @@ make paths deconstruct genotype split-vcf plots call-plots \
   VG='/path/to/hprc-v2.0-mc-grch38/hprc-v2.0-mc-grch38.chroms/!(*.d9).vg' \
   OUT_DIR=output/v2-grch38 \
   OUT_NAME=hprc-v2.0-mc-grch38.nested.95 \
+  MAP_GBZ=/path/to/hprc-v2.0-mc-grch38.gbz \
   READS=data/HG002.reads.idx \
   HAPL=data/hprc-v2.0-mc-grch38.hapl \
   SAMPLE=HG002 \
@@ -165,8 +173,9 @@ make genotype call-plots \
   REF=CHM13 \
   OUT_DIR=output/v2-chm13 \
   OUT_NAME=hprc-v2.0-mc-chm13.nested.95 \
+  MAP_GBZ=/path/to/hprc-v2.0-mc-chm13.gbz \
   READS=data/sample.reads.idx \
-  HAPL=data/graph.hapl \
+  HAPL=data/hprc-v2.0-mc-chm13.hapl \
   SAMPLE=NA12878
 ```
 

@@ -20,6 +20,9 @@ endif
 # Augmented reference sample name (used by deconstruct, call, split-vcf)
 AUGREF := augref_$(REF)
 
+# GBZ used for read mapping (giraffe).  Falls back to the pipeline-built GBZ.
+GIRAFFE_GBZ := $(if $(MAP_GBZ),$(MAP_GBZ),$(OUT_DIR)/$(OUT_NAME).gbz)
+
 # Derived file paths
 GBZ       := $(OUT_DIR)/$(OUT_NAME).gbz
 VCF       := $(OUT_DIR)/$(OUT_NAME).vcf.gz
@@ -89,9 +92,9 @@ $(VCF): $(GBZ) scripts/deconstruct.sh
 ## genotype: GBZ + reads → GAM → sample VCF (optional)
 genotype: $(OUT_DIR)/$(SAMPLE).vcf.gz
 
-$(OUT_DIR)/$(SAMPLE).gam: $(GBZ) scripts/giraffe.sh
+$(OUT_DIR)/$(SAMPLE).gam: scripts/giraffe.sh
 	$(SCRIPTS)/giraffe.sh \
-		--gbz $(GBZ) \
+		--gbz $(GIRAFFE_GBZ) \
 		--hapl $(HAPL) \
 		--reads $(READS) \
 		--sample $(SAMPLE) \
@@ -149,7 +152,7 @@ help:
 	@echo "  all          Build everything (default: analysis)"
 	@echo "  paths        VG → GBZ (augmented reference paths)"
 	@echo "  deconstruct  GBZ → VCF (vg deconstruct)"
-	@echo "  genotype     GBZ + reads → GAM → sample VCF (requires READS, HAPL, SAMPLE)"
+	@echo "  genotype     GBZ + reads → GAM → sample VCF (requires READS, HAPL, SAMPLE, MAP_GBZ)"
 	@echo "  split-vcf    VCF → onref / nestedref / offref VCFs"
 	@echo "  plots        offref VCF → chromosome density ideogram"
 	@echo "  call-plots   genotyped VCF → chromosome density ideogram (requires SAMPLE)"
@@ -165,3 +168,4 @@ help:
 	@echo "  EXEC_MODE=$(EXEC_MODE)  REF=$(REF)  AUGREF=$(AUGREF)"
 	@echo "  VG=$(VG)"
 	@echo "  OUT_DIR=$(OUT_DIR)  OUT_NAME=$(OUT_NAME)"
+	@echo "  MAP_GBZ=$(MAP_GBZ)  GIRAFFE_GBZ=$(GIRAFFE_GBZ)"

@@ -32,6 +32,10 @@ HAPL        ?=
 SAMPLE      ?=
 GAM         ?= data/chr20.sim.10.gam
 
+# Pre-built GBZ for read mapping (giraffe).  The .hapl index must match this GBZ.
+# Leave empty for local testing (will fall back to the pipeline-built GBZ).
+MAP_GBZ     ?=
+
 # SLURM resource defaults (ignored when EXEC_MODE=local)
 CPUS        ?= 8
 MEM         ?= 200gb

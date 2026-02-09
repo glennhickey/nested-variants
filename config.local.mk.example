@@ -11,6 +11,9 @@ VG          = /private/groups/cgl/hprc-graphs/hprc-v2.0-feb28/hprc-v2.0-mc-chm13
 OUT_DIR     = output
 OUT_NAME    = hprc-v2.0-mc-chm13.nested.95
 
+# Pre-built GBZ for read mapping (must match the .hapl index)
+# MAP_GBZ   = /path/to/hprc-v2.0-mc-chm13.gbz
+
 # Deconstruct options
 CLUSTER     =
 SNARLS      =
