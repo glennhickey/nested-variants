@@ -6,7 +6,9 @@ Discover and analyze off-reference (nested) variants in pangenome graphs built w
 
 | Tool | Required for | Install |
 |------|-------------|---------|
-| **vg** (>= 1.56) | `make paths`, `make deconstruct`, `make genotype` | [vg releases](https://github.com/vgteam/vg/releases) |
+| **vg** (>= 1.56) | `make paths`, `make deconstruct`, `make genotype`, `make fasta` | [vg releases](https://github.com/vgteam/vg/releases) |
+| **samtools** | `make fasta`, `make surject` | `apt install samtools` / `conda install samtools` |
+| **docker** | `make deepvariant` | [Docker install](https://docs.docker.com/get-docker/) |
 | **bcftools** | `make split-vcf` | `apt install bcftools` / `conda install bcftools` |
 | **bgzip / tabix** (htslib) | VCF compression & indexing | `apt install tabix` / `conda install htslib` |
 | **make** | Pipeline orchestration | Usually pre-installed |
@@ -92,6 +94,35 @@ make surject \
   SAMPLE=HG002
 ```
 
+### 6. FASTA Extraction (optional, `make fasta`)
+
+Extracts augmented reference paths from the GBZ as a bgzipped FASTA file and creates `.fai` and `.gzi` indexes. This is needed as the reference for DeepVariant.
+
+- **Input:** Augmented GBZ from `make paths`
+- **Output:** `output/<OUT_NAME>.fa.gz` (+ `.fa.gz.fai` and `.fa.gz.gzi` indexes)
+- **Script:** `scripts/fasta.sh`
+
+```bash
+make fasta \
+  OUT_DIR=output/v2-chm13 \
+  OUT_NAME=hprc-v2.0-mc-chm13.nested.95
+```
+
+### 7. DeepVariant (optional, `make deepvariant`)
+
+Runs [DeepVariant](https://github.com/google/deepvariant) via Docker to call variants from the surjected BAM against the augmented reference FASTA. Requires `SAMPLE` and Docker.
+
+- **Input:** BAM from `make surject`, FASTA from `make fasta`
+- **Output:** `output/<SAMPLE>.deepvariant.vcf.gz`
+- **Script:** `scripts/deepvariant.sh`
+
+```bash
+make deepvariant \
+  OUT_DIR=output/v2-chm13 \
+  OUT_NAME=hprc-v2.0-mc-chm13.nested.95 \
+  SAMPLE=HG002
+```
+
 ## Configuration
 
 All settings live in `config.mk` (committed defaults) and can be overridden in `config.local.mk` (gitignored) or on the command line.
@@ -105,6 +136,7 @@ All settings live in `config.mk` (committed defaults) and can be overridden in `
 | `OUT_NAME` | `chr20.nested` | Output filename prefix |
 | `MIN_AUGREF_LEN` | `50` | Minimum augref fragment length |
 | `MAP_GBZ` | *(empty)* | Pre-built GBZ for read mapping (must match `.hapl`); falls back to pipeline GBZ if unset |
+| `DV_VERSION` | `1.9.0` | DeepVariant Docker image version |
 | `REFGAPS_BED` | *(empty)* | BED file for reference gap overlay on plots |
 
 See `config.mk` for the full list.
@@ -126,8 +158,8 @@ When `EXEC_MODE=slurm`, each pipeline step submits SLURM jobs via `sbatch -W` an
 Override `VG`, `REF`, `OUT_DIR`, and `OUT_NAME` on the command line to run different inputs into separate output directories. The `VG` variable accepts glob patterns (including bash extended globs like `!(*.d9).vg`).
 
 ```bash
-# HPRC v2.0 CHM13 — full pipeline including genotyping
-make paths deconstruct genotype surject split-vcf plots call-plots \
+# HPRC v2.0 CHM13 — full pipeline including genotyping + DeepVariant
+make paths deconstruct genotype surject fasta deepvariant split-vcf plots call-plots \
   EXEC_MODE=slurm \
   REF=CHM13 \
   VG='/path/to/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.chroms/!(*.d9).vg' \
@@ -139,8 +171,8 @@ make paths deconstruct genotype surject split-vcf plots call-plots \
   SAMPLE=HG002 \
   REFGAPS_BED=data/hprc-v2.0-mc-chm13.refgaps.bed
 
-# HPRC v2.0 GRCh38 — full pipeline including genotyping
-make paths deconstruct genotype surject split-vcf plots call-plots \
+# HPRC v2.0 GRCh38 — full pipeline including genotyping + DeepVariant
+make paths deconstruct genotype surject fasta deepvariant split-vcf plots call-plots \
   EXEC_MODE=slurm \
   REF=GRCh38 \
   VG='/path/to/hprc-v2.0-mc-grch38/hprc-v2.0-mc-grch38.chroms/!(*.d9).vg' \
@@ -175,6 +207,10 @@ output/v2-chm13/
 ├── HG002.gam                                       # read alignments (genotype)
 ├── HG002.bam                                       # surjected alignments (sorted BAM)
 ├── HG002.bam.bai                                   # BAM index
+├── hprc-v2.0-mc-chm13.nested.95.fa.gz               # augmented reference FASTA (bgzipped)
+├── hprc-v2.0-mc-chm13.nested.95.fa.gz.fai           # FASTA index
+├── hprc-v2.0-mc-chm13.nested.95.fa.gz.gzi           # bgzip index
+├── HG002.deepvariant.vcf.gz                        # DeepVariant VCF
 ├── HG002.pack                                      # coverage pileup
 ├── HG002.vcf.gz                                    # genotyped VCF (vg call)
 └── HG002.call-density.png                          # genotyped density ideogram
@@ -235,6 +271,8 @@ nested-variants/
 │   ├── deconstruct.sh          GBZ → VCF (vg deconstruct)
 │   ├── giraffe.sh              GBZ + reads → GAM (vg giraffe)
 │   ├── surject.sh              GAM → sorted BAM (vg surject)
+│   ├── fasta.sh                GBZ → augmented reference FASTA
+│   ├── deepvariant.sh          BAM + FASTA → VCF (DeepVariant Docker)
 │   ├── call.sh                 GBZ + GAM → VCF (vg call)
 │   ├── split-ref.sh            VCF → onref/nestedref/offref VCFs
 │   ├── offref-length-hist.R    Size distribution histograms

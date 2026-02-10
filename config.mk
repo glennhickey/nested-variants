@@ -53,3 +53,6 @@ REFGAPS_BED ?=
 
 # Scale type for density plots: log1p, sqrt, log, identity
 SCALE_TYPE  ?= log1p
+
+# DeepVariant Docker image version
+DV_VERSION  ?= 1.9.0
