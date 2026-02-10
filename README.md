@@ -79,7 +79,17 @@ make genotype \
   SAMPLE=HG002
 ```
 
-### 5. Surject (optional, `make surject`)
+### 5. Haplotype Index (optional, `make haplotypes`)
+
+Builds a `.hapl` index from the augmented GBZ for haplotype-aware read mapping with giraffe. Runs `vg index` (distance index), `vg gbwt` (r-index), and `vg haplotypes` in sequence; intermediate files are cleaned up automatically.
+
+- **Input:** Augmented GBZ from `make paths`
+- **Output:** `output/<OUT_NAME>.hapl`
+- **Script:** `scripts/haplotypes.sh`
+
+If you already have a `.hapl` index (e.g. from an HPRC release), set `HAPL=<path>` directly and skip this step.
+
+### 6. Surject (optional, `make surject`)
 
 Projects GAM alignments onto the augmented reference paths to produce a coordinate-sorted BAM file with index. Uses the augmented GBZ (from `make paths`) so that reads are placed on the nested reference contigs.
 
@@ -94,7 +104,7 @@ make surject \
   SAMPLE=HG002
 ```
 
-### 6. FASTA Extraction (optional, `make fasta`)
+### 7. FASTA Extraction (optional, `make fasta`)
 
 Extracts augmented reference paths from the GBZ as a bgzipped FASTA file and creates `.fai` and `.gzi` indexes. This is needed as the reference for DeepVariant.
 
@@ -108,7 +118,7 @@ make fasta \
   OUT_NAME=hprc-v2.0-mc-chm13.nested.95
 ```
 
-### 7. DeepVariant (optional, `make deepvariant`)
+### 8. DeepVariant (optional, `make deepvariant`)
 
 Runs [DeepVariant](https://github.com/google/deepvariant) via Docker to call variants from the surjected BAM against the augmented reference FASTA. Requires `SAMPLE` and Docker.
 
@@ -148,6 +158,8 @@ make test          # shellcheck + --help flag tests
 ```
 
 The test suite runs [shellcheck](https://www.shellcheck.net/) on all shell scripts and verifies that each script's `--help` flag exits cleanly. Full pipeline tests require `vg` and test data.
+
+For a small end-to-end test using *S. cerevisiae* chromosome I, see [yeast-test/README.md](yeast-test/README.md).
 
 ## Cluster Usage
 
@@ -271,6 +283,7 @@ nested-variants/
 │   ├── deconstruct.sh          GBZ → VCF (vg deconstruct)
 │   ├── giraffe.sh              GBZ + reads → GAM (vg giraffe)
 │   ├── surject.sh              GAM → sorted BAM (vg surject)
+│   ├── haplotypes.sh           GBZ → .hapl index (vg haplotypes)
 │   ├── fasta.sh                GBZ → augmented reference FASTA
 │   ├── deepvariant.sh          BAM + FASTA → VCF (DeepVariant Docker)
 │   ├── call.sh                 GBZ + GAM → VCF (vg call)
