@@ -48,10 +48,10 @@ runtime_min: 960        # 16 hours
 partition: long
 
 # Per-rule resource overrides (uncomment to customize)
-# Rule defaults when not set: paths=16/200, deconstruct=128/512, haplotypes=128/512,
+# Rule defaults when not set: paths=128/512, deconstruct=128/512, haplotypes=128/512,
 # giraffe=128/512, surject=128/512, call=128/512, deepvariant=128/512, fasta=8/80
-# paths_cpus: 16
-# paths_mem_gb: 200
+# paths_cpus: 128
+# paths_mem_gb: 512
 # deconstruct_cpus: 128
 # deconstruct_mem_gb: 512
 # haplotypes_cpus: 128

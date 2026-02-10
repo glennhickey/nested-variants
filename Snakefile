@@ -52,14 +52,19 @@ def decon_opts():
 rule all:
     """Full pipeline: graph + genotype + deepvariant + merge + all plots/stats"""
     input:
-        f"{OUT_DIR}/merged.call.vcf.gz",
-        f"{OUT_DIR}/merged.deepvariant.vcf.gz",
-        f"{OUT_DIR}/merged.call-offref.png",
-        f"{OUT_DIR}/merged.dv-offref.png",
+        # graph_only outputs
+        f"{OUT_DIR}/{OUT_NAME}.offref.vcf.gz",
+        f"{OUT_DIR}/{OUT_NAME}.offref.png",
+        f"{OUT_DIR}/{OUT_NAME}.augref-length-hist.png",
         f"{OUT_DIR}/{OUT_NAME}.vcf-stats.tsv",
         f"{OUT_DIR}/{OUT_NAME}.variant-types.png",
         f"{OUT_DIR}/{OUT_NAME}.size-dist.png",
         f"{OUT_DIR}/{OUT_NAME}.af-spectrum.png",
+        # merged genotyping + deepvariant outputs
+        f"{OUT_DIR}/merged.call.vcf.gz",
+        f"{OUT_DIR}/merged.deepvariant.vcf.gz",
+        f"{OUT_DIR}/merged.call-offref.png",
+        f"{OUT_DIR}/merged.dv-offref.png",
         f"{OUT_DIR}/merged.call.vcf-stats.tsv",
         f"{OUT_DIR}/merged.call.variant-types.png",
         f"{OUT_DIR}/merged.call.size-dist.png",
@@ -110,12 +115,12 @@ rule paths:
         f"{OUT_DIR}/{OUT_NAME}.gbz",
         f"{OUT_DIR}/{OUT_NAME}.gfa.gz",
         f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
-    threads: rule_cpus("paths", 16)
+    threads: rule_cpus("paths", 128)
     resources:
-        mem_mb=rule_mem_gb("paths", 200) * 1024,
+        mem_mb=rule_mem_gb("paths", 512) * 1024,
         runtime=rule_runtime("paths"),
     params:
-        mem_gb=rule_mem_gb("paths", 200),
+        mem_gb=rule_mem_gb("paths", 512),
     shell:
         "scripts/paths.sh"
         " --vg '{input}'"

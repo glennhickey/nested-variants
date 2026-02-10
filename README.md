@@ -146,7 +146,7 @@ Each rule has built-in defaults that are used when neither `{rule}_cpus`/`{rule}
 
 | Rule | CPUs | Memory (GB) | Notes |
 |------|------|-------------|-------|
-| `paths` | 16 | 200 | Graph construction |
+| `paths` | 128 | 512 | Graph construction |
 | `deconstruct` | 128 | 512 | VCF extraction from graph |
 | `haplotypes` | 128 | 512 | Haplotype index construction |
 | `giraffe` | 128 | 512 | Read mapping |
