@@ -53,7 +53,6 @@ rule all:
     """Full pipeline: graph + genotype + deepvariant + merge + all plots/stats"""
     input:
         # graph_only outputs
-        f"{OUT_DIR}/{OUT_NAME}.offref.vcf.gz",
         f"{OUT_DIR}/{OUT_NAME}.offref.png",
         f"{OUT_DIR}/{OUT_NAME}.augref-length-hist.png",
         f"{OUT_DIR}/{OUT_NAME}.vcf-stats.tsv",
@@ -89,7 +88,6 @@ rule all:
 rule graph_only:
     """Graph construction + deconstruct + plots (no genotyping)"""
     input:
-        f"{OUT_DIR}/{OUT_NAME}.offref.vcf.gz",
         f"{OUT_DIR}/{OUT_NAME}.offref.png",
         f"{OUT_DIR}/{OUT_NAME}.augref-length-hist.png",
         f"{OUT_DIR}/{OUT_NAME}.vcf-stats.tsv",
