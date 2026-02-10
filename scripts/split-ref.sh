@@ -113,28 +113,29 @@ echo "Compression threads: $THREADS"
 TMPDIR_WORK=$(mktemp -d)
 trap 'rm -rf "$TMPDIR_WORK"' EXIT
 
-REF_CONTIGS="${TMPDIR_WORK}/ref_contigs.txt"
-ALT_CONTIGS="${TMPDIR_WORK}/alt_contigs.txt"
+REF_REGIONS="${TMPDIR_WORK}/ref_regions.bed"
+ALT_REGIONS="${TMPDIR_WORK}/alt_regions.bed"
 
 # Extract contig names from VCF header and split into ref vs alt
 # Alt contigs match vg's is_augref_name(): ending with _{N}_alt
+# Output as BED format (chrom\t0\t<large>) so bcftools -R can parse them
 echo "Extracting contig lists from VCF header..."
 bcftools view -h "$VCF" \
     | grep '^##contig=<ID=' \
     | sed 's/^##contig=<ID=//;s/[,>].*//' \
     | while read -r contig; do
         if [[ "$contig" =~ _[0-9]+_alt$ ]]; then
-            echo "$contig" >> "$ALT_CONTIGS"
+            printf '%s\t0\t2147483647\n' "$contig" >> "$ALT_REGIONS"
         else
-            echo "$contig" >> "$REF_CONTIGS"
+            printf '%s\t0\t2147483647\n' "$contig" >> "$REF_REGIONS"
         fi
     done
 
 # Ensure files exist even if empty
-touch "$REF_CONTIGS" "$ALT_CONTIGS"
+touch "$REF_REGIONS" "$ALT_REGIONS"
 
-N_REF=$(wc -l < "$REF_CONTIGS")
-N_ALT=$(wc -l < "$ALT_CONTIGS")
+N_REF=$(wc -l < "$REF_REGIONS")
+N_ALT=$(wc -l < "$ALT_REGIONS")
 echo "  Found $N_REF reference contigs and $N_ALT alt contigs"
 
 echo "Generating outputs in parallel..."
@@ -194,13 +195,13 @@ generate_offref() {
 export -f generate_onref generate_nestedref generate_offref
 
 # Run all three processes in parallel
-generate_onref "$VCF" "$REF_CONTIGS" "$THREADS" "${BASENAME}.onref.vcf.gz" &
+generate_onref "$VCF" "$REF_REGIONS" "$THREADS" "${BASENAME}.onref.vcf.gz" &
 PID1=$!
 
-generate_nestedref "$VCF" "$REF_CONTIGS" "$THREADS" "${BASENAME}.nestedref.vcf.gz" &
+generate_nestedref "$VCF" "$REF_REGIONS" "$THREADS" "${BASENAME}.nestedref.vcf.gz" &
 PID2=$!
 
-generate_offref "$VCF" "$ALT_CONTIGS" "$THREADS" "${BASENAME}.offref.vcf.gz" &
+generate_offref "$VCF" "$ALT_REGIONS" "$THREADS" "${BASENAME}.offref.vcf.gz" &
 PID3=$!
 
 # Wait for all background processes to complete
