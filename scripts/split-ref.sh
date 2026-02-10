@@ -15,6 +15,9 @@ Augmented reference contigs follow the naming convention from vg's augref system
   - Off-reference contigs: PREFIX#0#chr1_42_alt, PREFIX#0#chr2_7_alt, ...
 Off-reference (alt) contigs are identified by the "_alt" suffix (matching vg's is_augref_name()).
 
+Contig lists are extracted from the VCF header and used with bcftools -R for fast
+indexed extraction rather than streaming the entire file through grep.
+
 Required arguments:
     -v, --vcf FILE      Input VCF file (can be in any directory, must end in .vcf.gz)
     -p, --prefix STR    Augmented reference sample name (e.g., 'augref_CHM13')
@@ -105,74 +108,99 @@ echo "Processing VCF file: $VCF"
 echo "Using prefix: $PREFIX"
 echo "Output basename: $BASENAME"
 echo "Compression threads: $THREADS"
+
+# Create temp directory for contig lists
+TMPDIR_WORK=$(mktemp -d)
+trap 'rm -rf "$TMPDIR_WORK"' EXIT
+
+REF_CONTIGS="${TMPDIR_WORK}/ref_contigs.txt"
+ALT_CONTIGS="${TMPDIR_WORK}/alt_contigs.txt"
+
+# Extract contig names from VCF header and split into ref vs alt
+# Alt contigs match vg's is_augref_name(): ending with _{N}_alt
+echo "Extracting contig lists from VCF header..."
+bcftools view -h "$VCF" \
+    | grep '^##contig=<ID=' \
+    | sed 's/^##contig=<ID=//;s/[,>].*//' \
+    | while read -r contig; do
+        if [[ "$contig" =~ _[0-9]+_alt$ ]]; then
+            echo "$contig" >> "$ALT_CONTIGS"
+        else
+            echo "$contig" >> "$REF_CONTIGS"
+        fi
+    done
+
+# Ensure files exist even if empty
+touch "$REF_CONTIGS" "$ALT_CONTIGS"
+
+N_REF=$(wc -l < "$REF_CONTIGS")
+N_ALT=$(wc -l < "$ALT_CONTIGS")
+echo "  Found $N_REF reference contigs and $N_ALT alt contigs"
+
 echo "Generating outputs in parallel..."
 
-# Alt contig detection: contigs ending with _{N}_alt (matching vg's is_augref_name())
-# The grep pattern matches a tab-separated CHROM field ending in _<digits>_alt
-ALT_PATTERN='_[0-9]\+_alt	'
-
-# Function to generate onref output (contigs that do NOT end with _alt)
+# Function to generate onref output (reference contigs only)
 generate_onref() {
     local vcf=$1
-    local pattern=$2
+    local regions=$2
     local threads=$3
-    local basename=$4
+    local out_name=$4
 
-    local out_name="${basename}.onref.vcf.gz"
     echo "  [onref] Starting: $out_name"
-
-    bcftools view "$vcf" -h | bgzip --threads "$threads" > "$out_name"
-    bcftools view "$vcf" -H | { grep -v "${pattern}" || true; } | bgzip --threads "$threads" >> "$out_name"
+    if [ -s "$regions" ]; then
+        bcftools view "$vcf" -R "$regions" -Oz --threads "$threads" -o "$out_name"
+    else
+        bcftools view "$vcf" -h | bgzip --threads "$threads" > "$out_name"
+    fi
     tabix -fp vcf "$out_name"
-
     echo "  [onref] Complete: $out_name"
 }
 
-# Function to generate nestedref output (on-ref contigs with LV>0)
+# Function to generate nestedref output (reference contigs with LV>0)
 generate_nestedref() {
     local vcf=$1
-    local pattern=$2
+    local regions=$2
     local threads=$3
-    local basename=$4
+    local out_name=$4
 
-    local out_name="${basename}.nestedref.vcf.gz"
     echo "  [nestedref] Starting: $out_name"
-
-    bcftools view "$vcf" -h | bgzip --threads "$threads" > "$out_name"
-    bcftools view "$vcf" -H -i "LV>0" | { grep -v "${pattern}" || true; } | bgzip --threads "$threads" >> "$out_name"
+    if [ -s "$regions" ]; then
+        bcftools view "$vcf" -R "$regions" -i "LV>0" -Oz --threads "$threads" -o "$out_name"
+    else
+        bcftools view "$vcf" -h | bgzip --threads "$threads" > "$out_name"
+    fi
     tabix -fp vcf "$out_name"
-
     echo "  [nestedref] Complete: $out_name"
 }
 
-# Function to generate offref output (contigs ending with _alt)
+# Function to generate offref output (alt contigs only)
 generate_offref() {
     local vcf=$1
-    local pattern=$2
+    local regions=$2
     local threads=$3
-    local basename=$4
+    local out_name=$4
 
-    local out_name="${basename}.offref.vcf.gz"
     echo "  [offref] Starting: $out_name"
-
-    bcftools view "$vcf" -h | bgzip --threads "$threads" > "$out_name"
-    bcftools view "$vcf" -H | { grep "${pattern}" || true; } | bgzip --threads "$threads" >> "$out_name"
+    if [ -s "$regions" ]; then
+        bcftools view "$vcf" -R "$regions" -Oz --threads "$threads" -o "$out_name"
+    else
+        bcftools view "$vcf" -h | bgzip --threads "$threads" > "$out_name"
+    fi
     tabix -fp vcf "$out_name"
-
     echo "  [offref] Complete: $out_name"
 }
 
-# Export functions and variables for parallel execution
+# Export functions for parallel execution
 export -f generate_onref generate_nestedref generate_offref
 
 # Run all three processes in parallel
-generate_onref "$VCF" "$ALT_PATTERN" "$THREADS" "$BASENAME" &
+generate_onref "$VCF" "$REF_CONTIGS" "$THREADS" "${BASENAME}.onref.vcf.gz" &
 PID1=$!
 
-generate_nestedref "$VCF" "$ALT_PATTERN" "$THREADS" "$BASENAME" &
+generate_nestedref "$VCF" "$REF_CONTIGS" "$THREADS" "${BASENAME}.nestedref.vcf.gz" &
 PID2=$!
 
-generate_offref "$VCF" "$ALT_PATTERN" "$THREADS" "$BASENAME" &
+generate_offref "$VCF" "$ALT_CONTIGS" "$THREADS" "${BASENAME}.offref.vcf.gz" &
 PID3=$!
 
 # Wait for all background processes to complete
