@@ -155,26 +155,74 @@ GAM="${OUTPUT_DIR}/${OUTPUT_NAME}"
 # Extract numeric value from MEM for kmc (e.g., "128gb" -> "128")
 MEM_NUM=$(echo "$MEM" | sed 's/[^0-9]//g')
 
-# Read the two fastq paths from the index file and build -f arguments for giraffe
-FASTQ_ARGS=""
-while read -r fq; do
-    FASTQ_ARGS="${FASTQ_ARGS} -f \"${fq}\""
+# Write job script (avoids escaping issues with embedded loops)
+GBZ_BASE=$(basename "$GBZ")
+HAPL_BASE=$(basename "$HAPL")
+JOB_SCRIPT="${OUTPUT_DIR}/${OUTPUT_NAME%.gam}.giraffe.sh"
+
+cat > "$JOB_SCRIPT" << EOF
+#!/bin/bash
+set -ex
+WORK_TMPDIR="\${TMPDIR:-${OUTPUT_DIR}}"
+
+# Stage GBZ and HAPL to node-local scratch for fast random I/O
+echo "Staging GBZ and HAPL to \${WORK_TMPDIR}"
+cp "${GBZ}" "\${WORK_TMPDIR}/${GBZ_BASE}"
+cp "${HAPL}" "\${WORK_TMPDIR}/${HAPL_BASE}"
+
+# Process reads index: download remote URLs (gs://, http://, https://) to local scratch
+LOCAL_READS="\${WORK_TMPDIR}/${SAMPLE}.reads.idx"
+> "\${LOCAL_READS}"
+while IFS= read -r fq || [ -n "\$fq" ]; do
+  case "\$fq" in
+    gs://*)
+      FQ_BASE=\$(basename "\$fq")
+      echo "Downloading \$FQ_BASE from GCS"
+      gsutil cp "\$fq" "\${WORK_TMPDIR}/\$FQ_BASE"
+      echo "\${WORK_TMPDIR}/\$FQ_BASE" >> "\${LOCAL_READS}"
+      ;;
+    http://*|https://*)
+      FQ_BASE=\$(basename "\$fq")
+      echo "Downloading \$FQ_BASE"
+      curl -sL -o "\${WORK_TMPDIR}/\$FQ_BASE" "\$fq"
+      echo "\${WORK_TMPDIR}/\$FQ_BASE" >> "\${LOCAL_READS}"
+      ;;
+    *)
+      echo "\$fq" >> "\${LOCAL_READS}"
+      ;;
+  esac
 done < "${READS}"
 
-# Build the command to run
-# Use TMPDIR if set, otherwise use output directory for temp files
-CMD_TMPDIR="\${TMPDIR:-${OUTPUT_DIR}}"
-CMD="WORK_TMPDIR=${CMD_TMPDIR} && \\
-kmc -k29 -m${MEM_NUM} -okff -t${CPUS} -hp \"@${READS}\" \"\${WORK_TMPDIR}/${SAMPLE}\" \"\${WORK_TMPDIR}\" && \\
-/usr/bin/time -v vg giraffe -p -t ${CPUS} -Z \"${GBZ}\" --haplotype-name \"${HAPL}\" --kff-name \"\${WORK_TMPDIR}/${SAMPLE}.kff\" \\
-    --index-basename \"${OUTPUT_DIR}/${OUTPUT_NAME%.gam}\" -N ${SAMPLE} ${FASTQ_ARGS} > \"${GAM}\" && \\
-rm -f \"\${WORK_TMPDIR}/${SAMPLE}.kff\" \"\${WORK_TMPDIR}/${SAMPLE}.kff.kmc_pre\" \"\${WORK_TMPDIR}/${SAMPLE}.kff.kmc_suf\""
+# Build -f arguments from local reads index
+FASTQ_ARGS=""
+while IFS= read -r fq; do
+  FASTQ_ARGS="\$FASTQ_ARGS -f \$fq"
+done < "\${LOCAL_READS}"
+
+# Run kmc for haplotype-aware mapping
+kmc -k29 -m${MEM_NUM} -okff -t${CPUS} -hp "@\${LOCAL_READS}" "\${WORK_TMPDIR}/${SAMPLE}" "\${WORK_TMPDIR}"
+
+# Run giraffe
+# shellcheck disable=SC2086
+/usr/bin/time -v vg giraffe -p -t ${CPUS} \\
+  -Z "\${WORK_TMPDIR}/${GBZ_BASE}" \\
+  --haplotype-name "\${WORK_TMPDIR}/${HAPL_BASE}" \\
+  --kff-name "\${WORK_TMPDIR}/${SAMPLE}.kff" \\
+  --index-basename "${OUTPUT_DIR}/${OUTPUT_NAME%.gam}" \\
+  -N ${SAMPLE} \$FASTQ_ARGS > "${GAM}"
+
+# Cleanup staged files and downloads
+rm -f "\${WORK_TMPDIR}/${GBZ_BASE}" "\${WORK_TMPDIR}/${HAPL_BASE}" \\
+  "\${WORK_TMPDIR}/${SAMPLE}.kff" "\${WORK_TMPDIR}/${SAMPLE}.kff.kmc_pre" "\${WORK_TMPDIR}/${SAMPLE}.kff.kmc_suf"
+while IFS= read -r fq; do
+  case "\$fq" in "\${WORK_TMPDIR}"/*) rm -f "\$fq" ;; esac
+done < "\${LOCAL_READS}"
+rm -f "\${LOCAL_READS}"
+EOF
 
 if $LOCAL; then
-    # Run locally
-    bash -c "$CMD"
+    bash "$JOB_SCRIPT"
 else
-    # Submit SLURM job with resource requirements
     sbatch -W \
         --job-name="${JOB_NAME}" \
         --partition="${PARTITION}" \
@@ -185,5 +233,5 @@ else
         --time="${TIME}" \
         --output=/dev/null \
         --error="${OUTPUT_DIR}/${OUTPUT_NAME%.gam}.giraffe.log" \
-        --wrap="$CMD"
+        "$JOB_SCRIPT"
 fi

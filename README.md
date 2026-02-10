@@ -24,7 +24,7 @@ mkdir -p data
 cp ~/dev/work/test-altpaths-chr20/chr20.vg data/
 
 # 2. Run the pipeline (local mode, chr20 defaults)
-snakemake --cores 8 all
+snakemake --cores 8 graph_only
 # This runs: paths → deconstruct → split_vcf + plots
 ```
 
@@ -60,28 +60,34 @@ Splits the nested VCF into three categories based on reference context:
 
 ### 4. Genotype (optional, `genotype_all`)
 
-Aligns reads to the graph with `vg giraffe` and calls variants with `vg call`. Requires `samples` to be configured (see [Configuration](#configuration)).
+Aligns reads to the graph with `vg giraffe` and calls variants with `vg call`. Requires `samples` to be configured (see [Configuration](#configuration)). The pipeline-built GBZ and `.hapl` index are used automatically for read mapping.
 
-- `map_gbz` — pre-built GBZ for read mapping. The `.hapl` index must match this GBZ (i.e., the original pangenome GBZ distributed with the HPRC release, **not** the augmented-reference GBZ built by `paths`). Giraffe uses this for alignment; `vg call` then uses the augmented GBZ for variant calling.
-- `hapl` — haplotype index file (`.hapl`) for the graph, typically distributed alongside the HPRC pangenome release. Leave empty to use the pipeline-built `.hapl`.
-- Each sample entry maps a sample name to its reads index file (a text file listing FASTQ paths, one per line).
+- Each sample entry maps a sample name to its reads index file (a text file listing FASTQ paths, one per line). Paths can be local files or remote URLs (`gs://`, `http://`, `https://`); remote files are automatically downloaded to node-local scratch before mapping.
 
 ```bash
 snakemake --cores 8 genotype_all \
-  --config map_gbz=data/hprc-v2.0-mc-chm13.gbz \
-           hapl=data/hprc-v2.0-mc-chm13.hapl \
-           'samples={HG002: data/HG002.reads.idx}'
+  --config 'samples={HG002: data/HG002.reads.idx}'
 ```
 
-### 5. Haplotype Index (optional, `haplotypes`)
+Example reads index file:
+```
+/local/data/HG002.R1.fastq.gz
+/local/data/HG002.R2.fastq.gz
+```
 
-Builds a `.hapl` index from the augmented GBZ for haplotype-aware read mapping with giraffe. Runs `vg index` (distance index), `vg gbwt` (r-index), and `vg haplotypes` in sequence; intermediate files are cleaned up automatically.
+Or with remote URLs:
+```
+gs://deepvariant/benchmarking/fastq/wgs_pcr_free/30x/HG002.novaseq.pcr-free.30x.R1.fastq.gz
+gs://deepvariant/benchmarking/fastq/wgs_pcr_free/30x/HG002.novaseq.pcr-free.30x.R2.fastq.gz
+```
+
+### 5. Haplotype Index (`haplotypes`)
+
+Builds a `.hapl` index from the augmented GBZ for haplotype-aware read mapping with giraffe. Runs `vg index` (distance index), `vg gbwt` (r-index), and `vg haplotypes` in sequence; intermediate files are cleaned up automatically. This is built automatically when genotyping is requested.
 
 - **Input:** Augmented GBZ from `paths`
 - **Output:** `output/<out_name>.hapl`
 - **Script:** `scripts/haplotypes.sh`
-
-If you already have a `.hapl` index (e.g. from an HPRC release), set `hapl: <path>` directly and skip this step.
 
 ### 6. Surject (optional, `surject`)
 
@@ -107,12 +113,12 @@ Runs [DeepVariant](https://github.com/google/deepvariant) via Docker to call var
 - **Output:** `output/<sample>.deepvariant.vcf.gz`
 - **Script:** `scripts/deepvariant.sh`
 
-### 9. Batch Processing (`batch`)
+### 9. Full Pipeline (`all`)
 
 Runs genotyping and DeepVariant for all configured samples, then merges the per-sample VCFs with `bcftools merge` and produces density plots on the merged VCFs.
 
 ```bash
-snakemake --cores 8 batch \
+snakemake --cores 8 all \
   --config 'samples={HG002: data/HG002.reads.idx, NA12878: data/NA12878.reads.idx}'
 ```
 
@@ -127,20 +133,36 @@ All settings live in `config.yaml` (committed defaults) and can be overridden in
 | `out_dir` | `output` | Output directory |
 | `out_name` | `chr20.nested` | Output filename prefix |
 | `min_augref_len` | `50` | Minimum augref fragment length |
-| `map_gbz` | *(empty)* | Pre-built GBZ for read mapping (must match `.hapl`); falls back to pipeline GBZ if unset |
-| `hapl` | *(empty)* | Haplotype index; falls back to pipeline-built `.hapl` if unset |
 | `dv_version` | `1.9.0` | DeepVariant Docker image version |
 | `refgaps_bed` | *(empty)* | BED file for reference gap overlay on plots |
 | `scale_type` | `log1p` | Scale type for density plots |
 | `samples` | `{}` | Map of sample name → reads index file path |
 | `samples_tsv` | *(unset)* | TSV file with `sample` and `reads_index` columns |
+| `cpus` | `8` | Global CPU fallback for all rules |
+| `mem_gb` | `200` | Global memory (GB) fallback for all rules |
+| `runtime_min` | `960` | Global runtime (minutes) fallback for all rules |
+
+Each rule has built-in defaults that are used when neither `{rule}_cpus`/`{rule}_mem_gb` nor the global `cpus`/`mem_gb` is set:
+
+| Rule | CPUs | Memory (GB) | Notes |
+|------|------|-------------|-------|
+| `paths` | 16 | 200 | Graph construction |
+| `deconstruct` | 128 | 512 | VCF extraction from graph |
+| `haplotypes` | 128 | 512 | Haplotype index construction |
+| `giraffe` | 128 | 512 | Read mapping |
+| `surject` | 128 | 512 | GAM → BAM projection |
+| `call` | 128 | 512 | Variant calling |
+| `deepvariant` | 128 | 512 | Deep learning variant calling |
+| `fasta` | 8 | 80 | Reference extraction |
+
+Override per-rule: `--config giraffe_cpus=64 giraffe_mem_gb=256`
 
 See `config.yaml` for the full list.
 
 To use a local config file, create `config.local.yaml` and pass it with `--configfile`:
 
 ```bash
-snakemake --cores 8 --configfile config.local.yaml all
+snakemake --cores 8 --configfile config.local.yaml graph_only
 ```
 
 ## Testing
@@ -159,19 +181,19 @@ Snakemake handles SLURM scheduling natively. All shell scripts are always called
 
 **Local run:**
 ```bash
-snakemake --cores 8 all
+snakemake --cores 8 graph_only
 ```
 
 **SLURM run (direct):**
 ```bash
 snakemake --executor slurm \
   --default-resources mem_mb=200000 runtime=960 \
-  --jobs 50 all
+  --jobs 50 graph_only
 ```
 
 **SLURM run (profile):**
 ```bash
-snakemake --profile profiles/slurm all
+snakemake --profile profiles/slurm graph_only
 ```
 
 For SLURM execution, install the executor plugin:
@@ -179,72 +201,88 @@ For SLURM execution, install the executor plugin:
 pip install snakemake-executor-plugin-slurm
 ```
 
+### Node-local scratch
+
+The `giraffe` and `surject` steps do heavy random I/O on the GBZ file. On clusters with slow shared filesystems, these scripts automatically stage the GBZ to node-local scratch (`$TMPDIR`) before processing, and `samtools sort` temp files are also written there. If your cluster's SLURM prolog sets `$TMPDIR` to node-local storage, this works automatically. Otherwise, set `tmpdir` in the SLURM profile:
+
+```yaml
+# profiles/slurm/config.yaml
+default-resources:
+  tmpdir: /scratch/$USER
+```
+
+If `$TMPDIR` is not set, the scripts fall back to the output directory.
+
 ### Running multiple graphs
 
 Override config values on the command line to run different inputs into separate output directories:
 
 ```bash
-# HPRC v2.0 CHM13 — full pipeline including genotyping + DeepVariant
-snakemake --profile profiles/slurm batch \
-  --config \
-    ref=CHM13 \
-    vg='/path/to/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.chroms/!(*.d9).vg' \
-    out_dir=output/v2-chm13 \
-    out_name=hprc-v2.0-mc-chm13.nested.95 \
-    map_gbz=/path/to/hprc-v2.0-mc-chm13.gbz \
-    hapl=data/hprc-v2.0-mc-chm13.hapl \
-    refgaps_bed=data/hprc-v2.0-mc-chm13.refgaps.bed \
-    'samples={HG002: data/HG002.reads.idx}'
-
-# HPRC v2.0 GRCh38 — full pipeline including genotyping + DeepVariant
-snakemake --profile profiles/slurm batch \
-  --config \
-    ref=GRCh38 \
-    vg='/path/to/hprc-v2.0-mc-grch38/hprc-v2.0-mc-grch38.chroms/!(*.d9).vg' \
-    out_dir=output/v2-grch38 \
-    out_name=hprc-v2.0-mc-grch38.nested.95 \
-    map_gbz=/path/to/hprc-v2.0-mc-grch38.gbz \
-    hapl=data/hprc-v2.0-mc-grch38.hapl \
-    refgaps_bed=data/hprc-v2.0-mc-grch38.refgaps.bed \
-    'samples={HG002: data/HG002.reads.idx}'
-
-# HPRC v1.1 CHM13 — without genotyping
+# HPRC v2.1 CHM13 — full pipeline including genotyping + DeepVariant
+GIAB=/private/home/ghickey/dev/work/giab-reads
 snakemake --profile profiles/slurm all \
   --config \
     ref=CHM13 \
-    vg='/path/to/hprc-v1.1-mc-chm13/hprc-v1.1-mc-chm13.chroms/!(*.d9).vg' \
-    out_dir=output/v1-chm13 \
-    out_name=hprc-v1.1-mc-chm13.nested.95 \
+    vg='/private/groups/hprc/hprc-graphs/hprc-v2.1-dec23/hprc-v2.1-mc-chm13-eval/hprc-v2.1-mc-chm13-eval.chroms/!(*.d*).vg' \
+    out_dir=output/v2.1-chm13 \
+    out_name=hprc-v2.1-mc-chm13.nested \
+    refgaps_bed=data/hprc-v2.1-mc-chm13.refgaps.bed \
+    "samples={HG001: $GIAB/HG001.novaseq.pcr-free.gs.paths, HG002: $GIAB/HG002.novaseq.pcr-free.gs.paths, HG003: $GIAB/HG003.novaseq.pcr-free.gs.paths, HG004: $GIAB/HG004.novaseq.pcr-free.gs.paths, HG005: $GIAB/HG005.novaseq.pcr-free.gs.paths, HG006: $GIAB/HG006.novaseq.pcr-free.gs.paths, HG007: $GIAB/HG007.novaseq.pcr-free.gs.paths}"
+
+# HPRC v2.1 GRCh38 — full pipeline including genotyping + DeepVariant
+snakemake --profile profiles/slurm all \
+  --config \
+    ref=GRCh38 \
+    vg='/private/groups/hprc/hprc-graphs/hprc-v2.1-dec23/hprc-v2.1-mc-grch38-eval/hprc-v2.1-mc-grch38-eval.chroms/!(*.d*).vg' \
+    out_dir=output/v2.1-grch38 \
+    out_name=hprc-v2.1-mc-grch38.nested \
+    refgaps_bed=data/hprc-v2.1-mc-grch38.refgaps.bed \
+    'samples={HG002: data/HG002.reads.idx}'
+
+# HPRC v1.1 CHM13 — without genotyping
+snakemake --profile profiles/slurm graph_only \
+  --config \
+    ref=CHM13 \
+    vg='/private/groups/hprc/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-chm13/hprc-v1.1-mc-chm13.chroms/!(*.d9).vg' \
+    out_dir=output/v1.1-chm13 \
+    out_name=hprc-v1.1-mc-chm13.nested \
     refgaps_bed=data/hprc-v1.1-mc-chm13.refgaps.bed
 ```
 
 Each run gets its own output directory with the full set of outputs:
 ```
-output/v2-chm13/
-├── hprc-v2.0-mc-chm13.nested.95.gbz               # augmented reference graph
-├── hprc-v2.0-mc-chm13.nested.95.gfa.gz            # augmented GFA
-├── hprc-v2.0-mc-chm13.nested.95.augref-segs.tsv   # augref segment table
-├── hprc-v2.0-mc-chm13.nested.95.vcf.gz            # nested VCF (deconstruct)
-├── hprc-v2.0-mc-chm13.nested.95.onref.vcf.gz      # on-reference variants
-├── hprc-v2.0-mc-chm13.nested.95.nestedref.vcf.gz  # nested-reference variants
-├── hprc-v2.0-mc-chm13.nested.95.offref.vcf.gz     # off-reference variants
-├── hprc-v2.0-mc-chm13.nested.95.augref-length-hist.png  # segment length histogram
-├── hprc-v2.0-mc-chm13.nested.95.offref.png        # off-reference density ideogram
-├── hprc-v2.0-mc-chm13.nested.95.fa.gz             # augmented reference FASTA (bgzipped)
-├── hprc-v2.0-mc-chm13.nested.95.fa.gz.fai         # FASTA index
-├── hprc-v2.0-mc-chm13.nested.95.fa.gz.gzi         # bgzip index
-├── HG002.gam                                       # read alignments (genotype)
-├── HG002.bam                                       # surjected alignments (sorted BAM)
-├── HG002.bam.bai                                   # BAM index
-├── HG002.pack                                      # coverage pileup
-├── HG002.vcf.gz                                    # genotyped VCF (vg call)
-├── HG002.deepvariant.vcf.gz                        # DeepVariant VCF
-├── HG002.call-offref.png                           # call off-reference density
-├── HG002.dv-offref.png                             # DeepVariant off-reference density
-├── merged.call.vcf.gz                              # merged call VCFs (batch)
-├── merged.deepvariant.vcf.gz                       # merged DeepVariant VCFs (batch)
-├── merged.call-offref.png                          # merged call density
-└── merged.dv-offref.png                            # merged DV density
+output/v2.1-chm13/
+├── hprc-v2.1-mc-chm13.nested.gbz               # augmented reference graph
+├── hprc-v2.1-mc-chm13.nested.gfa.gz            # augmented GFA
+├── hprc-v2.1-mc-chm13.nested.augref-segs.tsv   # augref segment table
+├── hprc-v2.1-mc-chm13.nested.vcf.gz            # nested VCF (deconstruct)
+├── hprc-v2.1-mc-chm13.nested.onref.vcf.gz      # on-reference variants
+├── hprc-v2.1-mc-chm13.nested.nestedref.vcf.gz  # nested-reference variants
+├── hprc-v2.1-mc-chm13.nested.offref.vcf.gz     # off-reference variants
+├── hprc-v2.1-mc-chm13.nested.augref-length-hist.png  # segment length histogram
+├── hprc-v2.1-mc-chm13.nested.offref.png        # off-reference density ideogram
+├── hprc-v2.1-mc-chm13.nested.vcf-stats.tsv     # variant statistics (deconstruct)
+├── hprc-v2.1-mc-chm13.nested.variant-types.png  # variant type bar chart
+├── hprc-v2.1-mc-chm13.nested.size-dist.png     # indel/SV size distribution
+├── hprc-v2.1-mc-chm13.nested.af-spectrum.png   # allele frequency spectrum
+├── hprc-v2.1-mc-chm13.nested.hapl              # haplotype index (for giraffe)
+├── hprc-v2.1-mc-chm13.nested.fa.gz             # augmented reference FASTA (bgzipped)
+├── hprc-v2.1-mc-chm13.nested.fa.gz.fai         # FASTA index
+├── hprc-v2.1-mc-chm13.nested.fa.gz.gzi         # bgzip index
+├── HG002.gam                                    # read alignments (genotype)
+├── HG002.bam                                    # surjected alignments (sorted BAM)
+├── HG002.bam.bai                                # BAM index
+├── HG002.pack                                   # coverage pileup
+├── HG002.vcf.gz                                 # genotyped VCF (vg call)
+├── HG002.deepvariant.vcf.gz                     # DeepVariant VCF
+├── HG002.call-offref.png                        # call off-reference density
+├── HG002.dv-offref.png                          # DeepVariant off-reference density
+├── merged.call.vcf.gz                           # merged call VCFs (all)
+├── merged.deepvariant.vcf.gz                    # merged DeepVariant VCFs (all)
+├── merged.call-offref.png                       # merged call density
+├── merged.dv-offref.png                         # merged DV density
+├── merged.call.af-spectrum.png                  # merged call AF spectrum
+└── merged.dv.af-spectrum.png                    # merged DV AF spectrum
 ```
 
 ### Genotyping a sample
@@ -255,10 +293,8 @@ To genotype a sample against the augmented reference and plot the results:
 snakemake --cores 8 genotype_all deepvariant_all \
   --config \
     ref=CHM13 \
-    out_dir=output/v2-chm13 \
-    out_name=hprc-v2.0-mc-chm13.nested.95 \
-    map_gbz=/path/to/hprc-v2.0-mc-chm13.gbz \
-    hapl=data/hprc-v2.0-mc-chm13.hapl \
+    out_dir=output/v2.1-chm13 \
+    out_name=hprc-v2.1-mc-chm13.nested \
     'samples={NA12878: data/sample.reads.idx}'
 ```
 
@@ -267,19 +303,17 @@ snakemake --cores 8 genotype_all deepvariant_all \
 Configure multiple samples to process them in parallel and merge their VCFs:
 
 ```bash
-snakemake --profile profiles/slurm batch \
+snakemake --profile profiles/slurm all \
   --config \
     ref=CHM13 \
-    out_dir=output/v2-chm13 \
-    out_name=hprc-v2.0-mc-chm13.nested.95 \
-    map_gbz=/path/to/hprc-v2.0-mc-chm13.gbz \
-    hapl=data/hprc-v2.0-mc-chm13.hapl \
+    out_dir=output/v2.1-chm13 \
+    out_name=hprc-v2.1-mc-chm13.nested \
     'samples={HG002: data/HG002.reads.idx, NA12878: data/NA12878.reads.idx}'
 ```
 
 Or use a samples TSV file:
 ```bash
-snakemake --profile profiles/slurm batch \
+snakemake --profile profiles/slurm all \
   --config samples_tsv=samples.tsv ...
 ```
 

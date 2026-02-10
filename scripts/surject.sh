@@ -153,12 +153,19 @@ mkdir -p "$OUTPUT_DIR"
 BAM="${OUTPUT_DIR}/${OUTPUT_NAME}"
 
 # Build the command to run
-# surject: project GAM onto augmented reference paths, output BAM
-# samtools sort: coordinate-sort the BAM
-# samtools index: create .bai index
-CMD="/usr/bin/time -v vg surject -x \"${GBZ}\" -n ${REF} -N ${SAMPLE} -i -b -t ${CPUS} \"${GAM}\" | \
-/usr/bin/time -v samtools sort -@ ${CPUS} -o \"${BAM}\" && \
-/usr/bin/time -v samtools index -@ ${CPUS} \"${BAM}\""
+# Use TMPDIR if set (node-local scratch on clusters), otherwise fall back to output dir
+# Stage GBZ to local scratch for fast random I/O
+# Use local scratch for samtools sort temp files and intermediate BAM
+GBZ_BASE=$(basename "$GBZ")
+BAM_BASE=$(basename "$BAM")
+CMD="WORK_TMPDIR=\${TMPDIR:-${OUTPUT_DIR}} && \\
+echo \"Staging GBZ to \${WORK_TMPDIR}\" && \\
+cp \"${GBZ}\" \"\${WORK_TMPDIR}/${GBZ_BASE}\" && \\
+/usr/bin/time -v vg surject -x \"\${WORK_TMPDIR}/${GBZ_BASE}\" -n ${REF} -N ${SAMPLE} -i -b -t ${CPUS} \"${GAM}\" | \\
+/usr/bin/time -v samtools sort -@ ${CPUS} -T \"\${WORK_TMPDIR}/sort_${SAMPLE}\" -o \"\${WORK_TMPDIR}/${BAM_BASE}\" && \\
+mv \"\${WORK_TMPDIR}/${BAM_BASE}\" \"${BAM}\" && \\
+/usr/bin/time -v samtools index -@ ${CPUS} \"${BAM}\" && \\
+rm -f \"\${WORK_TMPDIR}/${GBZ_BASE}\""
 
 if $LOCAL; then
     # Run locally

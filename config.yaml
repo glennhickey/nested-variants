@@ -38,14 +38,31 @@ samples: {}
 # Alternatively, provide a TSV file with columns: sample, reads_index
 # samples_tsv: samples.tsv
 
-# Pre-built GBZ for read mapping (leave empty to use pipeline-built GBZ)
-map_gbz: ""
-
-# Haplotype index (shared across all samples; leave empty to use pipeline-built .hapl)
-hapl: ""
-
-# SLURM resource defaults (used by --executor slurm or --profile slurm)
-cpus: 8
-mem_gb: 200
-runtime_min: 960  # 16 hours
+# Resource configuration
+# Each rule has built-in defaults (see table below). Set global overrides to
+# apply the same value to all rules, or per-rule overrides for fine control.
+# Priority: {rule}_cpus > cpus > built-in default
+# cpus: 8               # global CPU override for all rules
+# mem_gb: 200           # global memory (GB) override for all rules
+runtime_min: 960        # 16 hours
 partition: long
+
+# Per-rule resource overrides (uncomment to customize)
+# Rule defaults when not set: paths=16/200, deconstruct=128/512, haplotypes=128/512,
+# giraffe=128/512, surject=128/512, call=128/512, deepvariant=128/512, fasta=8/80
+# paths_cpus: 16
+# paths_mem_gb: 200
+# deconstruct_cpus: 128
+# deconstruct_mem_gb: 512
+# haplotypes_cpus: 128
+# haplotypes_mem_gb: 512
+# giraffe_cpus: 128
+# giraffe_mem_gb: 512
+# surject_cpus: 128
+# surject_mem_gb: 512
+# call_cpus: 128
+# call_mem_gb: 512
+# deepvariant_cpus: 128
+# deepvariant_mem_gb: 512
+# fasta_cpus: 8
+# fasta_mem_gb: 80

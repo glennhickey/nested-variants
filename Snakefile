@@ -3,7 +3,7 @@
 #
 # Default config is for local chr20 testing.
 # Override via config.local.yaml or command line:
-#   snakemake --config ref=CHM13 vg='...' all
+#   snakemake --config ref=CHM13 vg='...' graph_only
 ############################################################################
 
 configfile: "config.yaml"
@@ -24,13 +24,15 @@ if config.get("samples_tsv"):
             config.setdefault("samples", {})[row["sample"]] = row["reads_index"]
     SAMPLES = list(config["samples"].keys())
 
-def map_gbz(wildcards=None):
-    """GBZ used for read mapping (giraffe). Falls back to pipeline-built GBZ."""
-    return config["map_gbz"] or f"{OUT_DIR}/{OUT_NAME}.gbz"
+# Per-rule resource helpers: look up rule-specific config, fall back to global default
+def rule_cpus(rule_name, default):
+    return config.get(f"{rule_name}_cpus", config.get("cpus", default))
 
-def hapl_index(wildcards=None):
-    """Haplotype index. Falls back to pipeline-built .hapl."""
-    return config["hapl"] or f"{OUT_DIR}/{OUT_NAME}.hapl"
+def rule_mem_gb(rule_name, default):
+    return config.get(f"{rule_name}_mem_gb", config.get("mem_gb", default))
+
+def rule_runtime(rule_name, default=960):
+    return config.get(f"{rule_name}_runtime_min", config.get("runtime_min", default))
 
 # Build deconstruct-specific option flags
 def decon_opts():
@@ -48,7 +50,27 @@ def decon_opts():
 ############################################################################
 
 rule all:
-    """Default: build graph + analysis (no genotyping)"""
+    """Full pipeline: graph + genotype + deepvariant + merge + all plots/stats"""
+    input:
+        f"{OUT_DIR}/merged.call.vcf.gz",
+        f"{OUT_DIR}/merged.deepvariant.vcf.gz",
+        f"{OUT_DIR}/merged.call-offref.png",
+        f"{OUT_DIR}/merged.dv-offref.png",
+        f"{OUT_DIR}/{OUT_NAME}.vcf-stats.tsv",
+        f"{OUT_DIR}/{OUT_NAME}.variant-types.png",
+        f"{OUT_DIR}/{OUT_NAME}.size-dist.png",
+        f"{OUT_DIR}/{OUT_NAME}.af-spectrum.png",
+        f"{OUT_DIR}/merged.call.vcf-stats.tsv",
+        f"{OUT_DIR}/merged.call.variant-types.png",
+        f"{OUT_DIR}/merged.call.size-dist.png",
+        f"{OUT_DIR}/merged.call.af-spectrum.png",
+        f"{OUT_DIR}/merged.dv.vcf-stats.tsv",
+        f"{OUT_DIR}/merged.dv.variant-types.png",
+        f"{OUT_DIR}/merged.dv.size-dist.png",
+        f"{OUT_DIR}/merged.dv.af-spectrum.png",
+
+rule graph_only:
+    """Graph construction + deconstruct + plots (no genotyping)"""
     input:
         f"{OUT_DIR}/{OUT_NAME}.offref.vcf.gz",
         f"{OUT_DIR}/{OUT_NAME}.offref.png",
@@ -76,26 +98,6 @@ rule deepvariant_all:
         expand("{out}/{s}.dv.variant-types.png", out=OUT_DIR, s=SAMPLES),
         expand("{out}/{s}.dv.size-dist.png", out=OUT_DIR, s=SAMPLES),
 
-rule batch:
-    """Full batch: genotype + deepvariant + merge + merged plots"""
-    input:
-        f"{OUT_DIR}/merged.call.vcf.gz",
-        f"{OUT_DIR}/merged.deepvariant.vcf.gz",
-        f"{OUT_DIR}/merged.call-offref.png",
-        f"{OUT_DIR}/merged.dv-offref.png",
-        f"{OUT_DIR}/{OUT_NAME}.vcf-stats.tsv",
-        f"{OUT_DIR}/{OUT_NAME}.variant-types.png",
-        f"{OUT_DIR}/{OUT_NAME}.size-dist.png",
-        f"{OUT_DIR}/{OUT_NAME}.af-spectrum.png",
-        f"{OUT_DIR}/merged.call.vcf-stats.tsv",
-        f"{OUT_DIR}/merged.call.variant-types.png",
-        f"{OUT_DIR}/merged.call.size-dist.png",
-        f"{OUT_DIR}/merged.call.af-spectrum.png",
-        f"{OUT_DIR}/merged.dv.vcf-stats.tsv",
-        f"{OUT_DIR}/merged.dv.variant-types.png",
-        f"{OUT_DIR}/merged.dv.size-dist.png",
-        f"{OUT_DIR}/merged.dv.af-spectrum.png",
-
 ############################################################################
 # Graph construction rules (run once)
 ############################################################################
@@ -108,10 +110,12 @@ rule paths:
         f"{OUT_DIR}/{OUT_NAME}.gbz",
         f"{OUT_DIR}/{OUT_NAME}.gfa.gz",
         f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
-    threads: config.get("cpus", 8)
+    threads: rule_cpus("paths", 16)
     resources:
-        mem_mb=config.get("mem_gb", 200) * 1024,
-        runtime=config.get("runtime_min", 960),
+        mem_mb=rule_mem_gb("paths", 200) * 1024,
+        runtime=rule_runtime("paths"),
+    params:
+        mem_gb=rule_mem_gb("paths", 200),
     shell:
         "scripts/paths.sh"
         " --vg '{input}'"
@@ -119,7 +123,7 @@ rule paths:
         " --out-dir {OUT_DIR}"
         " --out-name {OUT_NAME}.gfa.gz"
         " --min-augref-len {config[min_augref_len]}"
-        " --cpus {threads} --mem {config[mem_gb]}gb"
+        " --cpus {threads} --mem {params.mem_gb}gb"
         " --local"
 
 rule deconstruct:
@@ -128,10 +132,12 @@ rule deconstruct:
         f"{OUT_DIR}/{OUT_NAME}.gbz",
     output:
         f"{OUT_DIR}/{OUT_NAME}.vcf.gz",
-    threads: config.get("cpus", 8)
+    threads: rule_cpus("deconstruct", 128)
     resources:
-        mem_mb=config.get("mem_gb", 200) * 1024,
-        runtime=config.get("runtime_min", 960),
+        mem_mb=rule_mem_gb("deconstruct", 512) * 1024,
+        runtime=rule_runtime("deconstruct"),
+    params:
+        mem_gb=rule_mem_gb("deconstruct", 512),
     shell:
         "scripts/deconstruct.sh"
         " --gbz {input}"
@@ -139,7 +145,7 @@ rule deconstruct:
         " --out-dir {OUT_DIR}"
         " --out-name {OUT_NAME}.vcf.gz"
         " " + decon_opts() +
-        " --cpus {threads} --mem {config[mem_gb]}gb"
+        " --cpus {threads} --mem {params.mem_gb}gb"
         " --local"
 
 rule split_vcf:
@@ -161,17 +167,19 @@ rule haplotypes:
         f"{OUT_DIR}/{OUT_NAME}.gbz",
     output:
         f"{OUT_DIR}/{OUT_NAME}.hapl",
-    threads: config.get("cpus", 8)
+    threads: rule_cpus("haplotypes", 128)
     resources:
-        mem_mb=config.get("mem_gb", 200) * 1024,
-        runtime=config.get("runtime_min", 960),
+        mem_mb=rule_mem_gb("haplotypes", 512) * 1024,
+        runtime=rule_runtime("haplotypes"),
+    params:
+        mem_gb=rule_mem_gb("haplotypes", 512),
     shell:
         "scripts/haplotypes.sh"
         " --gbz {input}"
         " --ref {REF}"
         " --out-dir {OUT_DIR}"
         " --out-name {OUT_NAME}.hapl"
-        " --cpus {threads} --mem {config[mem_gb]}gb"
+        " --cpus {threads} --mem {params.mem_gb}gb"
         " --local"
 
 rule fasta:
@@ -180,17 +188,19 @@ rule fasta:
         f"{OUT_DIR}/{OUT_NAME}.gbz",
     output:
         f"{OUT_DIR}/{OUT_NAME}.fa.gz",
-    threads: config.get("cpus", 8)
+    threads: rule_cpus("fasta", 8)
     resources:
-        mem_mb=config.get("mem_gb", 200) * 1024,
-        runtime=config.get("runtime_min", 960),
+        mem_mb=rule_mem_gb("fasta", 80) * 1024,
+        runtime=rule_runtime("fasta"),
+    params:
+        mem_gb=rule_mem_gb("fasta", 80),
     shell:
         "scripts/fasta.sh"
         " --gbz {input}"
         " --ref {AUGREF}"
         " --out-dir {OUT_DIR}"
         " --out-name {OUT_NAME}.fa.gz"
-        " --cpus {threads} --mem {config[mem_gb]}gb"
+        " --cpus {threads} --mem {params.mem_gb}gb"
         " --local"
 
 rule length_hist:
@@ -223,15 +233,17 @@ rule plots:
 rule giraffe:
     """GBZ + reads → GAM"""
     input:
-        gbz=map_gbz,
-        hapl=hapl_index,
+        gbz=f"{OUT_DIR}/{OUT_NAME}.gbz",
+        hapl=f"{OUT_DIR}/{OUT_NAME}.hapl",
         reads=lambda wc: config["samples"][wc.sample],
     output:
         f"{OUT_DIR}/{{sample}}.gam",
-    threads: config.get("cpus", 8)
+    threads: rule_cpus("giraffe", 128)
     resources:
-        mem_mb=config.get("mem_gb", 200) * 1024,
-        runtime=config.get("runtime_min", 960),
+        mem_mb=rule_mem_gb("giraffe", 512) * 1024,
+        runtime=rule_runtime("giraffe"),
+    params:
+        mem_gb=rule_mem_gb("giraffe", 512),
     shell:
         "scripts/giraffe.sh"
         " --gbz {input.gbz}"
@@ -240,7 +252,7 @@ rule giraffe:
         " --sample {wildcards.sample}"
         " --out-dir {OUT_DIR}"
         " --out-name {wildcards.sample}.gam"
-        " --cpus {threads} --mem {config[mem_gb]}gb"
+        " --cpus {threads} --mem {params.mem_gb}gb"
         " --local"
 
 rule call:
@@ -250,10 +262,12 @@ rule call:
         gbz=f"{OUT_DIR}/{OUT_NAME}.gbz",
     output:
         f"{OUT_DIR}/{{sample}}.vcf.gz",
-    threads: config.get("cpus", 8)
+    threads: rule_cpus("call", 128)
     resources:
-        mem_mb=config.get("mem_gb", 200) * 1024,
-        runtime=config.get("runtime_min", 960),
+        mem_mb=rule_mem_gb("call", 512) * 1024,
+        runtime=rule_runtime("call"),
+    params:
+        mem_gb=rule_mem_gb("call", 512),
     shell:
         "scripts/call.sh"
         " --gbz {input.gbz}"
@@ -262,7 +276,7 @@ rule call:
         " --sample {wildcards.sample}"
         " --out-dir {OUT_DIR}"
         " --out-name {wildcards.sample}.vcf.gz"
-        " --cpus {threads} --mem {config[mem_gb]}gb"
+        " --cpus {threads} --mem {params.mem_gb}gb"
         " --local"
 
 rule surject:
@@ -272,10 +286,12 @@ rule surject:
         gbz=f"{OUT_DIR}/{OUT_NAME}.gbz",
     output:
         f"{OUT_DIR}/{{sample}}.bam",
-    threads: config.get("cpus", 8)
+    threads: rule_cpus("surject", 128)
     resources:
-        mem_mb=config.get("mem_gb", 200) * 1024,
-        runtime=config.get("runtime_min", 960),
+        mem_mb=rule_mem_gb("surject", 512) * 1024,
+        runtime=rule_runtime("surject"),
+    params:
+        mem_gb=rule_mem_gb("surject", 512),
     shell:
         "scripts/surject.sh"
         " --gbz {input.gbz}"
@@ -284,7 +300,7 @@ rule surject:
         " --sample {wildcards.sample}"
         " --out-dir {OUT_DIR}"
         " --out-name {wildcards.sample}.bam"
-        " --cpus {threads} --mem {config[mem_gb]}gb"
+        " --cpus {threads} --mem {params.mem_gb}gb"
         " --local"
 
 rule deepvariant:
@@ -294,10 +310,12 @@ rule deepvariant:
         ref=f"{OUT_DIR}/{OUT_NAME}.fa.gz",
     output:
         f"{OUT_DIR}/{{sample}}.deepvariant.vcf.gz",
-    threads: config.get("cpus", 8)
+    threads: rule_cpus("deepvariant", 128)
     resources:
-        mem_mb=config.get("mem_gb", 200) * 1024,
-        runtime=config.get("runtime_min", 960),
+        mem_mb=rule_mem_gb("deepvariant", 512) * 1024,
+        runtime=rule_runtime("deepvariant"),
+    params:
+        mem_gb=rule_mem_gb("deepvariant", 512),
     shell:
         "scripts/deepvariant.sh"
         " --bam {input.bam}"
@@ -306,7 +324,7 @@ rule deepvariant:
         " --out-dir {OUT_DIR}"
         " --out-name {wildcards.sample}.deepvariant.vcf.gz"
         " --dv-version {config[dv_version]}"
-        " --cpus {threads} --mem {config[mem_gb]}gb"
+        " --cpus {threads} --mem {params.mem_gb}gb"
         " --local"
 
 rule call_plots:

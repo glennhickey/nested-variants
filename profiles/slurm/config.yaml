@@ -5,4 +5,8 @@ default-resources:
   slurm_partition: long
   mem_mb: 204800
   runtime: 960
+  # Node-local scratch for staging GBZ files and samtools sort temp files.
+  # Many clusters set $TMPDIR automatically in the job prolog. If yours does
+  # not, uncomment and set this to the node-local scratch path:
+  # tmpdir: /scratch/$USER
 jobs: 50

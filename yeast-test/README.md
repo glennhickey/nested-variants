@@ -1,7 +1,7 @@
 # Yeast chrI Test
 
 End-to-end test of the nested-variants pipeline on *S. cerevisiae* chromosome I
-with two samples (SK1 and YPS128), exercising multi-sample batch processing and
+with two samples (SK1 and YPS128), exercising multi-sample processing and
 VCF merging.
 
 ## Prerequisites
@@ -47,17 +47,16 @@ done
 
 ```bash
 # Graph construction + analysis (no genotyping)
-snakemake --cores 4 all \
+snakemake --cores 4 graph_only \
   --config vg=yeast-test/chrI.vg ref=S288C \
            out_dir=yeast-test/output out_name=chrI.nested \
            mem_gb=4
 
-# Full batch: genotype + DeepVariant + merge for both samples
-snakemake --cores 4 batch \
+# Full pipeline: genotype + DeepVariant + merge for both samples
+snakemake --cores 4 all \
   --config vg=yeast-test/chrI.vg ref=S288C \
            out_dir=yeast-test/output out_name=chrI.nested \
            'samples={SK1: yeast-test/SK1.reads.idx, YPS128: yeast-test/YPS128.reads.idx}' \
-           hapl=yeast-test/output/chrI.nested.hapl \
            mem_gb=4
 ```
 
