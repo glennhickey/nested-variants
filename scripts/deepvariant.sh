@@ -156,6 +156,7 @@ VCF_ABS="${OUT_ABS}/${OUTPUT_NAME}"
 
 # Build the command to run
 CMD="/usr/bin/time -v docker run \
+  --user \"$(id -u):$(id -g)\" \
   -v \"$(dirname "${REF_ABS}")\":\"$(dirname "${REF_ABS}")\" \
   -v \"$(dirname "${BAM_ABS}")\":\"$(dirname "${BAM_ABS}")\" \
   -v \"${OUT_ABS}\":\"${OUT_ABS}\" \

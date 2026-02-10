@@ -6,15 +6,15 @@ Discover and analyze off-reference (nested) variants in pangenome graphs built w
 
 | Tool | Required for | Install |
 |------|-------------|---------|
-| **vg** (>= 1.56) | `make paths`, `make deconstruct`, `make genotype`, `make fasta` | [vg releases](https://github.com/vgteam/vg/releases) |
-| **samtools** | `make fasta`, `make surject` | `apt install samtools` / `conda install samtools` |
-| **docker** | `make deepvariant` | [Docker install](https://docs.docker.com/get-docker/) |
-| **bcftools** | `make split-vcf` | `apt install bcftools` / `conda install bcftools` |
+| **vg** (>= 1.56) | `paths`, `deconstruct`, `genotype`, `fasta` | [vg releases](https://github.com/vgteam/vg/releases) |
+| **samtools** | `fasta`, `surject` | `apt install samtools` / `conda install samtools` |
+| **docker** | `deepvariant` | [Docker install](https://docs.docker.com/get-docker/) |
+| **bcftools** | `split_vcf`, `merge_call_vcfs`, `merge_dv_vcfs` | `apt install bcftools` / `conda install bcftools` |
 | **bgzip / tabix** (htslib) | VCF compression & indexing | `apt install tabix` / `conda install htslib` |
-| **make** | Pipeline orchestration | Usually pre-installed |
-| Rscript | `make plots` (optional) | `apt install r-base` |
-| kmc | `make genotype` (optional) | [kmc releases](https://github.com/refresh-bio/KMC) |
-| shellcheck | `make test` | `apt install shellcheck` |
+| **snakemake** (>= 8) | Pipeline orchestration | `pip install snakemake` / `conda install snakemake` |
+| Rscript | `plots` (optional) | `apt install r-base` |
+| kmc | `genotype` (optional) | [kmc releases](https://github.com/refresh-bio/KMC) |
+| shellcheck | testing | `apt install shellcheck` |
 
 ## Quick Start
 
@@ -24,17 +24,13 @@ mkdir -p data
 cp ~/dev/work/test-altpaths-chr20/chr20.vg data/
 
 # 2. Run the pipeline (local mode, chr20 defaults)
-make paths          # VG → GBZ
-make deconstruct    # GBZ → VCF
-make split-vcf      # VCF → onref / nestedref / offref
-make plots          # VCF → off-reference density ideogram
-# or simply:
-make all            # runs split-vcf + plots (requires deconstruct output)
+snakemake --cores 8 all
+# This runs: paths → deconstruct → split_vcf + plots
 ```
 
 ## Pipeline Stages
 
-### 1. Augmented Reference Paths (`make paths`)
+### 1. Augmented Reference Paths (`paths`)
 
 Runs `vg paths` on each input VG file to compute augmented reference paths, then merges and converts to GBZ format.
 
@@ -42,7 +38,7 @@ Runs `vg paths` on each input VG file to compute augmented reference paths, then
 - **Output:** `output/chr20.nested.gbz`
 - **Script:** `scripts/paths.sh`
 
-### 2. Deconstruct (`make deconstruct`)
+### 2. Deconstruct (`deconstruct`)
 
 Runs `vg deconstruct` on the GBZ to produce a nested VCF with on-reference and off-reference variant calls.
 
@@ -50,7 +46,7 @@ Runs `vg deconstruct` on the GBZ to produce a nested VCF with on-reference and o
 - **Output:** `output/chr20.nested.vcf.gz` (+ .tbi index)
 - **Script:** `scripts/deconstruct.sh`
 
-### 3. Split VCF (`make split-vcf`)
+### 3. Split VCF (`split_vcf`)
 
 Splits the nested VCF into three categories based on reference context:
 
@@ -62,99 +58,95 @@ Splits the nested VCF into three categories based on reference context:
 
 - **Script:** `scripts/split-ref.sh`
 
-### 4. Genotype (optional, `make genotype`)
+### 4. Genotype (optional, `genotype_all`)
 
-Aligns reads to the graph with `vg giraffe` and calls variants with `vg call`. Requires `MAP_GBZ`, `READS`, `HAPL`, and `SAMPLE` to be set.
+Aligns reads to the graph with `vg giraffe` and calls variants with `vg call`. Requires `samples` to be configured (see [Configuration](#configuration)).
 
-- `MAP_GBZ` — pre-built GBZ for read mapping. The `.hapl` index must match this GBZ (i.e., the original pangenome GBZ distributed with the HPRC release, **not** the augmented-reference GBZ built by `make paths`). Giraffe uses this for alignment; `vg call` then uses the augmented GBZ for variant calling.
-- `READS` — a text file listing input FASTQ paths (one per line, typically two lines for paired-end reads). This is user-provided sequencing data.
-- `HAPL` — haplotype index file (`.hapl`) for the graph, typically distributed alongside the HPRC pangenome release.
-- `SAMPLE` — sample name to embed in the output GAM/VCF.
+- `map_gbz` — pre-built GBZ for read mapping. The `.hapl` index must match this GBZ (i.e., the original pangenome GBZ distributed with the HPRC release, **not** the augmented-reference GBZ built by `paths`). Giraffe uses this for alignment; `vg call` then uses the augmented GBZ for variant calling.
+- `hapl` — haplotype index file (`.hapl`) for the graph, typically distributed alongside the HPRC pangenome release. Leave empty to use the pipeline-built `.hapl`.
+- Each sample entry maps a sample name to its reads index file (a text file listing FASTQ paths, one per line).
 
 ```bash
-make genotype \
-  MAP_GBZ=data/hprc-v2.0-mc-chm13.gbz \
-  READS=data/HG002.reads.idx \
-  HAPL=data/hprc-v2.0-mc-chm13.hapl \
-  SAMPLE=HG002
+snakemake --cores 8 genotype_all \
+  --config map_gbz=data/hprc-v2.0-mc-chm13.gbz \
+           hapl=data/hprc-v2.0-mc-chm13.hapl \
+           'samples={HG002: data/HG002.reads.idx}'
 ```
 
-### 5. Haplotype Index (optional, `make haplotypes`)
+### 5. Haplotype Index (optional, `haplotypes`)
 
 Builds a `.hapl` index from the augmented GBZ for haplotype-aware read mapping with giraffe. Runs `vg index` (distance index), `vg gbwt` (r-index), and `vg haplotypes` in sequence; intermediate files are cleaned up automatically.
 
-- **Input:** Augmented GBZ from `make paths`
-- **Output:** `output/<OUT_NAME>.hapl`
+- **Input:** Augmented GBZ from `paths`
+- **Output:** `output/<out_name>.hapl`
 - **Script:** `scripts/haplotypes.sh`
 
-If you already have a `.hapl` index (e.g. from an HPRC release), set `HAPL=<path>` directly and skip this step.
+If you already have a `.hapl` index (e.g. from an HPRC release), set `hapl: <path>` directly and skip this step.
 
-### 6. Surject (optional, `make surject`)
+### 6. Surject (optional, `surject`)
 
-Projects GAM alignments onto the augmented reference paths to produce a coordinate-sorted BAM file with index. Uses the augmented GBZ (from `make paths`) so that reads are placed on the nested reference contigs.
+Projects GAM alignments onto the augmented reference paths to produce a coordinate-sorted BAM file with index. Uses the augmented GBZ (from `paths`) so that reads are placed on the nested reference contigs.
 
-- **Input:** GAM from giraffe, augmented GBZ from `make paths`
-- **Output:** `output/<SAMPLE>.bam` (+ `.bam.bai` index)
+- **Input:** GAM from giraffe, augmented GBZ from `paths`
+- **Output:** `output/<sample>.bam` (+ `.bam.bai` index)
 - **Script:** `scripts/surject.sh`
 
-```bash
-make surject \
-  OUT_DIR=output/v2-chm13 \
-  OUT_NAME=hprc-v2.0-mc-chm13.nested.95 \
-  SAMPLE=HG002
-```
-
-### 7. FASTA Extraction (optional, `make fasta`)
+### 7. FASTA Extraction (optional, `fasta`)
 
 Extracts augmented reference paths from the GBZ as a bgzipped FASTA file and creates `.fai` and `.gzi` indexes. This is needed as the reference for DeepVariant.
 
-- **Input:** Augmented GBZ from `make paths`
-- **Output:** `output/<OUT_NAME>.fa.gz` (+ `.fa.gz.fai` and `.fa.gz.gzi` indexes)
+- **Input:** Augmented GBZ from `paths`
+- **Output:** `output/<out_name>.fa.gz` (+ `.fa.gz.fai` and `.fa.gz.gzi` indexes)
 - **Script:** `scripts/fasta.sh`
 
-```bash
-make fasta \
-  OUT_DIR=output/v2-chm13 \
-  OUT_NAME=hprc-v2.0-mc-chm13.nested.95
-```
+### 8. DeepVariant (optional, `deepvariant_all`)
 
-### 8. DeepVariant (optional, `make deepvariant`)
+Runs [DeepVariant](https://github.com/google/deepvariant) via Docker to call variants from the surjected BAM against the augmented reference FASTA. Requires `samples` and Docker.
 
-Runs [DeepVariant](https://github.com/google/deepvariant) via Docker to call variants from the surjected BAM against the augmented reference FASTA. Requires `SAMPLE` and Docker.
-
-- **Input:** BAM from `make surject`, FASTA from `make fasta`
-- **Output:** `output/<SAMPLE>.deepvariant.vcf.gz`
+- **Input:** BAM from `surject`, FASTA from `fasta`
+- **Output:** `output/<sample>.deepvariant.vcf.gz`
 - **Script:** `scripts/deepvariant.sh`
 
+### 9. Batch Processing (`batch`)
+
+Runs genotyping and DeepVariant for all configured samples, then merges the per-sample VCFs with `bcftools merge` and produces density plots on the merged VCFs.
+
 ```bash
-make deepvariant \
-  OUT_DIR=output/v2-chm13 \
-  OUT_NAME=hprc-v2.0-mc-chm13.nested.95 \
-  SAMPLE=HG002
+snakemake --cores 8 batch \
+  --config 'samples={HG002: data/HG002.reads.idx, NA12878: data/NA12878.reads.idx}'
 ```
 
 ## Configuration
 
-All settings live in `config.mk` (committed defaults) and can be overridden in `config.local.mk` (gitignored) or on the command line.
+All settings live in `config.yaml` (committed defaults) and can be overridden in `config.local.yaml` (gitignored) or on the command line with `--config`.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `EXEC_MODE` | `local` | `local` or `slurm` |
-| `REF` | `GRCh38` | Reference name for vg (`GRCh38`, `CHM13`, etc.) |
-| `VG` | `data/chr20.vg` | Input VG file(s) |
-| `OUT_DIR` | `output` | Output directory |
-| `OUT_NAME` | `chr20.nested` | Output filename prefix |
-| `MIN_AUGREF_LEN` | `50` | Minimum augref fragment length |
-| `MAP_GBZ` | *(empty)* | Pre-built GBZ for read mapping (must match `.hapl`); falls back to pipeline GBZ if unset |
-| `DV_VERSION` | `1.9.0` | DeepVariant Docker image version |
-| `REFGAPS_BED` | *(empty)* | BED file for reference gap overlay on plots |
+| `ref` | `GRCh38` | Reference name for vg (`GRCh38`, `CHM13`, etc.) |
+| `vg` | `data/chr20.vg` | Input VG file(s) |
+| `out_dir` | `output` | Output directory |
+| `out_name` | `chr20.nested` | Output filename prefix |
+| `min_augref_len` | `50` | Minimum augref fragment length |
+| `map_gbz` | *(empty)* | Pre-built GBZ for read mapping (must match `.hapl`); falls back to pipeline GBZ if unset |
+| `hapl` | *(empty)* | Haplotype index; falls back to pipeline-built `.hapl` if unset |
+| `dv_version` | `1.9.0` | DeepVariant Docker image version |
+| `refgaps_bed` | *(empty)* | BED file for reference gap overlay on plots |
+| `scale_type` | `log1p` | Scale type for density plots |
+| `samples` | `{}` | Map of sample name → reads index file path |
+| `samples_tsv` | *(unset)* | TSV file with `sample` and `reads_index` columns |
 
-See `config.mk` for the full list.
+See `config.yaml` for the full list.
+
+To use a local config file, create `config.local.yaml` and pass it with `--configfile`:
+
+```bash
+snakemake --cores 8 --configfile config.local.yaml all
+```
 
 ## Testing
 
 ```bash
-make test          # shellcheck + --help flag tests
+bash test/test-pipeline.sh   # shellcheck + --help flag tests
 ```
 
 The test suite runs [shellcheck](https://www.shellcheck.net/) on all shell scripts and verifies that each script's `--help` flag exits cleanly. Full pipeline tests require `vg` and test data.
@@ -163,49 +155,67 @@ For a small end-to-end test using *S. cerevisiae* chromosome I, see [yeast-test/
 
 ## Cluster Usage
 
-When `EXEC_MODE=slurm`, each pipeline step submits SLURM jobs via `sbatch -W` and waits for completion before proceeding to the next step. SLURM resources (`CPUS`, `MEM`, `TIME`, `PARTITION`) are all configurable.
+Snakemake handles SLURM scheduling natively. All shell scripts are always called with `--local`; Snakemake submits each rule as a separate SLURM job.
+
+**Local run:**
+```bash
+snakemake --cores 8 all
+```
+
+**SLURM run (direct):**
+```bash
+snakemake --executor slurm \
+  --default-resources mem_mb=200000 runtime=960 \
+  --jobs 50 all
+```
+
+**SLURM run (profile):**
+```bash
+snakemake --profile profiles/slurm all
+```
+
+For SLURM execution, install the executor plugin:
+```bash
+pip install snakemake-executor-plugin-slurm
+```
 
 ### Running multiple graphs
 
-Override `VG`, `REF`, `OUT_DIR`, and `OUT_NAME` on the command line to run different inputs into separate output directories. The `VG` variable accepts glob patterns (including bash extended globs like `!(*.d9).vg`).
+Override config values on the command line to run different inputs into separate output directories:
 
 ```bash
 # HPRC v2.0 CHM13 — full pipeline including genotyping + DeepVariant
-make paths deconstruct split-vcf length-hist plots \
-     genotype surject fasta deepvariant call-plots dv-plots \
-  EXEC_MODE=slurm \
-  REF=CHM13 \
-  VG='/path/to/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.chroms/!(*.d9).vg' \
-  OUT_DIR=output/v2-chm13 \
-  OUT_NAME=hprc-v2.0-mc-chm13.nested.95 \
-  MAP_GBZ=/path/to/hprc-v2.0-mc-chm13.gbz \
-  READS=data/HG002.reads.idx \
-  HAPL=data/hprc-v2.0-mc-chm13.hapl \
-  SAMPLE=HG002 \
-  REFGAPS_BED=data/hprc-v2.0-mc-chm13.refgaps.bed
+snakemake --profile profiles/slurm batch \
+  --config \
+    ref=CHM13 \
+    vg='/path/to/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.chroms/!(*.d9).vg' \
+    out_dir=output/v2-chm13 \
+    out_name=hprc-v2.0-mc-chm13.nested.95 \
+    map_gbz=/path/to/hprc-v2.0-mc-chm13.gbz \
+    hapl=data/hprc-v2.0-mc-chm13.hapl \
+    refgaps_bed=data/hprc-v2.0-mc-chm13.refgaps.bed \
+    'samples={HG002: data/HG002.reads.idx}'
 
 # HPRC v2.0 GRCh38 — full pipeline including genotyping + DeepVariant
-make paths deconstruct split-vcf length-hist plots \
-     genotype surject fasta deepvariant call-plots dv-plots \
-  EXEC_MODE=slurm \
-  REF=GRCh38 \
-  VG='/path/to/hprc-v2.0-mc-grch38/hprc-v2.0-mc-grch38.chroms/!(*.d9).vg' \
-  OUT_DIR=output/v2-grch38 \
-  OUT_NAME=hprc-v2.0-mc-grch38.nested.95 \
-  MAP_GBZ=/path/to/hprc-v2.0-mc-grch38.gbz \
-  READS=data/HG002.reads.idx \
-  HAPL=data/hprc-v2.0-mc-grch38.hapl \
-  SAMPLE=HG002 \
-  REFGAPS_BED=data/hprc-v2.0-mc-grch38.refgaps.bed
+snakemake --profile profiles/slurm batch \
+  --config \
+    ref=GRCh38 \
+    vg='/path/to/hprc-v2.0-mc-grch38/hprc-v2.0-mc-grch38.chroms/!(*.d9).vg' \
+    out_dir=output/v2-grch38 \
+    out_name=hprc-v2.0-mc-grch38.nested.95 \
+    map_gbz=/path/to/hprc-v2.0-mc-grch38.gbz \
+    hapl=data/hprc-v2.0-mc-grch38.hapl \
+    refgaps_bed=data/hprc-v2.0-mc-grch38.refgaps.bed \
+    'samples={HG002: data/HG002.reads.idx}'
 
 # HPRC v1.1 CHM13 — without genotyping
-make paths deconstruct split-vcf length-hist plots \
-  EXEC_MODE=slurm \
-  REF=CHM13 \
-  VG='/path/to/hprc-v1.1-mc-chm13/hprc-v1.1-mc-chm13.chroms/!(*.d9).vg' \
-  OUT_DIR=output/v1-chm13 \
-  OUT_NAME=hprc-v1.1-mc-chm13.nested.95 \
-  REFGAPS_BED=data/hprc-v1.1-mc-chm13.refgaps.bed
+snakemake --profile profiles/slurm all \
+  --config \
+    ref=CHM13 \
+    vg='/path/to/hprc-v1.1-mc-chm13/hprc-v1.1-mc-chm13.chroms/!(*.d9).vg' \
+    out_dir=output/v1-chm13 \
+    out_name=hprc-v1.1-mc-chm13.nested.95 \
+    refgaps_bed=data/hprc-v1.1-mc-chm13.refgaps.bed
 ```
 
 Each run gets its own output directory with the full set of outputs:
@@ -230,7 +240,11 @@ output/v2-chm13/
 ├── HG002.vcf.gz                                    # genotyped VCF (vg call)
 ├── HG002.deepvariant.vcf.gz                        # DeepVariant VCF
 ├── HG002.call-offref.png                           # call off-reference density
-└── HG002.dv-offref.png                             # DeepVariant off-reference density
+├── HG002.dv-offref.png                             # DeepVariant off-reference density
+├── merged.call.vcf.gz                              # merged call VCFs (batch)
+├── merged.deepvariant.vcf.gz                       # merged DeepVariant VCFs (batch)
+├── merged.call-offref.png                          # merged call density
+└── merged.dv-offref.png                            # merged DV density
 ```
 
 ### Genotyping a sample
@@ -238,51 +252,51 @@ output/v2-chm13/
 To genotype a sample against the augmented reference and plot the results:
 
 ```bash
-make genotype surject fasta deepvariant call-plots dv-plots \
-  EXEC_MODE=slurm \
-  REF=CHM13 \
-  OUT_DIR=output/v2-chm13 \
-  OUT_NAME=hprc-v2.0-mc-chm13.nested.95 \
-  MAP_GBZ=/path/to/hprc-v2.0-mc-chm13.gbz \
-  READS=data/sample.reads.idx \
-  HAPL=data/hprc-v2.0-mc-chm13.hapl \
-  SAMPLE=NA12878
+snakemake --cores 8 genotype_all deepvariant_all \
+  --config \
+    ref=CHM13 \
+    out_dir=output/v2-chm13 \
+    out_name=hprc-v2.0-mc-chm13.nested.95 \
+    map_gbz=/path/to/hprc-v2.0-mc-chm13.gbz \
+    hapl=data/hprc-v2.0-mc-chm13.hapl \
+    'samples={NA12878: data/sample.reads.idx}'
 ```
 
-### SLURM resource tuning
+### Multi-sample batch processing
 
-The default SLURM resources can be overridden per run:
+Configure multiple samples to process them in parallel and merge their VCFs:
 
 ```bash
-make paths EXEC_MODE=slurm CPUS=32 MEM=400gb TIME=24:00:00 PARTITION=long ...
+snakemake --profile profiles/slurm batch \
+  --config \
+    ref=CHM13 \
+    out_dir=output/v2-chm13 \
+    out_name=hprc-v2.0-mc-chm13.nested.95 \
+    map_gbz=/path/to/hprc-v2.0-mc-chm13.gbz \
+    hapl=data/hprc-v2.0-mc-chm13.hapl \
+    'samples={HG002: data/HG002.reads.idx, NA12878: data/NA12878.reads.idx}'
 ```
 
-### Using config.local.mk
-
-For repeated use, create a `config.local.mk` with your common settings:
-
+Or use a samples TSV file:
 ```bash
-cp config.local.mk.example config.local.mk
-# Edit config.local.mk with your defaults
+snakemake --profile profiles/slurm batch \
+  --config samples_tsv=samples.tsv ...
 ```
 
-Then override only what changes per run:
-
-```bash
-make paths deconstruct split-vcf plots \
-  REF=CHM13 \
-  VG='/path/to/chm13-chroms/!(*.d9).vg' \
-  OUT_DIR=output/v2-chm13 \
-  OUT_NAME=hprc-v2.0-mc-chm13.nested.95
+Where `samples.tsv` contains:
+```
+sample	reads_index
+HG002	data/HG002.reads.idx
+NA12878	data/NA12878.reads.idx
 ```
 
 ## Repository Structure
 
 ```
 nested-variants/
-├── Makefile                    Pipeline orchestrator
-├── config.mk                   Default config (chr20 local test)
-├── config.local.mk.example     Template for cluster config
+├── Snakefile                   Pipeline orchestrator
+├── config.yaml                 Default config (chr20 local test)
+├── profiles/slurm/config.yaml  SLURM profile template
 ├── scripts/
 │   ├── paths.sh                VG → GBZ (augmented reference paths)
 │   ├── deconstruct.sh          GBZ → VCF (vg deconstruct)
@@ -301,7 +315,8 @@ nested-variants/
 │   └── intersect-annotations.py
 ├── test/
 │   └── test-pipeline.sh        CI test script
-├── data/                        Gitignored; put input data here
+├── yeast-test/                 End-to-end test (S. cerevisiae chrI)
+├── data/                       Gitignored; put input data here
 ├── .github/workflows/ci.yml
 └── LICENSE
 ```

@@ -3,7 +3,10 @@ data/
 output/
 
 # User-specific config overrides
-config.local.mk
+config.local.yaml
+
+# Snakemake internals
+.snakemake/
 
 # Genomics data files
 *.gbz

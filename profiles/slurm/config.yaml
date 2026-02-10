@@ -1,0 +1,8 @@
+# Snakemake SLURM profile
+# Usage: snakemake --profile profiles/slurm batch
+executor: slurm
+default-resources:
+  slurm_partition: long
+  mem_mb: 204800
+  runtime: 960
+jobs: 50

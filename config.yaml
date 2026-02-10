@@ -1,0 +1,51 @@
+# config.yaml — Default configuration for local chr20 testing
+# Override any value via config.local.yaml or on the command line:
+#   snakemake --config ref=CHM13 vg='...' all
+
+# Reference name (used by vg paths -Q; deconstruct/call use augref_<ref> automatically)
+ref: GRCh38
+
+# Input VG file(s) — glob patterns accepted (quoted)
+vg: data/chr20.vg
+
+# Output directory and naming prefix
+out_dir: output
+out_name: chr20.nested
+
+# Minimum augmented-reference fragment length
+min_augref_len: 50
+
+# Deconstruct options
+cluster: ""
+snarls: ""
+star_allele: false
+
+# BED file for reference gap overlay on plots (optional, empty = none)
+refgaps_bed: ""
+
+# Scale type for density plots: log1p, sqrt, log, identity
+scale_type: log1p
+
+# DeepVariant Docker image version
+dv_version: "1.9.0"
+
+# Samples (optional — only needed for genotype/deepvariant rules)
+# Each entry maps sample name → reads index file path
+samples: {}
+#  HG002: data/HG002.reads.idx
+#  NA12878: data/NA12878.reads.idx
+
+# Alternatively, provide a TSV file with columns: sample, reads_index
+# samples_tsv: samples.tsv
+
+# Pre-built GBZ for read mapping (leave empty to use pipeline-built GBZ)
+map_gbz: ""
+
+# Haplotype index (shared across all samples; leave empty to use pipeline-built .hapl)
+hapl: ""
+
+# SLURM resource defaults (used by --executor slurm or --profile slurm)
+cpus: 8
+mem_gb: 200
+runtime_min: 960  # 16 hours
+partition: long
