@@ -77,6 +77,21 @@ make genotype \
   SAMPLE=HG002
 ```
 
+### 5. Surject (optional, `make surject`)
+
+Projects GAM alignments onto the augmented reference paths to produce a coordinate-sorted BAM file with index. Uses the augmented GBZ (from `make paths`) so that reads are placed on the nested reference contigs.
+
+- **Input:** GAM from giraffe, augmented GBZ from `make paths`
+- **Output:** `output/<SAMPLE>.bam` (+ `.bam.bai` index)
+- **Script:** `scripts/surject.sh`
+
+```bash
+make surject \
+  OUT_DIR=output/v2-chm13 \
+  OUT_NAME=hprc-v2.0-mc-chm13.nested.95 \
+  SAMPLE=HG002
+```
+
 ## Configuration
 
 All settings live in `config.mk` (committed defaults) and can be overridden in `config.local.mk` (gitignored) or on the command line.
@@ -112,7 +127,7 @@ Override `VG`, `REF`, `OUT_DIR`, and `OUT_NAME` on the command line to run diffe
 
 ```bash
 # HPRC v2.0 CHM13 — full pipeline including genotyping
-make paths deconstruct genotype split-vcf plots call-plots \
+make paths deconstruct genotype surject split-vcf plots call-plots \
   EXEC_MODE=slurm \
   REF=CHM13 \
   VG='/path/to/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.chroms/!(*.d9).vg' \
@@ -125,7 +140,7 @@ make paths deconstruct genotype split-vcf plots call-plots \
   REFGAPS_BED=data/hprc-v2.0-mc-chm13.refgaps.bed
 
 # HPRC v2.0 GRCh38 — full pipeline including genotyping
-make paths deconstruct genotype split-vcf plots call-plots \
+make paths deconstruct genotype surject split-vcf plots call-plots \
   EXEC_MODE=slurm \
   REF=GRCh38 \
   VG='/path/to/hprc-v2.0-mc-grch38/hprc-v2.0-mc-grch38.chroms/!(*.d9).vg' \
@@ -158,6 +173,8 @@ output/v2-chm13/
 ├── hprc-v2.0-mc-chm13.nested.95.offref.vcf.gz     # off-reference variants
 ├── hprc-v2.0-mc-chm13.nested.95.offref.png        # deconstruct density ideogram
 ├── HG002.gam                                       # read alignments (genotype)
+├── HG002.bam                                       # surjected alignments (sorted BAM)
+├── HG002.bam.bai                                   # BAM index
 ├── HG002.pack                                      # coverage pileup
 ├── HG002.vcf.gz                                    # genotyped VCF (vg call)
 └── HG002.call-density.png                          # genotyped density ideogram
@@ -217,6 +234,7 @@ nested-variants/
 │   ├── paths.sh                VG → GBZ (augmented reference paths)
 │   ├── deconstruct.sh          GBZ → VCF (vg deconstruct)
 │   ├── giraffe.sh              GBZ + reads → GAM (vg giraffe)
+│   ├── surject.sh              GAM → sorted BAM (vg surject)
 │   ├── call.sh                 GBZ + GAM → VCF (vg call)
 │   ├── split-ref.sh            VCF → onref/nestedref/offref VCFs
 │   ├── offref-length-hist.R    Size distribution histograms

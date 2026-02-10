@@ -30,6 +30,7 @@ ONREF     := $(OUT_DIR)/$(OUT_NAME).onref.vcf.gz
 NESTEDREF := $(OUT_DIR)/$(OUT_NAME).nestedref.vcf.gz
 OFFREF    := $(OUT_DIR)/$(OUT_NAME).offref.vcf.gz
 PLOT      := $(OUT_DIR)/$(OUT_NAME).offref.png
+BAM       := $(OUT_DIR)/$(SAMPLE).bam
 CALL_VCF  := $(OUT_DIR)/$(SAMPLE).vcf.gz
 CALL_PLOT := $(OUT_DIR)/$(SAMPLE).call-density.png
 
@@ -60,7 +61,7 @@ SCRIPTS := $(CURDIR)/scripts
 # Top-level targets
 ############################################################################
 
-.PHONY: all analysis paths deconstruct genotype split-vcf plots call-plots test clean help
+.PHONY: all analysis paths deconstruct genotype surject split-vcf plots call-plots test clean help
 
 all: analysis
 
@@ -112,6 +113,19 @@ $(OUT_DIR)/$(SAMPLE).vcf.gz: $(OUT_DIR)/$(SAMPLE).gam $(GBZ) scripts/call.sh
 		--out-name $(SAMPLE).vcf.gz \
 		$(SLURM_OPTS) $(EXEC_FLAG)
 
+## surject: GAM → sorted BAM via vg surject (onto augmented reference paths)
+surject: $(BAM)
+
+$(BAM): $(OUT_DIR)/$(SAMPLE).gam $(GBZ) scripts/surject.sh
+	$(SCRIPTS)/surject.sh \
+		--gbz $(GBZ) \
+		--gam $(OUT_DIR)/$(SAMPLE).gam \
+		--ref $(AUGREF) \
+		--sample $(SAMPLE) \
+		--out-dir $(OUT_DIR) \
+		--out-name $(SAMPLE).bam \
+		$(SLURM_OPTS) $(EXEC_FLAG)
+
 ## split-vcf: VCF → onref / nestedref / offref VCFs
 split-vcf: $(OFFREF)
 
@@ -153,6 +167,7 @@ help:
 	@echo "  paths        VG → GBZ (augmented reference paths)"
 	@echo "  deconstruct  GBZ → VCF (vg deconstruct)"
 	@echo "  genotype     GBZ + reads → GAM → sample VCF (requires READS, HAPL, SAMPLE, MAP_GBZ)"
+	@echo "  surject      GAM → sorted BAM (requires SAMPLE; uses augmented GBZ)"
 	@echo "  split-vcf    VCF → onref / nestedref / offref VCFs"
 	@echo "  plots        offref VCF → chromosome density ideogram"
 	@echo "  call-plots   genotyped VCF → chromosome density ideogram (requires SAMPLE)"
