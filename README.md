@@ -153,7 +153,7 @@ Each rule has built-in defaults that are used when neither `{rule}_cpus`/`{rule}
 | `surject` | 128 | 512 | GAM → BAM projection |
 | `call` | 128 | 512 | Variant calling |
 | `deepvariant` | 128 | 512 | Deep learning variant calling |
-| `fasta` | 8 | 80 | Reference extraction |
+| `fasta` | 128 | 512 | Reference extraction |
 
 Override per-rule: `--config giraffe_cpus=64 giraffe_mem_gb=256`
 

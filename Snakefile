@@ -60,7 +60,19 @@ rule all:
         f"{OUT_DIR}/{OUT_NAME}.variant-types.png",
         f"{OUT_DIR}/{OUT_NAME}.size-dist.png",
         f"{OUT_DIR}/{OUT_NAME}.af-spectrum.png",
-        # merged genotyping + deepvariant outputs
+        # per-sample genotyping outputs
+        expand("{out}/{s}.vcf.gz", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.call-offref.png", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.call.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.call.variant-types.png", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.call.size-dist.png", out=OUT_DIR, s=SAMPLES),
+        # per-sample deepvariant outputs
+        expand("{out}/{s}.deepvariant.vcf.gz", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.dv-offref.png", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.dv.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.dv.variant-types.png", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.dv.size-dist.png", out=OUT_DIR, s=SAMPLES),
+        # merged outputs
         f"{OUT_DIR}/merged.call.vcf.gz",
         f"{OUT_DIR}/merged.deepvariant.vcf.gz",
         f"{OUT_DIR}/merged.call-offref.png",
@@ -102,6 +114,10 @@ rule deepvariant_all:
         expand("{out}/{s}.dv.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES),
         expand("{out}/{s}.dv.variant-types.png", out=OUT_DIR, s=SAMPLES),
         expand("{out}/{s}.dv.size-dist.png", out=OUT_DIR, s=SAMPLES),
+
+# Resolve ambiguity: {sample}.deepvariant.vcf.gz matches both deepvariant
+# (sample=X) and call (sample=X.deepvariant). Prefer deepvariant.
+ruleorder: deepvariant > call
 
 ############################################################################
 # Graph construction rules (run once)
@@ -193,12 +209,12 @@ rule fasta:
         f"{OUT_DIR}/{OUT_NAME}.gbz",
     output:
         f"{OUT_DIR}/{OUT_NAME}.fa.gz",
-    threads: rule_cpus("fasta", 8)
+    threads: rule_cpus("fasta", 128)
     resources:
-        mem_mb=rule_mem_gb("fasta", 80) * 1024,
+        mem_mb=rule_mem_gb("fasta", 512) * 1024,
         runtime=rule_runtime("fasta"),
     params:
-        mem_gb=rule_mem_gb("fasta", 80),
+        mem_gb=rule_mem_gb("fasta", 512),
     shell:
         "scripts/fasta.sh"
         " --gbz {input}"

@@ -208,12 +208,13 @@ kmc -k29 -m${MEM_NUM} -okff -t${CPUS} -hp "@\${LOCAL_READS}" "\${WORK_TMPDIR}/${
   -Z "\${WORK_TMPDIR}/${GBZ_BASE}" \\
   --haplotype-name "\${WORK_TMPDIR}/${HAPL_BASE}" \\
   --kff-name "\${WORK_TMPDIR}/${SAMPLE}.kff" \\
-  --index-basename "${OUTPUT_DIR}/${OUTPUT_NAME%.gam}" \\
+  --index-basename "\${WORK_TMPDIR}/${SAMPLE}" \\
   -N ${SAMPLE} \$FASTQ_ARGS > "${GAM}"
 
 # Cleanup staged files and downloads
 rm -f "\${WORK_TMPDIR}/${GBZ_BASE}" "\${WORK_TMPDIR}/${HAPL_BASE}" \\
-  "\${WORK_TMPDIR}/${SAMPLE}.kff" "\${WORK_TMPDIR}/${SAMPLE}.kff.kmc_pre" "\${WORK_TMPDIR}/${SAMPLE}.kff.kmc_suf"
+  "\${WORK_TMPDIR}/${SAMPLE}.kff" "\${WORK_TMPDIR}/${SAMPLE}.kff.kmc_pre" "\${WORK_TMPDIR}/${SAMPLE}.kff.kmc_suf" \\
+  "\${WORK_TMPDIR}/${SAMPLE}.dist" "\${WORK_TMPDIR}/${SAMPLE}.min"
 while IFS= read -r fq; do
   case "\$fq" in "\${WORK_TMPDIR}"/*) rm -f "\$fq" ;; esac
 done < "\${LOCAL_READS}"
