@@ -10,26 +10,29 @@ Usage: $(basename "$0") [OPTIONS] -v VCF_FILE -p PREFIX
 Split a VCF file into three categories: on-reference, nested-reference, and off-reference variants.
 Outputs are generated in parallel and placed in the current directory.
 
+Augmented reference contigs follow the naming convention from vg's augref system:
+  - On-reference contigs:  PREFIX#0#chr1, PREFIX#0#chr2, ...
+  - Off-reference contigs: PREFIX#0#chr1_42_alt, PREFIX#0#chr2_7_alt, ...
+Off-reference (alt) contigs are identified by the "_alt" suffix (matching vg's is_augref_name()).
+
 Required arguments:
     -v, --vcf FILE      Input VCF file (can be in any directory, must end in .vcf.gz)
-    -p, --prefix STR    Reference sample name used to distinguish on-reference from
-                        off-reference variants. Contigs starting with this prefix are
-                        considered on-reference (e.g., 'GRCh38', 'CHM13')
+    -p, --prefix STR    Augmented reference sample name (e.g., 'augref_CHM13')
 
 Optional arguments:
     -t, --threads NUM   Number of threads for bgzip compression (default: 3)
     -h, --help          Display this help message and exit
 
 Output files (created in current directory):
-    <basename>.onref.vcf.gz        Variants on reference (contigs starting with PREFIX)
-    <basename>.nestedref.vcf.gz    Nested reference variants (contigs starting with PREFIX, LV>0)
-    <basename>.offref.vcf.gz       Variants off reference (contigs NOT starting with PREFIX)
+    <basename>.onref.vcf.gz        Variants on reference contigs (no _alt suffix)
+    <basename>.nestedref.vcf.gz    Nested reference variants (on-ref contigs with LV>0)
+    <basename>.offref.vcf.gz       Variants on off-reference (alt) contigs (_alt suffix)
 
 Each output file is automatically indexed with tabix.
 
 Examples:
-    $(basename "$0") -v /path/to/file.vcf.gz -p CHM13
-    $(basename "$0") --vcf data/variants.vcf.gz --prefix GRCh38 --threads 4
+    $(basename "$0") -v /path/to/file.vcf.gz -p augref_CHM13
+    $(basename "$0") --vcf data/variants.vcf.gz --prefix augref_GRCh38 --threads 4
 
 EOF
     exit 0
@@ -104,10 +107,14 @@ echo "Output basename: $BASENAME"
 echo "Compression threads: $THREADS"
 echo "Generating outputs in parallel..."
 
-# Function to generate onref output
+# Alt contig detection: contigs ending with _{N}_alt (matching vg's is_augref_name())
+# The grep pattern matches a tab-separated CHROM field ending in _<digits>_alt
+ALT_PATTERN='_[0-9]\+_alt	'
+
+# Function to generate onref output (contigs that do NOT end with _alt)
 generate_onref() {
     local vcf=$1
-    local prefix=$2
+    local pattern=$2
     local threads=$3
     local basename=$4
 
@@ -115,16 +122,16 @@ generate_onref() {
     echo "  [onref] Starting: $out_name"
 
     bcftools view "$vcf" -h | bgzip --threads "$threads" > "$out_name"
-    bcftools view "$vcf" -H | grep "^${prefix}" | bgzip --threads "$threads" >> "$out_name"
+    bcftools view "$vcf" -H | { grep -v "${pattern}" || true; } | bgzip --threads "$threads" >> "$out_name"
     tabix -fp vcf "$out_name"
 
     echo "  [onref] Complete: $out_name"
 }
 
-# Function to generate nestedref output
+# Function to generate nestedref output (on-ref contigs with LV>0)
 generate_nestedref() {
     local vcf=$1
-    local prefix=$2
+    local pattern=$2
     local threads=$3
     local basename=$4
 
@@ -132,16 +139,16 @@ generate_nestedref() {
     echo "  [nestedref] Starting: $out_name"
 
     bcftools view "$vcf" -h | bgzip --threads "$threads" > "$out_name"
-    bcftools view "$vcf" -H -i "LV>0" | grep "^${prefix}" | bgzip --threads "$threads" >> "$out_name"
+    bcftools view "$vcf" -H -i "LV>0" | { grep -v "${pattern}" || true; } | bgzip --threads "$threads" >> "$out_name"
     tabix -fp vcf "$out_name"
 
     echo "  [nestedref] Complete: $out_name"
 }
 
-# Function to generate offref output
+# Function to generate offref output (contigs ending with _alt)
 generate_offref() {
     local vcf=$1
-    local prefix=$2
+    local pattern=$2
     local threads=$3
     local basename=$4
 
@@ -149,7 +156,7 @@ generate_offref() {
     echo "  [offref] Starting: $out_name"
 
     bcftools view "$vcf" -h | bgzip --threads "$threads" > "$out_name"
-    bcftools view "$vcf" -H | grep -v "^${prefix}" | bgzip --threads "$threads" >> "$out_name"
+    bcftools view "$vcf" -H | { grep "${pattern}" || true; } | bgzip --threads "$threads" >> "$out_name"
     tabix -fp vcf "$out_name"
 
     echo "  [offref] Complete: $out_name"
@@ -159,13 +166,13 @@ generate_offref() {
 export -f generate_onref generate_nestedref generate_offref
 
 # Run all three processes in parallel
-generate_onref "$VCF" "$PREFIX" "$THREADS" "$BASENAME" &
+generate_onref "$VCF" "$ALT_PATTERN" "$THREADS" "$BASENAME" &
 PID1=$!
 
-generate_nestedref "$VCF" "$PREFIX" "$THREADS" "$BASENAME" &
+generate_nestedref "$VCF" "$ALT_PATTERN" "$THREADS" "$BASENAME" &
 PID2=$!
 
-generate_offref "$VCF" "$PREFIX" "$THREADS" "$BASENAME" &
+generate_offref "$VCF" "$ALT_PATTERN" "$THREADS" "$BASENAME" &
 PID3=$!
 
 # Wait for all background processes to complete
