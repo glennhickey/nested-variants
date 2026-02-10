@@ -148,24 +148,23 @@ set -x
 
 mkdir -p "$OUTPUT_DIR"
 
-VCF="${OUTPUT_DIR}/${OUTPUT_NAME}"
-
-# Resolve absolute paths for Docker bind mounts
-REF_DIR="$(cd "$(dirname "$REF")" && pwd)"
-BAM_DIR="$(cd "$(dirname "$BAM")" && pwd)"
-OUT_DIR="$(cd "$OUTPUT_DIR" && pwd)"
+# Resolve all paths to absolute for Docker bind mounts and container args
+REF_ABS="$(cd "$(dirname "$REF")" && pwd)/$(basename "$REF")"
+BAM_ABS="$(cd "$(dirname "$BAM")" && pwd)/$(basename "$BAM")"
+OUT_ABS="$(cd "$OUTPUT_DIR" && pwd)"
+VCF_ABS="${OUT_ABS}/${OUTPUT_NAME}"
 
 # Build the command to run
 CMD="/usr/bin/time -v docker run \
-  -v \"${REF_DIR}\":\"${REF_DIR}\" \
-  -v \"${BAM_DIR}\":\"${BAM_DIR}\" \
-  -v \"${OUT_DIR}\":\"${OUT_DIR}\" \
+  -v \"$(dirname "${REF_ABS}")\":\"$(dirname "${REF_ABS}")\" \
+  -v \"$(dirname "${BAM_ABS}")\":\"$(dirname "${BAM_ABS}")\" \
+  -v \"${OUT_ABS}\":\"${OUT_ABS}\" \
   google/deepvariant:${DV_VERSION} \
   /opt/deepvariant/bin/run_deepvariant \
   --model_type=WGS \
-  --ref=\"${REF}\" \
-  --reads=\"${BAM}\" \
-  --output_vcf=\"${VCF}\" \
+  --ref=\"${REF_ABS}\" \
+  --reads=\"${BAM_ABS}\" \
+  --output_vcf=\"${VCF_ABS}\" \
   --num_shards=${CPUS} \
   --sample_name=\"${SAMPLE}\" \
   --make_examples_extra_args=\"min_mapping_quality=0,keep_legacy_allele_counter_behavior=true,normalize_reads=true\""

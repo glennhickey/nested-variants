@@ -8,7 +8,7 @@ End-to-end test of the nested-variants pipeline on *S. cerevisiae* chromosome I.
 - samtools / bgzip / tabix
 - bcftools (for `make split-vcf`)
 - Docker (for `make deepvariant`, optional)
-- R + karyoploteR (for `make plots` / `make call-plots`, optional)
+- R + ggplot2, data.table, dplyr, scales (for `make plots` / `make call-plots` / `make dv-plots`, optional)
 
 All commands below are run from the **repository root** (`nested-variants/`).
 
@@ -42,7 +42,8 @@ printf '%s\n' \
 
 ```bash
 make paths haplotypes deconstruct split-vcf \
-     genotype surject fasta deepvariant call-plots \
+     length-hist plots \
+     genotype surject fasta deepvariant call-plots dv-plots \
   VG=yeast-test/chrI.vg \
   REF=S288C \
   OUT_DIR=yeast-test/output \
@@ -65,16 +66,19 @@ yeast-test/output/
 ├── chrI.nested.onref.vcf.gz          # on-reference variants
 ├── chrI.nested.nestedref.vcf.gz      # nested-reference variants
 ├── chrI.nested.offref.vcf.gz         # off-reference variants
+├── chrI.nested.augref-length-hist.png # augref segment length histogram
+├── chrI.nested.offref.png            # offref density ideogram
 ├── chrI.nested.fa.gz                 # augmented reference FASTA (bgzipped)
 ├── chrI.nested.fa.gz.fai             # FASTA index
 ├── chrI.nested.fa.gz.gzi             # bgzip index
-├── sim_yeast.gam                     # read alignments
-├── sim_yeast.bam                     # surjected BAM
-├── sim_yeast.bam.bai                 # BAM index
-├── sim_yeast.pack                    # coverage pileup
-├── sim_yeast.vcf.gz                  # genotyped VCF (vg call)
-├── sim_yeast.deepvariant.vcf.gz      # DeepVariant VCF
-└── sim_yeast.call-density.png        # genotyped density ideogram
+├── SK1.gam                     # read alignments
+├── SK1.bam                     # surjected BAM
+├── SK1.bam.bai                 # BAM index
+├── SK1.pack                    # coverage pileup
+├── SK1.vcf.gz                  # genotyped VCF (vg call)
+├── SK1.deepvariant.vcf.gz      # DeepVariant VCF
+├── SK1.call-offref.png         # call off-reference density
+└── SK1.dv-offref.png           # DeepVariant off-reference density
 ```
 
 ## Clean up

@@ -126,15 +126,15 @@ if (cumulative) {
   }))
 
   p <- ggplot(df_cumulative, aes(x = value, y = count, color = dataset)) +
-    geom_step(linewidth = 1.2, alpha = 0.8, direction = "vh") +
+    geom_line(linewidth = 0.8, alpha = 0.8) +
+    geom_point(size = 1.5, alpha = 0.6) +
     scale_x_log10(labels = scales::comma,
                   breaks = scales::breaks_log(n = 10)) +
-    scale_y_log10(labels = scales::comma,
-                  breaks = scales::breaks_log(n = 10)) +
+    scale_y_continuous(labels = scales::comma) +
     scale_color_manual(values = color_map) +
     labs(title = "Off-Reference Interval Lengths (Cumulative Count)",
-         x = "Value (log scale)",
-         y = "Count >= Value (log scale)",
+         x = "Length (log scale)",
+         y = expression("Count " >= " Length"),
          color = "Dataset") +
     theme_minimal()
 } else {

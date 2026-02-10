@@ -32,9 +32,13 @@ OFFREF    := $(OUT_DIR)/$(OUT_NAME).offref.vcf.gz
 PLOT      := $(OUT_DIR)/$(OUT_NAME).offref.png
 BAM       := $(OUT_DIR)/$(SAMPLE).bam
 FASTA     := $(OUT_DIR)/$(OUT_NAME).fa.gz
+HAPL_INDEX := $(OUT_DIR)/$(OUT_NAME).hapl
 CALL_VCF  := $(OUT_DIR)/$(SAMPLE).vcf.gz
 DV_VCF    := $(OUT_DIR)/$(SAMPLE).deepvariant.vcf.gz
-CALL_PLOT := $(OUT_DIR)/$(SAMPLE).call-density.png
+AUGREF_SEGS := $(OUT_DIR)/$(OUT_NAME).augref-segs.tsv
+LENGTH_HIST := $(OUT_DIR)/$(OUT_NAME).augref-length-hist.png
+CALL_PLOT  := $(OUT_DIR)/$(SAMPLE).call-offref.png
+DV_PLOT    := $(OUT_DIR)/$(SAMPLE).dv-offref.png
 
 # Build SLURM option flags
 SLURM_OPTS := --cpus $(CPUS) --mem $(MEM) --time $(TIME) --partition $(PARTITION)
@@ -63,7 +67,7 @@ SCRIPTS := $(CURDIR)/scripts
 # Top-level targets
 ############################################################################
 
-.PHONY: all analysis paths deconstruct genotype surject fasta deepvariant split-vcf plots call-plots test clean help
+.PHONY: all analysis paths deconstruct genotype surject haplotypes fasta deepvariant split-vcf length-hist plots call-plots dv-plots test clean help
 
 all: analysis
 
@@ -128,6 +132,17 @@ $(BAM): $(OUT_DIR)/$(SAMPLE).gam $(GBZ) scripts/surject.sh
 		--out-name $(SAMPLE).bam \
 		$(SLURM_OPTS) $(EXEC_FLAG)
 
+## haplotypes: GBZ → .hapl index for giraffe haplotype-aware mapping
+haplotypes: $(HAPL_INDEX)
+
+$(HAPL_INDEX): $(GBZ) scripts/haplotypes.sh
+	$(SCRIPTS)/haplotypes.sh \
+		--gbz $(GBZ) \
+		--ref $(REF) \
+		--out-dir $(OUT_DIR) \
+		--out-name $(OUT_NAME).hapl \
+		$(SLURM_OPTS) $(EXEC_FLAG)
+
 ## fasta: GBZ → augmented reference FASTA
 fasta: $(FASTA)
 
@@ -158,23 +173,39 @@ split-vcf: $(OFFREF)
 $(OFFREF): $(VCF) scripts/split-ref.sh
 	cd $(OUT_DIR) && $(SCRIPTS)/split-ref.sh -v $(CURDIR)/$(VCF) -p $(AUGREF)
 
-## plots: offref VCF → density ideogram PNG
+## length-hist: augref segment table → length histogram PNG
+length-hist: $(LENGTH_HIST)
+
+$(LENGTH_HIST): $(AUGREF_SEGS) scripts/offref-length-hist.R
+	Rscript $(SCRIPTS)/offref-length-hist.R \
+		$(LENGTH_HIST) $(AUGREF_SEGS) TRUE
+
+## plots: deconstruct VCF → off-reference density ideogram PNG
 plots: $(PLOT)
 
-$(PLOT): $(OFFREF) scripts/chrom-density-vcf.R
-	Rscript $(SCRIPTS)/chrom-density-vcf.R \
-		$(OFFREF) $(PLOT) \
-		"$(REF) Off-Reference Variant Density (>=$(MIN_LENGTH)bp)" \
-		$(MIN_LENGTH) $(BED_FLAG) $(SCALE_TYPE)
+$(PLOT): $(VCF) $(AUGREF_SEGS) scripts/chrom-density-segs.R
+	Rscript $(SCRIPTS)/chrom-density-segs.R \
+		$(VCF) $(AUGREF_SEGS) $(PLOT) \
+		"$(REF) Off-Reference Variant Density" \
+		0 $(BED_FLAG) $(SCALE_TYPE) --ref $(REF) --offref
 
-## call-plots: genotyped VCF → density ideogram PNG
+## call-plots: genotyped VCF → off-reference density ideogram PNG
 call-plots: $(CALL_PLOT)
 
-$(CALL_PLOT): scripts/chrom-density-call.R
-	Rscript $(SCRIPTS)/chrom-density-call.R \
-		$(CALL_VCF) $(CALL_PLOT) \
-		"$(REF) Genotyped Variant Density ($(SAMPLE))" \
-		0 $(BED_FLAG) $(SCALE_TYPE) --ref $(REF)
+$(CALL_PLOT): $(AUGREF_SEGS) scripts/chrom-density-segs.R
+	Rscript $(SCRIPTS)/chrom-density-segs.R \
+		$(CALL_VCF) $(AUGREF_SEGS) $(CALL_PLOT) \
+		"$(REF) Call Off-Reference Density ($(SAMPLE))" \
+		0 $(BED_FLAG) $(SCALE_TYPE) --ref $(REF) --offref
+
+## dv-plots: DeepVariant VCF → off-reference density ideogram PNG
+dv-plots: $(DV_PLOT)
+
+$(DV_PLOT): $(AUGREF_SEGS) scripts/chrom-density-segs.R
+	Rscript $(SCRIPTS)/chrom-density-segs.R \
+		$(DV_VCF) $(AUGREF_SEGS) $(DV_PLOT) \
+		"$(REF) DeepVariant Off-Reference Density ($(SAMPLE))" \
+		0 $(BED_FLAG) $(SCALE_TYPE) --ref $(REF) --offref
 
 ## test: run shellcheck and help-flag tests
 test: test/test-pipeline.sh
@@ -194,11 +225,14 @@ help:
 	@echo "  deconstruct  GBZ → VCF (vg deconstruct)"
 	@echo "  genotype     GBZ + reads → GAM → sample VCF (requires READS, HAPL, SAMPLE, MAP_GBZ)"
 	@echo "  surject      GAM → sorted BAM (requires SAMPLE; uses augmented GBZ)"
+	@echo "  haplotypes   GBZ → .hapl index for giraffe haplotype-aware mapping"
 	@echo "  fasta        GBZ → augmented reference FASTA (requires paths output)"
 	@echo "  deepvariant  BAM + FASTA → VCF via DeepVariant Docker (requires surject, fasta)"
 	@echo "  split-vcf    VCF → onref / nestedref / offref VCFs"
-	@echo "  plots        offref VCF → chromosome density ideogram"
-	@echo "  call-plots   genotyped VCF → chromosome density ideogram (requires SAMPLE)"
+	@echo "  length-hist        augref segments → length histogram"
+	@echo "  plots              offref VCF → chromosome density ideogram"
+	@echo "  call-plots         genotyped VCF → off-reference density ideogram (requires SAMPLE)"
+	@echo "  dv-plots           DeepVariant VCF → off-reference density ideogram (requires SAMPLE)"
 	@echo "  analysis     split-vcf + plots"
 	@echo "  test         Run shellcheck and help-flag tests"
 	@echo "  clean        Remove output directory"

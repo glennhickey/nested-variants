@@ -27,7 +27,7 @@ cp ~/dev/work/test-altpaths-chr20/chr20.vg data/
 make paths          # VG → GBZ
 make deconstruct    # GBZ → VCF
 make split-vcf      # VCF → onref / nestedref / offref
-make plots          # offref VCF → ideogram PNG
+make plots          # VCF → off-reference density ideogram
 # or simply:
 make all            # runs split-vcf + plots (requires deconstruct output)
 ```
@@ -171,7 +171,8 @@ Override `VG`, `REF`, `OUT_DIR`, and `OUT_NAME` on the command line to run diffe
 
 ```bash
 # HPRC v2.0 CHM13 — full pipeline including genotyping + DeepVariant
-make paths deconstruct genotype surject fasta deepvariant split-vcf plots call-plots \
+make paths deconstruct split-vcf length-hist plots \
+     genotype surject fasta deepvariant call-plots dv-plots \
   EXEC_MODE=slurm \
   REF=CHM13 \
   VG='/path/to/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.chroms/!(*.d9).vg' \
@@ -184,7 +185,8 @@ make paths deconstruct genotype surject fasta deepvariant split-vcf plots call-p
   REFGAPS_BED=data/hprc-v2.0-mc-chm13.refgaps.bed
 
 # HPRC v2.0 GRCh38 — full pipeline including genotyping + DeepVariant
-make paths deconstruct genotype surject fasta deepvariant split-vcf plots call-plots \
+make paths deconstruct split-vcf length-hist plots \
+     genotype surject fasta deepvariant call-plots dv-plots \
   EXEC_MODE=slurm \
   REF=GRCh38 \
   VG='/path/to/hprc-v2.0-mc-grch38/hprc-v2.0-mc-grch38.chroms/!(*.d9).vg' \
@@ -197,7 +199,7 @@ make paths deconstruct genotype surject fasta deepvariant split-vcf plots call-p
   REFGAPS_BED=data/hprc-v2.0-mc-grch38.refgaps.bed
 
 # HPRC v1.1 CHM13 — without genotyping
-make paths deconstruct split-vcf plots \
+make paths deconstruct split-vcf length-hist plots \
   EXEC_MODE=slurm \
   REF=CHM13 \
   VG='/path/to/hprc-v1.1-mc-chm13/hprc-v1.1-mc-chm13.chroms/!(*.d9).vg' \
@@ -209,23 +211,26 @@ make paths deconstruct split-vcf plots \
 Each run gets its own output directory with the full set of outputs:
 ```
 output/v2-chm13/
-├── hprc-v2.0-mc-chm13.nested.95.gbz              # augmented reference graph
+├── hprc-v2.0-mc-chm13.nested.95.gbz               # augmented reference graph
+├── hprc-v2.0-mc-chm13.nested.95.gfa.gz            # augmented GFA
 ├── hprc-v2.0-mc-chm13.nested.95.augref-segs.tsv   # augref segment table
 ├── hprc-v2.0-mc-chm13.nested.95.vcf.gz            # nested VCF (deconstruct)
 ├── hprc-v2.0-mc-chm13.nested.95.onref.vcf.gz      # on-reference variants
 ├── hprc-v2.0-mc-chm13.nested.95.nestedref.vcf.gz  # nested-reference variants
 ├── hprc-v2.0-mc-chm13.nested.95.offref.vcf.gz     # off-reference variants
-├── hprc-v2.0-mc-chm13.nested.95.offref.png        # deconstruct density ideogram
+├── hprc-v2.0-mc-chm13.nested.95.augref-length-hist.png  # segment length histogram
+├── hprc-v2.0-mc-chm13.nested.95.offref.png        # off-reference density ideogram
+├── hprc-v2.0-mc-chm13.nested.95.fa.gz             # augmented reference FASTA (bgzipped)
+├── hprc-v2.0-mc-chm13.nested.95.fa.gz.fai         # FASTA index
+├── hprc-v2.0-mc-chm13.nested.95.fa.gz.gzi         # bgzip index
 ├── HG002.gam                                       # read alignments (genotype)
 ├── HG002.bam                                       # surjected alignments (sorted BAM)
 ├── HG002.bam.bai                                   # BAM index
-├── hprc-v2.0-mc-chm13.nested.95.fa.gz               # augmented reference FASTA (bgzipped)
-├── hprc-v2.0-mc-chm13.nested.95.fa.gz.fai           # FASTA index
-├── hprc-v2.0-mc-chm13.nested.95.fa.gz.gzi           # bgzip index
-├── HG002.deepvariant.vcf.gz                        # DeepVariant VCF
 ├── HG002.pack                                      # coverage pileup
 ├── HG002.vcf.gz                                    # genotyped VCF (vg call)
-└── HG002.call-density.png                          # genotyped density ideogram
+├── HG002.deepvariant.vcf.gz                        # DeepVariant VCF
+├── HG002.call-offref.png                           # call off-reference density
+└── HG002.dv-offref.png                             # DeepVariant off-reference density
 ```
 
 ### Genotyping a sample
@@ -233,7 +238,7 @@ output/v2-chm13/
 To genotype a sample against the augmented reference and plot the results:
 
 ```bash
-make genotype call-plots \
+make genotype surject fasta deepvariant call-plots dv-plots \
   EXEC_MODE=slurm \
   REF=CHM13 \
   OUT_DIR=output/v2-chm13 \
@@ -290,9 +295,7 @@ nested-variants/
 │   ├── split-ref.sh            VCF → onref/nestedref/offref VCFs
 │   ├── offref-length-hist.R    Size distribution histograms
 │   ├── chrom-density-common.R  Shared ideogram plotting code
-│   ├── chrom-density-tsv.R     Ideogram from TSV nesting files
-│   ├── chrom-density-vcf.R     Ideogram from VCF INFO fields
-│   └── chrom-density-call.R    Ideogram from genotyped VCF (vg call)
+│   └── chrom-density-segs.R    Off-reference density ideogram (VCF + segments table)
 ├── annotation/
 │   ├── download-hprc-annotations.py
 │   └── intersect-annotations.py

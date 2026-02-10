@@ -83,9 +83,9 @@ filter_standard_chroms <- function(data, ref = NULL) {
 #' @param data data.table with chromosome, ref_start, ref_length columns
 #' @param chrom_lengths data.frame with chromosome, length columns (or NULL for auto)
 #' @param chrom_levels character vector of ordered chromosome names
-#' @param bin_size Bin size in bp (default 1e6)
+#' @param bin_size Bin size in bp, or NULL for auto-scale (~200 bins across longest chrom, capped at 1 Mb)
 #' @return data.frame ready for plotting with bin_start, bin_end, count, total_bp, length
-compute_density_bins <- function(data, chrom_lengths, chrom_levels, bin_size = 1e6) {
+compute_density_bins <- function(data, chrom_lengths, chrom_levels, bin_size = NULL) {
   data_dt <- as.data.table(data)
 
   # If no chrom_lengths provided, compute from data
@@ -94,6 +94,13 @@ compute_density_bins <- function(data, chrom_lengths, chrom_levels, bin_size = 1
                              by = chromosome]
   }
   chrom_lengths_dt <- as.data.table(chrom_lengths)
+
+  # Auto-scale bin size if not specified: ~200 bins across longest chrom, capped at 1 Mb
+  if (is.null(bin_size)) {
+    max_len <- max(chrom_lengths_dt$length, na.rm = TRUE)
+    bin_size <- min(1e6, max(1000, ceiling(max_len / 200)))
+    cat("Auto-scaled bin size:", format(bin_size, big.mark = ","), "bp\n")
+  }
 
   # Bin by ref_start position
   data_dt[, bin := floor(ref_start / bin_size)]

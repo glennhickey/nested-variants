@@ -2,7 +2,7 @@
 
 # Chromosome density plot as ideograms for genotyped VCF (from vg call)
 # Uses CHROM and POS directly — no INFO field extraction needed.
-# Usage: ./chrom-density-call.R <input.vcf.gz> <output.png> [title] [min_length] [bed_file] [scale] [--ref REF]
+# Usage: ./chrom-density-call.R <input.vcf.gz> <output.png> [title] [min_length] [bed_file] [scale] [--ref REF] [--offref]
 
 # Source shared functions (relative to this script's location)
 script_dir <- dirname(normalizePath(commandArgs(trailingOnly = FALSE)[
@@ -21,11 +21,20 @@ if (length(ref_idx) > 0) {
   args <- args[-c(ref_idx, ref_idx + 1)]
 }
 
+# Extract --offref flag if present (keep only alt contigs)
+offref <- FALSE
+offref_idx <- which(args == "--offref")
+if (length(offref_idx) > 0) {
+  offref <- TRUE
+  args <- args[-offref_idx]
+}
+
 if (length(args) < 2) {
-  cat("Usage: ./chrom-density-call.R <input.vcf.gz> <output.png> [title] [min_length] [bed_file] [scale] [--ref REF]\n")
-  cat("Example: ./chrom-density-call.R call.vcf.gz density.png \"Genotyped Variants\" 0 refgaps.bed log1p --ref CHM13\n")
-  cat("\nPlots variant density from a genotyped VCF (vg call output) using CHROM/POS.\n")
+  cat("Usage: ./chrom-density-call.R <input.vcf.gz> <output.png> [title] [min_length] [bed_file] [scale] [--ref REF] [--offref]\n")
+  cat("Example: ./chrom-density-call.R call.vcf.gz density.png \"Genotyped Variants\" 0 refgaps.bed log1p --ref CHM13 --offref\n")
+  cat("\nPlots variant density from a VCF using CHROM/POS.\n")
   cat("Variants on alt contigs (e.g. chr20_123_alt) are mapped back to the parent chromosome.\n")
+  cat("  --offref   Keep only variants on alt contigs (CHROM contains '_alt')\n")
   cat("Scale options: log1p (default), sqrt, log, identity (linear)\n")
   cat("Ref options: CHM13, GRCh38, or omit for auto-detect\n")
   quit(status = 1)
@@ -48,6 +57,16 @@ vcf_data <- fread(cmd = paste0("zcat ", input_vcf, " | grep -v '^#'"),
                   showProgress = TRUE)
 
 cat("Read", nrow(vcf_data), "VCF variants\n")
+
+# Filter to off-reference (alt) contigs if requested
+if (offref) {
+  vcf_data <- vcf_data[grepl("_alt$", chrom)]
+  cat("Filtered to", nrow(vcf_data), "off-reference (alt contig) variants\n")
+  if (nrow(vcf_data) == 0) {
+    cat("ERROR: No off-reference variants found\n")
+    quit(status = 1)
+  }
+}
 
 # Map alt contigs back to parent chromosome
 # e.g. "chr20_123_alt" -> "chr20", "chr1_45_alt" -> "chr1"
