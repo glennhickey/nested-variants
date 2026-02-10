@@ -13,6 +13,17 @@ AUGREF   = f"augref_{REF}"
 OUT_DIR  = config["out_dir"]
 OUT_NAME = config["out_name"]
 
+# Expand VG input glob (supports bash extglob patterns like !(*.d*).vg)
+import subprocess as _sp
+_vg_result = _sp.run(
+    ["bash", "-O", "extglob", "-c", f"echo {config['vg']}"],
+    capture_output=True, text=True
+)
+VG_FILES = sorted(_vg_result.stdout.split())
+if not VG_FILES or VG_FILES == [config["vg"]]:
+    # No expansion happened — treat as literal path
+    VG_FILES = [config["vg"]]
+
 # Load samples from config dict
 SAMPLES = list(config.get("samples", {}).keys())
 
@@ -113,8 +124,10 @@ rule deepvariant_all:
         expand("{out}/{s}.dv.variant-types.png", out=OUT_DIR, s=SAMPLES),
         expand("{out}/{s}.dv.size-dist.png", out=OUT_DIR, s=SAMPLES),
 
-# Resolve ambiguity: {sample}.deepvariant.vcf.gz matches both deepvariant
-# (sample=X) and call (sample=X.deepvariant). Prefer deepvariant.
+# Resolve wildcard ambiguities:
+# - {OUT_NAME}.vcf.gz matches both deconstruct and call (sample={OUT_NAME})
+# - {sample}.deepvariant.vcf.gz matches both deepvariant and call (sample=X.deepvariant)
+ruleorder: deconstruct > call
 ruleorder: deepvariant > call
 
 ############################################################################
@@ -124,7 +137,7 @@ ruleorder: deepvariant > call
 rule paths:
     """VG → GBZ via augmented reference paths"""
     input:
-        ancient(config["vg"]),
+        ancient(VG_FILES),
     output:
         f"{OUT_DIR}/{OUT_NAME}.gbz",
         f"{OUT_DIR}/{OUT_NAME}.gfa.gz",
