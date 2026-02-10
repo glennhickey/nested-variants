@@ -233,7 +233,8 @@ plot_ideogram <- function(density_data, chrom_lengths, bed_data, plot_title, sca
 #' @param data data.frame with chromosome and ref_length columns for summary
 save_and_summarize <- function(p, output_file, data) {
   cat("Saving plot to:", output_file, "\n")
-  ggsave(output_file, p, width = 12, height = 10, dpi = 300, bg = "white")
+  ggsave(output_file, p, width = 12, height = 10, dpi = 300, bg = "white",
+         type = "cairo")
   cat("Done!\n")
 
   cat("\nSummary by chromosome:\n")
