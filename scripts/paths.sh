@@ -203,20 +203,6 @@ done
 
 wait
 
-# Merge all GFA files: first file complete, subsequent files without header
-MERGED="${OUTPUT_DIR}/${OUTPUT_NAME}"
-FIRST=true
-for GFA in "${GFA_FILES[@]}"; do
-    if $FIRST; then
-        # First file: include header
-        zcat "$GFA"
-        FIRST=false
-    else
-        # Subsequent files: skip header (first line)
-        zcat "$GFA" | tail -n +2
-    fi
-done | bgzip > "$MERGED"
-
 # Merge per-chromosome augref segment tables into one file
 SEGS_MERGED="${OUTPUT_DIR}/${OUTPUT_NAME%.gfa.gz}.augref-segs.tsv"
 FIRST=true
@@ -232,18 +218,26 @@ for SEGS in "$WORK_DIR"/*.augref-segs.tsv; do
     fi
 done > "$SEGS_MERGED"
 
-# Clean up temporary working directory
+# Merge per-chromosome GFAs into uncompressed file on scratch (vg gbwt needs a real file)
+WORK_TMPDIR="${TMPDIR:-${OUTPUT_DIR}}"
+MERGED_UNCOMPRESSED="${WORK_TMPDIR}/${OUTPUT_NAME%.gfa.gz}.gfa"
+FIRST=true
+for GFA in "${GFA_FILES[@]}"; do
+    if $FIRST; then
+        zcat "$GFA"
+        FIRST=false
+    else
+        zcat "$GFA" | tail -n +2
+    fi
+done > "$MERGED_UNCOMPRESSED"
+
+# Clean up temporary working directory (per-chromosome GFAs no longer needed)
 rm -rf "$WORK_DIR"
 
 # Convert merged GFA to GBZ format
-GBZ_OUTPUT="${MERGED%.gfa.gz}.gbz"
-MERGED_UNCOMPRESSED="${MERGED%.gz}"
-
-# Decompress GFA for vg gbwt (it needs an actual file, not process substitution)
-zcat "${MERGED}" > "${MERGED_UNCOMPRESSED}"
+GBZ_OUTPUT="${OUTPUT_DIR}/${OUTPUT_NAME%.gfa.gz}.gbz"
 
 if $LOCAL; then
-    # Run locally
     /usr/bin/time -v vg gbwt -G "${MERGED_UNCOMPRESSED}" --gbz-format -g "${GBZ_OUTPUT}"
 else
     CMD="/usr/bin/time -v vg gbwt -G \"${MERGED_UNCOMPRESSED}\" --gbz-format -g \"${GBZ_OUTPUT}\""
@@ -260,5 +254,7 @@ else
         --wrap="$CMD"
 fi
 
-# Clean up uncompressed GFA
+# Compress GFA to final output and clean up uncompressed copy
+MERGED="${OUTPUT_DIR}/${OUTPUT_NAME}"
+bgzip -c "${MERGED_UNCOMPRESSED}" > "$MERGED"
 rm -f "${MERGED_UNCOMPRESSED}"
