@@ -308,6 +308,155 @@ def write_summary(offref_stats, onref_stats, total_offref_bp, total_onref_bp, ou
         sys.stderr.write(f"Grouped summary written to {grouped_output_file}\n")
 
 
+def extract_coordinates_per_segment(nesting_file, offref_bed, onref_bed):
+    """
+    Extract coordinates from nesting TSV as BED4 (with augref_path as name field).
+
+    Args:
+        nesting_file: Path to nesting.tsv file with columns:
+                      offref_contig, offref_start, offref_end, node, onref_contig, onref_start, onref_end
+        offref_bed: Output BED4 file for off-reference coordinates
+        onref_bed: Output BED4 file for on-reference coordinates
+
+    Returns:
+        Tuple of (total_offref_bp, total_onref_bp, num_skipped, segments)
+        where segments is a list of (augref_path, source_len, ref_len) tuples
+    """
+    total_offref_bp = 0
+    total_onref_bp = 0
+    num_skipped = 0
+    segments = []
+
+    with open(nesting_file) as infile, \
+         open(offref_bed, 'w') as offref_out, \
+         open(onref_bed, 'w') as onref_out:
+
+        for line in infile:
+            fields = line.strip().split('\t')
+            if len(fields) < 7:
+                continue
+
+            offref_contig = fields[0]
+            offref_start = int(fields[1])
+            offref_end = int(fields[2])
+            augref_path = fields[3]
+            onref_contig = fields[4]
+            onref_start = int(fields[5])
+            onref_end = int(fields[6])
+
+            if offref_start < 0 or offref_end < 0 or onref_start < 0 or onref_end < 0:
+                num_skipped += 1
+                continue
+            if offref_start >= offref_end or onref_start >= onref_end:
+                num_skipped += 1
+                continue
+
+            offref_out.write(f'{offref_contig}\t{offref_start}\t{offref_end}\t{augref_path}\n')
+            onref_out.write(f'{onref_contig}\t{onref_start}\t{onref_end}\t{augref_path}\n')
+
+            source_len = offref_end - offref_start
+            ref_len = onref_end - onref_start
+            total_offref_bp += source_len
+            total_onref_bp += ref_len
+            segments.append((augref_path, source_len, ref_len))
+
+    return total_offref_bp, total_onref_bp, num_skipped, segments
+
+
+def calculate_per_segment_coverage(coords_bed, annot_bed, group_column=None):
+    """
+    Calculate per-segment overlap with an annotation BED using bedtools intersect -wao.
+
+    Args:
+        coords_bed: BED4 file with coordinates (col 4 = augref_path)
+        annot_bed: Annotation BED file
+        group_column: 1-indexed column in annotation BED to extract class from (e.g., 6 for RepeatMasker)
+
+    Returns:
+        dict: augref_path -> {class -> overlap_bp}
+    """
+    cmd = ['bedtools', 'intersect', '-a', coords_bed, '-b', annot_bed, '-wao']
+    result = subprocess.run(cmd, capture_output=True, text=True)
+
+    if result.returncode != 0:
+        sys.stderr.write(f"bedtools intersect -wao failed: {result.stderr}\n")
+        return {}
+
+    coverage = defaultdict(lambda: defaultdict(int))
+
+    for line in result.stdout.strip().split('\n'):
+        if not line:
+            continue
+        fields = line.split('\t')
+        # BED4 input: chrom, start, end, name, then annotation fields, then overlap_bp at end
+        augref_path = fields[3]
+        overlap_bp = int(fields[-1])
+
+        if overlap_bp > 0 and group_column is not None:
+            # Annotation fields start at index 4 (after the BED4 input fields)
+            annot_col_idx = 4 + (group_column - 1)
+            if annot_col_idx < len(fields) - 1:
+                annot_class = fields[annot_col_idx]
+                coverage[augref_path][annot_class] += overlap_bp
+            else:
+                coverage[augref_path]['unknown'] += overlap_bp
+        elif overlap_bp > 0:
+            coverage[augref_path]['_total'] += overlap_bp
+
+    return dict(coverage)
+
+
+def write_per_segment_summary(segments, source_results, ref_results, annot_names, annot_group_columns, output_file):
+    """
+    Write per-segment annotation overlap summary TSV.
+
+    Args:
+        segments: list of (augref_path, source_len, ref_len) tuples
+        source_results: list of dicts (one per annotation), each: augref_path -> {class -> overlap_bp}
+        ref_results: list of dicts (one per annotation), each: augref_path -> {class -> overlap_bp}
+        annot_names: list of annotation display names
+        annot_group_columns: list of group_column values (None or int) per annotation
+        output_file: output TSV path
+    """
+    with open(output_file, 'w') as out:
+        out.write('augref_path\tsource_len\tref_len\tannotation\tannotation_class\t'
+                  'source_overlap_bp\tsource_overlap_frac\tref_overlap_bp\tref_overlap_frac\n')
+
+        for augref_path, source_len, ref_len in segments:
+            for i, annot_name in enumerate(annot_names):
+                src_cov = source_results[i].get(augref_path, {})
+                ref_cov = ref_results[i].get(augref_path, {})
+                group_col = annot_group_columns[i]
+
+                if group_col is not None:
+                    # Grouped annotation (e.g., repeats): one row per class
+                    all_classes = set(src_cov.keys()) | set(ref_cov.keys())
+                    if not all_classes:
+                        # No overlap at all — single zero row
+                        src_frac = 0.0
+                        ref_frac = 0.0
+                        out.write(f'{augref_path}\t{source_len}\t{ref_len}\t{annot_name}\t{annot_name}\t'
+                                  f'0\t{src_frac:.4f}\t0\t{ref_frac:.4f}\n')
+                    else:
+                        for cls in sorted(all_classes):
+                            src_bp = src_cov.get(cls, 0)
+                            ref_bp = ref_cov.get(cls, 0)
+                            src_frac = min(src_bp / source_len, 1.0) if source_len > 0 else 0.0
+                            ref_frac = min(ref_bp / ref_len, 1.0) if ref_len > 0 else 0.0
+                            out.write(f'{augref_path}\t{source_len}\t{ref_len}\t{annot_name}\t{cls}\t'
+                                      f'{src_bp}\t{src_frac:.4f}\t{ref_bp}\t{ref_frac:.4f}\n')
+                else:
+                    # Ungrouped annotation: single row, annotation_class = annotation name
+                    src_bp = sum(src_cov.values())
+                    ref_bp = sum(ref_cov.values())
+                    src_frac = min(src_bp / source_len, 1.0) if source_len > 0 else 0.0
+                    ref_frac = min(ref_bp / ref_len, 1.0) if ref_len > 0 else 0.0
+                    out.write(f'{augref_path}\t{source_len}\t{ref_len}\t{annot_name}\t{annot_name}\t'
+                              f'{src_bp}\t{src_frac:.4f}\t{ref_bp}\t{ref_frac:.4f}\n')
+
+    sys.stderr.write(f"Per-segment summary written to {output_file}\n")
+
+
 def main(command_line=None):
     parser = argparse.ArgumentParser(
         description='Intersect both off-reference and on-reference coordinates with annotation BED files. Requires: bedtools'
@@ -330,6 +479,12 @@ def main(command_line=None):
                         help='Column number (1-indexed) in annotation files to group statistics by (e.g., 7 for RepeatMasker class)')
     parser.add_argument('--grouped-summary', default='intersection_grouped.tsv',
                         help='Grouped statistics output file (default: intersection_grouped.tsv)')
+    parser.add_argument('--per-segment', action='store_true',
+                        help='Enable per-segment output mode')
+    parser.add_argument('--per-segment-output', default=None,
+                        help='Output path for per-segment TSV (default: per_segment_annotations.tsv in output dir)')
+    parser.add_argument('--annotation-names', nargs='+', default=None,
+                        help='Clean display names for each annotation file (same order as positional args)')
 
     options = parser.parse_args(command_line)
 
@@ -337,6 +492,21 @@ def main(command_line=None):
 
     # Create output directory
     os.makedirs(options.output_dir, exist_ok=True)
+
+    # Resolve annotation display names
+    annot_names = options.annotation_names
+    if annot_names is None:
+        annot_names = [os.path.splitext(os.path.basename(f))[0] for f in options.annotation_files]
+    if len(annot_names) != len(options.annotation_files):
+        sys.exit(f"Error: {len(annot_names)} annotation names provided for {len(options.annotation_files)} annotation files")
+
+    # Build per-annotation group_column list: only the annotation whose name is "repeats" gets grouping
+    annot_group_columns = []
+    for name in annot_names:
+        if name == 'repeats' and options.group_by_column:
+            annot_group_columns.append(options.group_by_column)
+        else:
+            annot_group_columns.append(None)
 
     # Determine which coordinate types to process
     process_offref = not options.onref_only
@@ -357,7 +527,12 @@ def main(command_line=None):
         offref_tmp.close()
         onref_tmp.close()
 
-    total_offref_bp, total_onref_bp, num_skipped = extract_coordinates(options.nesting_file, offref_bed, onref_bed)
+    if options.per_segment:
+        total_offref_bp, total_onref_bp, num_skipped, segments = \
+            extract_coordinates_per_segment(options.nesting_file, offref_bed, onref_bed)
+    else:
+        total_offref_bp, total_onref_bp, num_skipped = \
+            extract_coordinates(options.nesting_file, offref_bed, onref_bed)
 
     sys.stderr.write(f"Total off-reference bp: {total_offref_bp:,}\n")
     sys.stderr.write(f"Total on-reference bp: {total_onref_bp:,}\n")
@@ -365,28 +540,46 @@ def main(command_line=None):
         sys.stderr.write(f"Warning: Skipped {num_skipped:,} records with invalid coordinates (negative or zero-length)\n")
     sys.stderr.write("\n")
 
-    # Process annotations for both coordinate sets
+    # Per-segment mode
+    if options.per_segment:
+        per_seg_output = options.per_segment_output
+        if per_seg_output is None:
+            per_seg_output = os.path.join(options.output_dir, 'per_segment_annotations.tsv')
+
+        source_results = []
+        ref_results = []
+
+        for i, annot_file in enumerate(options.annotation_files):
+            sys.stderr.write(f"  Per-segment intersect: {annot_names[i]}...\n")
+            gc = annot_group_columns[i]
+            source_results.append(calculate_per_segment_coverage(offref_bed, annot_file, group_column=gc))
+            ref_results.append(calculate_per_segment_coverage(onref_bed, annot_file, group_column=gc))
+
+        write_per_segment_summary(segments, source_results, ref_results, annot_names, annot_group_columns, per_seg_output)
+
+    # Aggregate mode (only when not in per-segment mode, which uses BED4)
     offref_stats = {}
     onref_stats = {}
 
-    if process_offref:
-        sys.stderr.write("Processing off-reference coordinates:\n")
-        offref_stats = process_annotations(
-            offref_bed, options.annotation_files, options.output_dir, total_offref_bp, 'offref',
-            group_column=options.group_by_column
-        )
+    if not options.per_segment:
+        if process_offref:
+            sys.stderr.write("Processing off-reference coordinates:\n")
+            offref_stats = process_annotations(
+                offref_bed, options.annotation_files, options.output_dir, total_offref_bp, 'offref',
+                group_column=options.group_by_column
+            )
 
-    if process_onref:
-        sys.stderr.write("\nProcessing on-reference coordinates:\n")
-        onref_stats = process_annotations(
-            onref_bed, options.annotation_files, options.output_dir, total_onref_bp, 'onref',
-            group_column=options.group_by_column
-        )
+        if process_onref:
+            sys.stderr.write("\nProcessing on-reference coordinates:\n")
+            onref_stats = process_annotations(
+                onref_bed, options.annotation_files, options.output_dir, total_onref_bp, 'onref',
+                group_column=options.group_by_column
+            )
 
-    # Write summary
-    summary_path = os.path.join(options.output_dir, options.summary)
-    grouped_summary_path = os.path.join(options.output_dir, options.grouped_summary) if options.group_by_column else None
-    write_summary(offref_stats, onref_stats, total_offref_bp, total_onref_bp, summary_path, grouped_summary_path)
+        # Write summary
+        summary_path = os.path.join(options.output_dir, options.summary)
+        grouped_summary_path = os.path.join(options.output_dir, options.grouped_summary) if options.group_by_column else None
+        write_summary(offref_stats, onref_stats, total_offref_bp, total_onref_bp, summary_path, grouped_summary_path)
 
     # Cleanup
     if not options.keep_coords_bed:
@@ -397,39 +590,40 @@ def main(command_line=None):
 
     sys.stderr.write("\nDone!\n")
 
-    # Print summary to stdout as well
-    print(f"\n{'Type':<15} {'Annotation':<35} {'Overlap (bp)':<15} {'Coverage %':<12} {'Intersections':<12}")
-    print('-' * 95)
-
-    if process_offref:
-        for annot_name in sorted(offref_stats.keys()):
-            s = offref_stats[annot_name]
-            print(f"{'Off-reference':<15} {annot_name:<35} {s['overlap_bp']:<15,} {s['percent_coverage']:<12.2f} {s['num_intersections']:<12,}")
-
-    if process_onref:
-        for annot_name in sorted(onref_stats.keys()):
-            s = onref_stats[annot_name]
-            print(f"{'On-reference':<15} {annot_name:<35} {s['overlap_bp']:<15,} {s['percent_coverage']:<12.2f} {s['num_intersections']:<12,}")
-
-    # Print grouped stats if available
-    if options.group_by_column:
-        print(f"\n\nGrouped by column {options.group_by_column}:")
-        print(f"{'Type':<15} {'Annotation':<30} {'Group':<20} {'Overlap (bp)':<15} {'Coverage %':<12} {'Intersections':<12}")
-        print('-' * 110)
+    if not options.per_segment:
+        # Print summary to stdout as well
+        print(f"\n{'Type':<15} {'Annotation':<35} {'Overlap (bp)':<15} {'Coverage %':<12} {'Intersections':<12}")
+        print('-' * 95)
 
         if process_offref:
             for annot_name in sorted(offref_stats.keys()):
-                if 'grouped' in offref_stats[annot_name]:
-                    for group_value, gstats in sorted(offref_stats[annot_name]['grouped'].items()):
-                        print(f"{'Off-reference':<15} {annot_name:<30} {group_value:<20} {gstats['overlap_bp']:<15,} "
-                              f"{gstats['percent_coverage']:<12.2f} {gstats['num_intersections']:<12,}")
+                s = offref_stats[annot_name]
+                print(f"{'Off-reference':<15} {annot_name:<35} {s['overlap_bp']:<15,} {s['percent_coverage']:<12.2f} {s['num_intersections']:<12,}")
 
         if process_onref:
             for annot_name in sorted(onref_stats.keys()):
-                if 'grouped' in onref_stats[annot_name]:
-                    for group_value, gstats in sorted(onref_stats[annot_name]['grouped'].items()):
-                        print(f"{'On-reference':<15} {annot_name:<30} {group_value:<20} {gstats['overlap_bp']:<15,} "
-                              f"{gstats['percent_coverage']:<12.2f} {gstats['num_intersections']:<12,}")
+                s = onref_stats[annot_name]
+                print(f"{'On-reference':<15} {annot_name:<35} {s['overlap_bp']:<15,} {s['percent_coverage']:<12.2f} {s['num_intersections']:<12,}")
+
+        # Print grouped stats if available
+        if options.group_by_column:
+            print(f"\n\nGrouped by column {options.group_by_column}:")
+            print(f"{'Type':<15} {'Annotation':<30} {'Group':<20} {'Overlap (bp)':<15} {'Coverage %':<12} {'Intersections':<12}")
+            print('-' * 110)
+
+            if process_offref:
+                for annot_name in sorted(offref_stats.keys()):
+                    if 'grouped' in offref_stats[annot_name]:
+                        for group_value, gstats in sorted(offref_stats[annot_name]['grouped'].items()):
+                            print(f"{'Off-reference':<15} {annot_name:<30} {group_value:<20} {gstats['overlap_bp']:<15,} "
+                                  f"{gstats['percent_coverage']:<12.2f} {gstats['num_intersections']:<12,}")
+
+            if process_onref:
+                for annot_name in sorted(onref_stats.keys()):
+                    if 'grouped' in onref_stats[annot_name]:
+                        for group_value, gstats in sorted(onref_stats[annot_name]['grouped'].items()):
+                            print(f"{'On-reference':<15} {annot_name:<30} {group_value:<20} {gstats['overlap_bp']:<15,} "
+                                  f"{gstats['percent_coverage']:<12.2f} {gstats['num_intersections']:<12,}")
 
 
 if __name__ == '__main__':

@@ -23,6 +23,11 @@ star_allele: false
 # BED file for reference gap overlay on plots (optional, empty = none)
 refgaps_bed: ""
 
+# Annotation BED files for overlap analysis (optional, empty = skip)
+annot_genes: ""
+annot_repeats: ""
+annot_segdups: ""
+
 # Scale type for density plots: log1p, sqrt, log, identity
 scale_type: log1p
 

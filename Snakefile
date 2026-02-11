@@ -56,6 +56,29 @@ def decon_opts():
         opts.append("--star-allele")
     return " ".join(opts)
 
+# Annotation helpers
+def annotation_inputs():
+    """Return list of configured annotation BED files."""
+    return [config[k] for k in ["annot_genes", "annot_repeats", "annot_segdups"] if config.get(k, "")]
+
+def annotation_names():
+    """Return clean display names for configured annotations."""
+    names = []
+    for k, name in [("annot_genes", "genes"), ("annot_repeats", "repeats"), ("annot_segdups", "segdups")]:
+        if config.get(k, ""):
+            names.append(name)
+    return names
+
+def annotation_outputs():
+    """Return annotation output files if any annotations are configured."""
+    if annotation_inputs():
+        return [
+            f"{OUT_DIR}/{OUT_NAME}.annot-summary.png",
+            f"{OUT_DIR}/{OUT_NAME}.annot-scatter.png",
+            f"{OUT_DIR}/{OUT_NAME}.annot-stats.tsv",
+        ]
+    return []
+
 ############################################################################
 # Target rules
 ############################################################################
@@ -70,6 +93,7 @@ rule all:
         f"{OUT_DIR}/{OUT_NAME}.variant-types.png",
         f"{OUT_DIR}/{OUT_NAME}.size-dist.png",
         f"{OUT_DIR}/{OUT_NAME}.af-spectrum.png",
+        *annotation_outputs(),
         # per-sample genotyping outputs
         expand("{out}/{s}.vcf.gz", out=OUT_DIR, s=SAMPLES),
         expand("{out}/{s}.call-offref.png", out=OUT_DIR, s=SAMPLES),
@@ -105,6 +129,7 @@ rule graph_only:
         f"{OUT_DIR}/{OUT_NAME}.variant-types.png",
         f"{OUT_DIR}/{OUT_NAME}.size-dist.png",
         f"{OUT_DIR}/{OUT_NAME}.af-spectrum.png",
+        *annotation_outputs(),
 
 rule genotype_all:
     """Genotype all samples (vg call)"""
@@ -257,6 +282,40 @@ rule plots:
         " '{REF} Off-Reference Variant Density'"
         " 0 {config[refgaps_bed]} {config[scale_type]}"
         " --ref {REF} --offref"
+
+############################################################################
+# Annotation overlap rules (optional — only when annot_* keys are set)
+############################################################################
+
+rule annotation_intersect:
+    """Augref segments + annotation BEDs → per-segment annotation TSV"""
+    input:
+        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
+        annots=annotation_inputs(),
+    output:
+        f"{OUT_DIR}/{OUT_NAME}.annot-per-segment.tsv",
+    params:
+        names=" ".join(annotation_names()),
+        group_arg="--group-by-column 6" if config.get("annot_repeats", "") else "",
+    shell:
+        "python annotation/intersect-annotations.py"
+        " {input.segs} {input.annots}"
+        " --per-segment --per-segment-output {output}"
+        " --output-dir {OUT_DIR}"
+        " --annotation-names {params.names}"
+        " {params.group_arg}"
+
+rule annotation_plots:
+    """Per-segment annotation TSV → overlap plots + stats"""
+    input:
+        f"{OUT_DIR}/{OUT_NAME}.annot-per-segment.tsv",
+    output:
+        f"{OUT_DIR}/{OUT_NAME}.annot-summary.png",
+        f"{OUT_DIR}/{OUT_NAME}.annot-scatter.png",
+        f"{OUT_DIR}/{OUT_NAME}.annot-stats.tsv",
+    shell:
+        "Rscript scripts/annotation-plots.R {input} {OUT_DIR}/{OUT_NAME}"
+        " --title '{REF} Annotation Overlap'"
 
 ############################################################################
 # Per-sample rules (wildcard: {sample})

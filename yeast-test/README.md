@@ -10,7 +10,8 @@ VCF merging.
 - samtools / bgzip / tabix
 - bcftools (for `split_vcf`, `merge_call_vcfs`, `merge_dv_vcfs`)
 - Docker (for `deepvariant`, optional)
-- R + ggplot2, data.table, dplyr, scales (for `plots` / `call_plots` / `dv_plots`, optional)
+- R + ggplot2, data.table, dplyr, scales (for `plots` / `call_plots` / `dv_plots` / `annotation_plots`, optional)
+- bedtools (for `annotation_intersect`, optional)
 - snakemake (>= 8)
 
 All commands below are run from the **repository root** (`nested-variants/`).
@@ -56,6 +57,15 @@ snakemake --cores 4 graph_only \
            out_dir=yeast-test/output out_name=chrI.nested \
            mem_gb=4
 
+# Graph construction + annotation overlap analysis
+snakemake --cores 4 graph_only \
+  --config vg=yeast-test/chrI.vg ref=S288C \
+           out_dir=yeast-test/output out_name=chrI.nested \
+           mem_gb=4 \
+           annot_genes=yeast-test/fake-genes.bed \
+           annot_repeats=yeast-test/fake-repeats.bed \
+           annot_segdups=yeast-test/fake-segdups.bed
+
 # Full pipeline: genotype + DeepVariant + merge for both samples
 snakemake --cores 4 all \
   --config vg=yeast-test/chrI.vg ref=S288C \
@@ -63,6 +73,11 @@ snakemake --cores 4 all \
            'samples={SK1: yeast-test/SK1.reads.idx, YPS128: yeast-test/YPS128.reads.idx}' \
            mem_gb=4
 ```
+
+The fake annotation BED files (`fake-genes.bed`, `fake-repeats.bed`,
+`fake-segdups.bed`) contain synthetic intervals placed to overlap real segment
+coordinates, useful for testing the annotation overlap pipeline. The repeats
+file uses 6-column BED with RepeatMasker-style classes in column 6.
 
 ## Expected output
 
@@ -100,7 +115,12 @@ yeast-test/output/
 ├── merged.call.vcf.gz                # merged call VCFs (bcftools merge)
 ├── merged.deepvariant.vcf.gz         # merged DeepVariant VCFs (bcftools merge)
 ├── merged.call-offref.png            # merged call density
-└── merged.dv-offref.png              # merged DV density
+├── merged.dv-offref.png              # merged DV density
+├── chrI.nested.annot-per-segment.tsv # per-segment annotation overlap table
+├── chrI.nested.annot-summary.png     # annotation overlap bar chart
+├── chrI.nested.annot-scatter.png     # length vs overlap scatter
+├── chrI.nested.annot-repeats.png     # repeat class breakdown (if repeats provided)
+└── chrI.nested.annot-stats.tsv       # annotation overlap summary stats
 ```
 
 ## Clean up
