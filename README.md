@@ -227,6 +227,7 @@ snakemake --profile profiles/slurm all \
     out_dir=output/v2.1-chm13 \
     out_name=hprc-v2.1-mc-chm13.nested \
     refgaps_bed=data/hprc-v2.1-mc-chm13.refgaps.bed \
+    paths_mem_gb=1024 \
     "samples={HG001: $GIAB/HG001.novaseq.pcr-free.gs.paths, HG002: $GIAB/HG002.novaseq.pcr-free.gs.paths, HG003: $GIAB/HG003.novaseq.pcr-free.gs.paths, HG004: $GIAB/HG004.novaseq.pcr-free.gs.paths, HG005: $GIAB/HG005.novaseq.pcr-free.gs.paths, HG006: $GIAB/HG006.novaseq.pcr-free.gs.paths, HG007: $GIAB/HG007.novaseq.pcr-free.gs.paths}"
 
 # HPRC v2.1 GRCh38 — full pipeline including genotyping + DeepVariant
@@ -237,6 +238,7 @@ snakemake --profile profiles/slurm all \
     out_dir=output/v2.1-grch38 \
     out_name=hprc-v2.1-mc-grch38.nested \
     refgaps_bed=data/hprc-v2.1-mc-grch38.refgaps.bed \
+    paths_mem_gb=1024 \
     'samples={HG002: data/HG002.reads.idx}'
 
 # HPRC v1.1 CHM13 — without genotyping
