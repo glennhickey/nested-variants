@@ -15,6 +15,10 @@ VCF merging.
 
 All commands below are run from the **repository root** (`nested-variants/`).
 
+```bash
+source venv-nested-variants/bin/activate
+```
+
 ## 1. Simulate paired-end reads
 
 Simulate 10 000 read pairs (150 bp reads, ~500 bp fragments) from the SK1 and

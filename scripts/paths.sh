@@ -159,6 +159,15 @@ mkdir -p "$WORK_DIR"
 # Track output files in order
 GFA_FILES=()
 
+# Count non-EBV VG files to split threads across parallel jobs
+NUM_JOBS=0
+for VG in "${VG_FILES[@]}"; do
+    BASE=$(basename "$VG")
+    [[ $BASE != "chrEBV.vg" ]] && ((NUM_JOBS++)) || true
+done
+THREADS_PER_JOB=$(( CPUS / (NUM_JOBS > 0 ? NUM_JOBS : 1) ))
+(( THREADS_PER_JOB < 1 )) && THREADS_PER_JOB=1
+
 # Process each VG file
 for VG in "${VG_FILES[@]}"; do
     BASE=$(basename "$VG")
@@ -169,8 +178,8 @@ for VG in "${VG_FILES[@]}"; do
 
         SEGS="${WORK_DIR}/${BASE}.augref-segs.tsv"
 
-        # Build the command to run
-        CMD="/usr/bin/time -v vg paths -x \"$VG\" -Q ${REF} --compute-augref --min-augref-len ${MIN_AUGREF_LEN} --augref-sample ${AUGREF_SAMPLE} --augref-segs \"${SEGS}\" -t ${CPUS} | /usr/bin/time -v vg convert -f - | bgzip > \"${GFA}\""
+        # Build the command to run (threads split across parallel jobs)
+        CMD="/usr/bin/time -v vg paths -x \"$VG\" -Q ${REF} --compute-augref --min-augref-len ${MIN_AUGREF_LEN} --augref-sample ${AUGREF_SAMPLE} --augref-segs \"${SEGS}\" -t ${THREADS_PER_JOB} | /usr/bin/time -v vg convert -f - | bgzip > \"${GFA}\""
 
         if $LOCAL; then
             # Run locally in background
