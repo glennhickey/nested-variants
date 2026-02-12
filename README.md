@@ -198,7 +198,7 @@ This requires `aws`, `parallel`, `bedtools`, `wget`, `dos2unix`, and `bigBedToBe
 ```bash
 ANNOT=data/hprc-v2-annotations
 GIAB=/path/to/giab-reads
-snakemake --profile profiles/slurm all \
+snakemake --profile profiles/slurm graph_only genotype_all \
   --config \
     ref=CHM13 \
     vg='/path/to/hprc-v2.1-mc-chm13-eval.chroms/!(*.d*).vg' \
