@@ -197,11 +197,11 @@ This requires `aws`, `parallel`, `bedtools`, `wget`, `dos2unix`, and `bigBedToBe
 
 ```bash
 ANNOT=data/hprc-v2-annotations
-GIAB=/path/to/giab-reads
+GIAB=/private/home/ghickey/dev/work/giab-reads
 snakemake --profile profiles/slurm graph_only genotype_all \
   --config \
     ref=CHM13 \
-    vg='/path/to/hprc-v2.1-mc-chm13-eval.chroms/!(*.d*).vg' \
+    vg='/private/groups/hprc/hprc-graphs/hprc-v2.1-dec23/hprc-v2.1-mc-chm13-eval/hprc-v2.1-mc-chm13-eval.chroms/!(*.d*).vg' \
     out_dir=output/v2.1-chm13 \
     out_name=hprc-v2.1-mc-chm13.nested \
     refgaps_bed=data/hprc-v2.1-mc-chm13.refgaps.bed \
@@ -210,7 +210,7 @@ snakemake --profile profiles/slurm graph_only genotype_all \
     annot_repeats=$ANNOT/hprc-v2-rm-grch38-chm13.bed \
     annot_segdups=$ANNOT/hprc-v2-sd-grch38-chm13.bed \
     annot_censat=$ANNOT/hprc-v2-censat-grch38-chm13.bed \
-    "samples={HG002: $GIAB/HG002.reads.idx}"
+    "samples={HG001: $GIAB/HG001.novaseq.pcr-free.gs.paths, HG002: $GIAB/HG002.novaseq.pcr-free.gs.paths, HG003: $GIAB/HG003.novaseq.pcr-free.gs.paths, HG004: $GIAB/HG004.novaseq.pcr-free.gs.paths, HG005: $GIAB/HG005.novaseq.pcr-free.gs.paths, HG006: $GIAB/HG006.novaseq.pcr-free.gs.paths, HG007: $GIAB/HG007.novaseq.pcr-free.gs.paths}"
 ```
 
 ### Filtering short alt contigs
@@ -219,11 +219,11 @@ To exclude short augmented reference contigs (e.g., keep only those >= 5 kb), se
 
 ```bash
 ANNOT=data/hprc-v2-annotations
-GIAB=/path/to/giab-reads
+GIAB=/private/home/ghickey/dev/work/giab-reads
 snakemake --profile profiles/slurm all \
   --config \
     ref=CHM13 \
-    vg='/path/to/hprc-v2.1-mc-chm13-eval.chroms/!(*.d*).vg' \
+    vg='/private/groups/hprc/hprc-graphs/hprc-v2.1-dec23/hprc-v2.1-mc-chm13-eval/hprc-v2.1-mc-chm13-eval.chroms/!(*.d*).vg' \
     out_dir=output/v2.1-chm13-min5k \
     out_name=hprc-v2.1-mc-chm13.nested \
     min_augref_len=5000 \
@@ -233,7 +233,7 @@ snakemake --profile profiles/slurm all \
     annot_repeats=$ANNOT/hprc-v2-rm-grch38-chm13.bed \
     annot_segdups=$ANNOT/hprc-v2-sd-grch38-chm13.bed \
     annot_censat=$ANNOT/hprc-v2-censat-grch38-chm13.bed \
-    "samples={HG002: $GIAB/HG002.reads.idx}"
+    "samples={HG001: $GIAB/HG001.novaseq.pcr-free.gs.paths, HG002: $GIAB/HG002.novaseq.pcr-free.gs.paths, HG003: $GIAB/HG003.novaseq.pcr-free.gs.paths, HG004: $GIAB/HG004.novaseq.pcr-free.gs.paths, HG005: $GIAB/HG005.novaseq.pcr-free.gs.paths, HG006: $GIAB/HG006.novaseq.pcr-free.gs.paths, HG007: $GIAB/HG007.novaseq.pcr-free.gs.paths}"
 ```
 
 The `min_augref_len` parameter is passed to `vg paths` and controls the minimum length of alternative contigs included in the augmented reference. Raising it from the default (50 bp) to 5000 reduces the number of alt contigs, which can significantly speed up downstream steps like DeepVariant.
@@ -245,7 +245,7 @@ ANNOT=data/hprc-v2-annotations
 snakemake --profile profiles/slurm all \
   --config \
     ref=GRCh38 \
-    vg='/path/to/hprc-v2.1-mc-grch38-eval.chroms/!(*.d*).vg' \
+    vg='/private/groups/hprc/hprc-graphs/hprc-v2.1-dec23/hprc-v2.1-mc-grch38-eval/hprc-v2.1-mc-grch38-eval.chroms/!(*.d*).vg' \
     out_dir=output/v2.1-grch38 \
     out_name=hprc-v2.1-mc-grch38.nested \
     refgaps_bed=data/hprc-v2.1-mc-grch38.refgaps.bed \
@@ -346,7 +346,7 @@ Override config values on the command line to run different inputs into separate
 snakemake --profile profiles/slurm graph_only \
   --config \
     ref=CHM13 \
-    vg='/path/to/hprc-v1.1-mc-chm13.chroms/!(*.d9).vg' \
+    vg='/private/groups/hprc/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-chm13/hprc-v1.1-mc-chm13.chroms/!(*.d9).vg' \
     out_dir=output/v1.1-chm13 \
     out_name=hprc-v1.1-mc-chm13.nested \
     refgaps_bed=data/hprc-v1.1-mc-chm13.refgaps.bed
