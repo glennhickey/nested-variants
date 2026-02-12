@@ -301,7 +301,7 @@ rule annotation_intersect:
         names=" ".join(annotation_names()),
         group_arg="--group-by-column 6" if config.get("annot_repeats", "") else "",
     shell:
-        "python annotation/intersect-annotations.py"
+        "python scripts/intersect-annotations.py"
         " {input.segs} {input.annots}"
         " --per-segment --per-segment-output {output}"
         " --output-dir {OUT_DIR}"

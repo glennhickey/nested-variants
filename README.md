@@ -188,7 +188,7 @@ This example runs the full pipeline on the [HPRC v2.1](https://github.com/human-
 Download HPRC assembly annotations plus GRCh38 and CHM13 reference annotations (genes, repeats, segdups, censat):
 
 ```bash
-python annotation/download-hprc-annotations.py --threads 32 -o data/hprc-v2-annotations
+python scripts/download-hprc-annotations.py --threads 32 -o data/hprc-v2-annotations
 ```
 
 This requires `aws`, `parallel`, `bedtools`, `wget`, `dos2unix`, and `bigBedToBed`.
@@ -387,10 +387,9 @@ nested-variants/
 │   ├── split-ref.sh            VCF → onref/nestedref/offref VCFs
 │   ├── offref-length-hist.R    Size distribution histograms
 │   ├── chrom-density-common.R  Shared ideogram plotting code
-│   └── chrom-density-segs.R    Off-reference density ideogram (VCF + segments table)
-├── annotation/
-│   ├── download-hprc-annotations.py
-│   └── intersect-annotations.py
+│   ├── chrom-density-segs.R    Off-reference density ideogram (VCF + segments table)
+│   ├── download-hprc-annotations.py  Download HPRC annotation BED files
+│   └── intersect-annotations.py      Augref segments × annotation overlaps
 ├── test/
 │   └── test-pipeline.sh        CI test script
 ├── yeast-test/                 End-to-end test (S. cerevisiae chrI)
