@@ -459,6 +459,9 @@ rule merge_call_vcfs:
         expand("{out}/{s}.vcf.gz", out=OUT_DIR, s=SAMPLES),
     output:
         f"{OUT_DIR}/merged.call.vcf.gz",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
     shell:
         "bcftools merge {input} -Oz"
         " | bcftools +fill-tags -Oz -o {output} -- -t AF,AC,AN"
@@ -470,6 +473,9 @@ rule merge_dv_vcfs:
         expand("{out}/{s}.deepvariant.vcf.gz", out=OUT_DIR, s=SAMPLES),
     output:
         f"{OUT_DIR}/merged.deepvariant.vcf.gz",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
     shell:
         "bcftools merge {input} -Oz"
         " | bcftools +fill-tags -Oz -o {output} -- -t AF,AC,AN"
