@@ -91,7 +91,7 @@ while [[ $# -gt 0 ]]; do
             echo "                        Can be specified multiple times"
             echo "  --ref <ref>           Reference name (passed to -Q)"
             echo "  --out-dir <dir>       Output directory for final merged GFA and GBZ files"
-            echo "  --out-name <name>     Output name prefix (produces .gfa.gz, .gbz, .augref-segs.tsv)"
+            echo "  --out-name <name>     Output name prefix (produces .gbz, .augref-segs.tsv)"
             echo ""
             echo "Augmented Reference Options:"
             echo "  --min-augref-len <N>  Minimum augref fragment length (default: 50)"
@@ -107,13 +107,13 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Examples:"
             echo "  # Basic usage"
-            echo "  $0 --vg 'chr*.vg' --ref GRCh38 --out-dir ./output --out-name merged.gfa.gz"
+            echo "  $0 --vg 'chr*.vg' --ref GRCh38 --out-dir ./output --out-name merged"
             echo ""
             echo "  # With custom min-augref-len"
-            echo "  $0 --vg 'chr*.vg' --ref GRCh38 --out-dir ./output --out-name merged.gfa.gz --min-augref-len 100"
+            echo "  $0 --vg 'chr*.vg' --ref GRCh38 --out-dir ./output --out-name merged --min-augref-len 100"
             echo ""
             echo "  # With custom SLURM resources"
-            echo "  $0 --vg 'chr*.vg' --ref GRCh38 --out-dir ./output --out-name merged.gfa.gz --cpus 16 --mem 100gb --time 8:00:00"
+            echo "  $0 --vg 'chr*.vg' --ref GRCh38 --out-dir ./output --out-name merged --cpus 16 --mem 100gb --time 8:00:00"
             exit 0
             ;;
         *)
@@ -140,10 +140,10 @@ if [ -z "$OUTPUT_NAME" ]; then
     exit 1
 fi
 
-# Ensure OUTPUT_NAME has .gfa.gz extension
-if [[ ! "$OUTPUT_NAME" =~ \.gfa\.gz$ ]]; then
-    OUTPUT_NAME="${OUTPUT_NAME}.gfa.gz"
-fi
+# Strip common extensions to get a clean base name
+OUTPUT_NAME="${OUTPUT_NAME%.gbz}"
+OUTPUT_NAME="${OUTPUT_NAME%.gfa.gz}"
+OUTPUT_NAME="${OUTPUT_NAME%.gfa}"
 
 # Compute augmented reference sample name
 AUGREF_SAMPLE="augref_${REF}"
@@ -173,13 +173,13 @@ for VG in "${VG_FILES[@]}"; do
     BASE=$(basename "$VG")
     if [[ $BASE != "chrEBV.vg" ]]; then
         BASE=${BASE%.vg}
-        GFA="${WORK_DIR}/${BASE}.augref.gfa.gz"
+        GFA="${WORK_DIR}/${BASE}.augref.gfa"
         GFA_FILES+=("$GFA")
 
         SEGS="${WORK_DIR}/${BASE}.augref-segs.tsv"
 
         # Build the command to run (threads split across parallel jobs)
-        CMD="/usr/bin/time -v vg paths -x \"$VG\" -Q ${REF} --compute-augref --min-augref-len ${MIN_AUGREF_LEN} --augref-sample ${AUGREF_SAMPLE} --augref-segs \"${SEGS}\" -t ${THREADS_PER_JOB} | /usr/bin/time -v vg convert -f - | bgzip > \"${GFA}\""
+        CMD="/usr/bin/time -v vg paths -x \"$VG\" -Q ${REF} --compute-augref --min-augref-len ${MIN_AUGREF_LEN} --augref-sample ${AUGREF_SAMPLE} --augref-segs \"${SEGS}\" -t ${THREADS_PER_JOB} | /usr/bin/time -v vg convert -f - > \"${GFA}\""
 
         if $LOCAL; then
             # Run locally in background
@@ -195,7 +195,7 @@ for VG in "${VG_FILES[@]}"; do
                 --mem="${MEM}" \
                 --time="${TIME}" \
                 --output=/dev/null \
-                --error="${WORK_DIR}/${OUTPUT_NAME%.gfa.gz}.${BASE}.log" \
+                --error="${WORK_DIR}/${OUTPUT_NAME}.${BASE}.log" \
                 --wrap="$CMD" &
         fi
     fi
@@ -204,7 +204,7 @@ done
 wait
 
 # Merge per-chromosome augref segment tables into one file
-SEGS_MERGED="${OUTPUT_DIR}/${OUTPUT_NAME%.gfa.gz}.augref-segs.tsv"
+SEGS_MERGED="${OUTPUT_DIR}/${OUTPUT_NAME}.augref-segs.tsv"
 FIRST=true
 for SEGS in "$WORK_DIR"/*.augref-segs.tsv; do
     if [ -f "$SEGS" ]; then
@@ -218,29 +218,29 @@ for SEGS in "$WORK_DIR"/*.augref-segs.tsv; do
     fi
 done > "$SEGS_MERGED"
 
-# Merge per-chromosome GFAs into uncompressed file on scratch (vg gbwt needs a real file)
+# Merge per-chromosome GFAs into single file (vg gbwt needs a real file)
 WORK_TMPDIR="${TMPDIR:-${OUTPUT_DIR}}"
-MERGED_UNCOMPRESSED="${WORK_TMPDIR}/${OUTPUT_NAME%.gfa.gz}.gfa"
+MERGED_GFA="${WORK_TMPDIR}/${OUTPUT_NAME}.gfa"
 FIRST=true
 for GFA in "${GFA_FILES[@]}"; do
     if $FIRST; then
-        zcat "$GFA"
+        cat "$GFA"
         FIRST=false
     else
-        zcat "$GFA" | tail -n +2
+        tail -n +2 "$GFA"
     fi
-done > "$MERGED_UNCOMPRESSED"
+done > "$MERGED_GFA"
 
 # Clean up temporary working directory (per-chromosome GFAs no longer needed)
 rm -rf "$WORK_DIR"
 
 # Convert merged GFA to GBZ format
-GBZ_OUTPUT="${OUTPUT_DIR}/${OUTPUT_NAME%.gfa.gz}.gbz"
+GBZ_OUTPUT="${OUTPUT_DIR}/${OUTPUT_NAME}.gbz"
 
 if $LOCAL; then
-    /usr/bin/time -v vg gbwt -G "${MERGED_UNCOMPRESSED}" --gbz-format -g "${GBZ_OUTPUT}"
+    /usr/bin/time -v vg gbwt -G "${MERGED_GFA}" --gbz-format -g "${GBZ_OUTPUT}"
 else
-    CMD="/usr/bin/time -v vg gbwt -G \"${MERGED_UNCOMPRESSED}\" --gbz-format -g \"${GBZ_OUTPUT}\""
+    CMD="/usr/bin/time -v vg gbwt -G \"${MERGED_GFA}\" --gbz-format -g \"${GBZ_OUTPUT}\""
     sbatch -W \
         --job-name="gbz" \
         --partition="${PARTITION}" \
@@ -250,11 +250,9 @@ else
         --mem="${MEM}" \
         --time="${TIME}" \
         --output=/dev/null \
-        --error="${OUTPUT_DIR}/${OUTPUT_NAME%.gfa.gz}.gbz.log" \
+        --error="${OUTPUT_DIR}/${OUTPUT_NAME}.gbz.log" \
         --wrap="$CMD"
 fi
 
-# Compress GFA to final output and clean up uncompressed copy
-MERGED="${OUTPUT_DIR}/${OUTPUT_NAME}"
-bgzip -c "${MERGED_UNCOMPRESSED}" > "$MERGED"
-rm -f "${MERGED_UNCOMPRESSED}"
+# Clean up merged GFA
+rm -f "${MERGED_GFA}"
