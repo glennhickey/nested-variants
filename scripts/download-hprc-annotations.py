@@ -167,6 +167,10 @@ def download_from_table(table_url, column, threads, out_annot_path, out_dir, gff
     """
     Download annotation files listed in a CSV index table.
 
+    Each per-sample file is sorted individually, then all files are concatenated
+    in contig-name order (sample prefix determines global sort). This avoids an
+    expensive global sort on the combined multi-GB output.
+
     Args:
         table_url: URL to the CSV index file
         column: 1-indexed column number containing S3 paths
@@ -216,25 +220,42 @@ def download_from_table(table_url, column, threads, out_annot_path, out_dir, gff
         f'parallel -j {threads} "aws s3 cp --no-sign-request --no-progress {{}} {out_dir}/"',
         shell=True)
 
-    # Concatenate all downloaded files
-    run(['rm', '-f', full_out_path])
+    # Sort each file individually, then concatenate in contig-name order.
+    # Each file's contigs share a sample prefix (e.g. HG00408#1#), so
+    # ordering files by their first contig gives global sort order without
+    # an expensive sort on the full concatenation.
+    sorted_files = []
     with open(index_file) as table_file:
         for line in table_file:
             if 's3' not in line:
                 continue
             annot_basename = os.path.basename(line.split(',')[column-1].strip())
             annot_path = os.path.join(out_dir, annot_basename)
+            sorted_path = annot_path + '.sorted'
 
-            # Use zcat for compressed files, cat otherwise
             cat_cmd = 'zcat' if annot_path.endswith('.gz') else 'cat'
+            # Strip UCSC track/browser headers and comments
+            strip_cmd = " | grep -v '^track\\|^browser\\|^#'"
+            # GFF path: extract coords, sort, merge (already produces sorted output)
             gff_cmd = ' | cut -f1,4,5 | bedtools sort | bedtools merge' if gff else ''
             cut_cmd = f' | cut -f1-{max_col}' if max_col and not gff else ''
-            run(f'{cat_cmd} {annot_path}{gff_cmd}{cut_cmd} >> {full_out_path}', shell=True)
-            os.remove(annot_path)
+            sort_cmd = '' if gff else ' | sort -k1,1 -k2,2n'
 
-    # Sort the output
-    run(f'sort -k1,1 -k2,2n {full_out_path} > {full_out_path}.tmp', shell=True)
-    os.rename(full_out_path + '.tmp', full_out_path)
+            run(f'{cat_cmd} {annot_path}{strip_cmd}{gff_cmd}{cut_cmd}{sort_cmd} > {sorted_path}',
+                shell=True)
+            os.remove(annot_path)
+            sorted_files.append(sorted_path)
+
+    # Order files by first contig name for correct global sort
+    def first_contig(path):
+        with open(path) as f:
+            line = f.readline()
+            return line.split('\t')[0] if line else ''
+
+    sorted_files.sort(key=first_contig)
+    run(f'cat {" ".join(sorted_files)} > {full_out_path}', shell=True)
+    for f in sorted_files:
+        os.remove(f)
 
     # Clean up index file
     os.remove(index_file)
@@ -242,45 +263,25 @@ def download_from_table(table_url, column, threads, out_annot_path, out_dir, gff
     return full_out_path
 
 
-def add_local(local_path, annot_path, out_path, prefix='GRCh38#0#', merge=False, max_col=None):
+def add_local(local_path, annot_path, out_path, prefix='GRCh38#0#', max_col=None):
     """
-    Combine a local BED file with downloaded annotations.
+    Combine a local reference BED with HPRC annotations.
 
-    Args:
-        local_path: Path to local reference BED file
-        annot_path: Path to HPRC annotation BED file
-        out_path: Output path for combined file
-        prefix: Prefix to add to local file contigs (default: 'GRCh38#0#')
-        merge: If True, merge overlapping intervals
-        max_col: Maximum number of columns to keep (None for all)
+    Reference contigs get prefixed (e.g. chr1 → GRCh38#0#chr1). Both inputs
+    are already sorted, and reference prefixes sort before HPRC sample names
+    (CHM13#0# < GRCh38#0# < HG...), so we just concatenate — no re-sort needed.
+    Intervals with different contig prefixes cannot overlap, so bedtools merge
+    is also unnecessary.
     """
     if os.path.isfile(out_path):
         sys.stderr.write(f'  {out_path} exists, skipping re-gen\n')
         return
 
-    with open(out_path, 'w') as out_file:
-        # Add local annotations with prefix
-        with open(local_path, 'r') as local_file:
-            for line in local_file:
-                fields = line.strip().split()
-                if max_col:
-                    fields = fields[:max_col]
-                # Add prefix to contig name
-                fields[0] = prefix + fields[0]
-                out_file.write('\t'.join(fields) + '\n')
-
-        # Add HPRC annotations as-is
-        with open(annot_path, 'r') as annot_file:
-            for line in annot_file:
-                fields = line.strip().split()
-                if max_col:
-                    fields = fields[:max_col]
-                out_file.write('\t'.join(fields) + '\n')
-
-    # Sort and optionally merge
-    merge_cmd = ' | bedtools merge' if merge else ''
-    run(f'sort -k1,1 -k2,2n {out_path} {merge_cmd} > {out_path}.tmp', shell=True)
-    os.rename(out_path + '.tmp', out_path)
+    # Write prefixed reference annotations, then append HPRC annotations
+    cut_cmd = f' | cut -f1-{max_col}' if max_col else ''
+    run(f"awk -v p='{prefix}' 'BEGIN{{OFS=\"\\t\"}} {{$1=p$1; print}}' "
+        f"{local_path}{cut_cmd} > {out_path}", shell=True)
+    run(f'cat {annot_path} >> {out_path}', shell=True)
 
 
 def main(command_line=None):
@@ -383,7 +384,7 @@ def main(command_line=None):
                 intermediates.append(current)
                 suffix += f'-{ref_name}'
                 out = os.path.join(options.output_dir, f'hprc-v2-genes{suffix}.bed')
-                add_local(ref_beds['genes'], current, out, prefix=prefix, merge=True, max_col=3)
+                add_local(ref_beds['genes'], current, out, prefix=prefix, max_col=3)
                 current = out
 
     # RepeatMasker
@@ -400,7 +401,7 @@ def main(command_line=None):
                 intermediates.append(current)
                 suffix += f'-{ref_name}'
                 out = os.path.join(options.output_dir, f'hprc-v2-rm{suffix}.bed')
-                add_local(ref_beds['rm'], current, out, prefix=prefix, merge=False, max_col=6)
+                add_local(ref_beds['rm'], current, out, prefix=prefix, max_col=6)
                 current = out
 
     # Segmental duplications
@@ -417,7 +418,7 @@ def main(command_line=None):
                 intermediates.append(current)
                 suffix += f'-{ref_name}'
                 out = os.path.join(options.output_dir, f'hprc-v2-sd{suffix}.bed')
-                add_local(ref_beds['sd'], current, out, prefix=prefix, merge=True, max_col=3)
+                add_local(ref_beds['sd'], current, out, prefix=prefix, max_col=3)
                 current = out
 
     # CenSat (centromeric satellite)
@@ -434,7 +435,7 @@ def main(command_line=None):
                 intermediates.append(current)
                 suffix += f'-{ref_name}'
                 out = os.path.join(options.output_dir, f'hprc-v2-censat{suffix}.bed')
-                add_local(ref_beds['censat'], current, out, prefix=prefix, merge=True, max_col=3)
+                add_local(ref_beds['censat'], current, out, prefix=prefix, max_col=3)
                 current = out
 
     # Clean up intermediate files
