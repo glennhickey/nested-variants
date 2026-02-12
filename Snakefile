@@ -416,12 +416,12 @@ rule deepvariant:
         ref=f"{OUT_DIR}/{OUT_NAME}.fa.gz",
     output:
         f"{OUT_DIR}/{{sample}}.deepvariant.vcf.gz",
-    threads: rule_cpus("deepvariant", 128)
+    threads: rule_cpus("deepvariant", 32)
     resources:
-        mem_mb=rule_mem_gb("deepvariant", 512) * 1024,
+        mem_mb=rule_mem_gb("deepvariant", 1024) * 1024,
         runtime=rule_runtime("deepvariant"),
     params:
-        mem_gb=rule_mem_gb("deepvariant", 512),
+        mem_gb=rule_mem_gb("deepvariant", 1024),
     shell:
         "scripts/deepvariant.sh"
         " --bam {input.bam}"
