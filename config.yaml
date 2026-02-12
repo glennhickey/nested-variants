@@ -27,6 +27,7 @@ refgaps_bed: ""
 annot_genes: ""
 annot_repeats: ""
 annot_segdups: ""
+annot_censat: ""
 
 # Scale type for density plots: log1p, sqrt, log, identity
 scale_type: log1p

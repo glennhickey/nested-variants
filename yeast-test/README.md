@@ -64,7 +64,8 @@ snakemake --cores 4 graph_only \
            mem_gb=4 \
            annot_genes=yeast-test/fake-genes.bed \
            annot_repeats=yeast-test/fake-repeats.bed \
-           annot_segdups=yeast-test/fake-segdups.bed
+           annot_segdups=yeast-test/fake-segdups.bed \
+           annot_censat=yeast-test/fake-censat.bed
 
 # Full pipeline: genotype + DeepVariant + merge for both samples
 snakemake --cores 4 all \
@@ -75,9 +76,10 @@ snakemake --cores 4 all \
 ```
 
 The fake annotation BED files (`fake-genes.bed`, `fake-repeats.bed`,
-`fake-segdups.bed`) contain synthetic intervals placed to overlap real segment
-coordinates, useful for testing the annotation overlap pipeline. The repeats
-file uses 6-column BED with RepeatMasker-style classes in column 6.
+`fake-segdups.bed`, `fake-censat.bed`) contain synthetic intervals placed to
+overlap real segment coordinates, useful for testing the annotation overlap
+pipeline. The repeats file uses 6-column BED with RepeatMasker-style classes
+in column 6.
 
 ## Expected output
 
