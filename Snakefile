@@ -213,6 +213,9 @@ rule split_vcf:
         f"{OUT_DIR}/{OUT_NAME}.onref.vcf.gz",
         f"{OUT_DIR}/{OUT_NAME}.nestedref.vcf.gz",
         f"{OUT_DIR}/{OUT_NAME}.offref.vcf.gz",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
     shell:
         "cd {OUT_DIR} && {workflow.basedir}/scripts/split-ref.sh"
         " -v {workflow.basedir}/{input}"
@@ -266,6 +269,9 @@ rule length_hist:
         f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
     output:
         f"{OUT_DIR}/{OUT_NAME}.augref-length-hist.png",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
     shell:
         "Rscript scripts/offref-length-hist.R {output} {input} TRUE"
 
@@ -297,6 +303,9 @@ rule annotation_intersect:
         annots=annotation_inputs(),
     output:
         f"{OUT_DIR}/{OUT_NAME}.annot-per-segment.tsv",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
     params:
         names=" ".join(annotation_names()),
         group_arg="--group-by-column 6" if config.get("annot_repeats", "") else "",
@@ -316,6 +325,9 @@ rule annotation_plots:
         f"{OUT_DIR}/{OUT_NAME}.annot-summary.png",
         f"{OUT_DIR}/{OUT_NAME}.annot-scatter.png",
         f"{OUT_DIR}/{OUT_NAME}.annot-stats.tsv",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
     shell:
         "Rscript scripts/annotation-plots.R {input} {OUT_DIR}/{OUT_NAME}"
         " --title '{REF} Annotation Overlap'"
@@ -428,6 +440,9 @@ rule call_plots:
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
     output:
         f"{OUT_DIR}/{{sample}}.call-offref.png",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
     shell:
         "Rscript scripts/chrom-density-segs.R"
         " {input.vcf} {input.segs} {output}"
@@ -442,6 +457,9 @@ rule dv_plots:
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
     output:
         f"{OUT_DIR}/{{sample}}.dv-offref.png",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
     shell:
         "Rscript scripts/chrom-density-segs.R"
         " {input.vcf} {input.segs} {output}"
@@ -488,6 +506,9 @@ rule merged_call_plots:
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
     output:
         f"{OUT_DIR}/merged.call-offref.png",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
     shell:
         "Rscript scripts/chrom-density-segs.R"
         " {input.vcf} {input.segs} {output}"
@@ -502,6 +523,9 @@ rule merged_dv_plots:
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
     output:
         f"{OUT_DIR}/merged.dv-offref.png",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
     shell:
         "Rscript scripts/chrom-density-segs.R"
         " {input.vcf} {input.segs} {output}"
