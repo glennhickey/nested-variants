@@ -416,7 +416,7 @@ rule deepvariant:
         ref=f"{OUT_DIR}/{OUT_NAME}.fa.gz",
     output:
         f"{OUT_DIR}/{{sample}}.deepvariant.vcf.gz",
-    threads: rule_cpus("deepvariant", 32)
+    threads: rule_cpus("deepvariant", 96)
     resources:
         mem_mb=rule_mem_gb("deepvariant", 1024) * 1024,
         runtime=rule_runtime("deepvariant"),
