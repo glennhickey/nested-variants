@@ -277,7 +277,7 @@ rule plots:
     output:
         f"{OUT_DIR}/{OUT_NAME}.offref.png",
     resources:
-        mem_mb=512000,
+        mem_mb=256000,
         runtime=2880,
     shell:
         "Rscript scripts/chrom-density-segs.R"
@@ -517,7 +517,7 @@ rule deconstruct_stats:
         f"{OUT_DIR}/{OUT_NAME}.size-dist.png",
         f"{OUT_DIR}/{OUT_NAME}.af-spectrum.png",
     resources:
-        mem_mb=512000,
+        mem_mb=256000,
         runtime=2880,
     shell:
         "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{OUT_NAME}"
@@ -531,6 +531,9 @@ rule call_stats:
         f"{OUT_DIR}/{{sample}}.call.vcf-stats.tsv",
         f"{OUT_DIR}/{{sample}}.call.variant-types.png",
         f"{OUT_DIR}/{{sample}}.call.size-dist.png",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
     shell:
         "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{wildcards.sample}.call"
         " --title '{REF} Call ({wildcards.sample})'"
@@ -543,6 +546,9 @@ rule dv_stats:
         f"{OUT_DIR}/{{sample}}.dv.vcf-stats.tsv",
         f"{OUT_DIR}/{{sample}}.dv.variant-types.png",
         f"{OUT_DIR}/{{sample}}.dv.size-dist.png",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
     shell:
         "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{wildcards.sample}.dv"
         " --title '{REF} DeepVariant ({wildcards.sample})'"
@@ -556,6 +562,9 @@ rule merged_call_stats:
         f"{OUT_DIR}/merged.call.variant-types.png",
         f"{OUT_DIR}/merged.call.size-dist.png",
         f"{OUT_DIR}/merged.call.af-spectrum.png",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
     shell:
         "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/merged.call"
         " --title '{REF} Merged Call'"
@@ -569,6 +578,9 @@ rule merged_dv_stats:
         f"{OUT_DIR}/merged.dv.variant-types.png",
         f"{OUT_DIR}/merged.dv.size-dist.png",
         f"{OUT_DIR}/merged.dv.af-spectrum.png",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
     shell:
         "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/merged.dv"
         " --title '{REF} Merged DeepVariant'"
