@@ -35,6 +35,11 @@ if config.get("samples_tsv"):
             config.setdefault("samples", {})[row["sample"]] = row["reads_index"]
     SAMPLES = list(config["samples"].keys())
 
+# Constrain {sample} wildcard to configured sample names only, preventing
+# ambiguity between deconstruct ({OUT_NAME}.vcf.gz) and call ({sample}.vcf.gz)
+wildcard_constraints:
+    sample="|".join(SAMPLES) if SAMPLES else "$^"
+
 # Per-rule resource helpers: look up rule-specific config, fall back to global default
 def rule_cpus(rule_name, default):
     return config.get(f"{rule_name}_cpus", config.get("cpus", default))
