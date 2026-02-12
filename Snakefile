@@ -59,12 +59,12 @@ def decon_opts():
 # Annotation helpers
 def annotation_inputs():
     """Return list of configured annotation BED files."""
-    return [config[k] for k in ["annot_genes", "annot_repeats", "annot_segdups"] if config.get(k, "")]
+    return [config[k] for k in ["annot_genes", "annot_repeats", "annot_segdups", "annot_censat"] if config.get(k, "")]
 
 def annotation_names():
     """Return clean display names for configured annotations."""
     names = []
-    for k, name in [("annot_genes", "genes"), ("annot_repeats", "repeats"), ("annot_segdups", "segdups")]:
+    for k, name in [("annot_genes", "genes"), ("annot_repeats", "repeats"), ("annot_segdups", "segdups"), ("annot_censat", "censat")]:
         if config.get(k, ""):
             names.append(name)
     return names
@@ -276,6 +276,9 @@ rule plots:
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
     output:
         f"{OUT_DIR}/{OUT_NAME}.offref.png",
+    resources:
+        mem_mb=512000,
+        runtime=2880,
     shell:
         "Rscript scripts/chrom-density-segs.R"
         " {input.vcf} {input.segs} {output}"
@@ -513,6 +516,9 @@ rule deconstruct_stats:
         f"{OUT_DIR}/{OUT_NAME}.variant-types.png",
         f"{OUT_DIR}/{OUT_NAME}.size-dist.png",
         f"{OUT_DIR}/{OUT_NAME}.af-spectrum.png",
+    resources:
+        mem_mb=512000,
+        runtime=2880,
     shell:
         "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{OUT_NAME}"
         " --title '{REF} Deconstruct'"
