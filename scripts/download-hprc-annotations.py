@@ -220,12 +220,13 @@ def download_from_table(table_url, column, threads, out_annot_path, out_dir, gff
         f'parallel -j {threads} "aws s3 cp --no-sign-request --no-progress {{}} {out_dir}/"',
         shell=True)
 
-    # Sort each file individually, then concatenate in contig-name order.
-    # Each file's contigs share a sample prefix (e.g. HG00408#1#), so
-    # ordering files by their first contig gives global sort order without
-    # an expensive sort on the full concatenation.
+    # Sort/convert each file individually in parallel, then concatenate in
+    # contig-name order. Each file's contigs share a sample prefix (e.g.
+    # HG00408#1#), so ordering files by first contig gives global sort order
+    # without an expensive sort on the full concatenation.
     sorted_files = []
-    with open(index_file) as table_file:
+    cmd_file = os.path.join(out_dir, f'{out_annot_path}.sort_cmds')
+    with open(index_file) as table_file, open(cmd_file, 'w') as cmds:
         for line in table_file:
             if 's3' not in line:
                 continue
@@ -241,10 +242,12 @@ def download_from_table(table_url, column, threads, out_annot_path, out_dir, gff
             cut_cmd = f' | cut -f1-{max_col}' if max_col and not gff else ''
             sort_cmd = '' if gff else ' | sort -k1,1 -k2,2n'
 
-            run(f'{cat_cmd} {annot_path}{strip_cmd}{gff_cmd}{cut_cmd}{sort_cmd} > {sorted_path}',
-                shell=True)
-            os.remove(annot_path)
+            cmds.write(f'{cat_cmd} {annot_path}{strip_cmd}{gff_cmd}{cut_cmd}{sort_cmd}'
+                       f' > {sorted_path} && rm {annot_path}\n')
             sorted_files.append(sorted_path)
+
+    run(f'parallel -j {threads} < {cmd_file}', shell=True)
+    os.remove(cmd_file)
 
     # Order files by first contig name for correct global sort
     def first_contig(path):
