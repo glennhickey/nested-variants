@@ -141,6 +141,10 @@ All settings live in `config.yaml` (committed defaults) and can be overridden in
 | `cpus` | `8` | Global CPU fallback for all rules |
 | `mem_gb` | `200` | Global memory (GB) fallback for all rules |
 | `runtime_min` | `960` | Global runtime (minutes) fallback for all rules |
+| `annot_genes` | *(empty)* | Genes annotation BED file for overlap analysis |
+| `annot_repeats` | *(empty)* | RepeatMasker annotation BED file for overlap analysis |
+| `annot_segdups` | *(empty)* | Segmental duplications BED file for overlap analysis |
+| `annot_censat` | *(empty)* | CenSat (centromeric satellite) BED file for overlap analysis |
 
 Each rule has built-in defaults that are used when neither `{rule}_cpus`/`{rule}_mem_gb` nor the global `cpus`/`mem_gb` is set:
 
@@ -174,6 +178,101 @@ bash test/test-pipeline.sh   # shellcheck + --help flag tests
 The test suite runs [shellcheck](https://www.shellcheck.net/) on all shell scripts and verifies that each script's `--help` flag exits cleanly. Full pipeline tests require `vg` and test data.
 
 For a small end-to-end test using *S. cerevisiae* chromosome I, see [yeast-test/README.md](yeast-test/README.md).
+
+## HPRC v2.1 Example
+
+This example runs the full pipeline on the [HPRC v2.1](https://github.com/human-pangenomics/hpp_pangenome_resources) Minigraph-Cactus graphs with annotation overlap analysis.
+
+### 1. Download annotations
+
+Download HPRC assembly annotations plus GRCh38 and CHM13 reference annotations (genes, repeats, segdups, censat):
+
+```bash
+python annotation/download-hprc-annotations.py --threads 32 -o data/hprc-v2-annotations
+```
+
+This requires `aws`, `parallel`, `bedtools`, `wget`, `dos2unix`, and `bigBedToBed`.
+
+### 2. Run CHM13 pipeline
+
+```bash
+ANNOT=data/hprc-v2-annotations
+GIAB=/path/to/giab-reads
+snakemake --profile profiles/slurm all \
+  --config \
+    ref=CHM13 \
+    vg='/path/to/hprc-v2.1-mc-chm13-eval.chroms/!(*.d*).vg' \
+    out_dir=output/v2.1-chm13 \
+    out_name=hprc-v2.1-mc-chm13.nested \
+    refgaps_bed=data/hprc-v2.1-mc-chm13.refgaps.bed \
+    paths_mem_gb=1024 \
+    annot_genes=$ANNOT/hprc-v2-genes-grch38-chm13.bed \
+    annot_repeats=$ANNOT/hprc-v2-rm-grch38-chm13.bed \
+    annot_segdups=$ANNOT/hprc-v2-sd-grch38-chm13.bed \
+    annot_censat=$ANNOT/hprc-v2-censat-grch38-chm13.bed \
+    "samples={HG002: $GIAB/HG002.reads.idx}"
+```
+
+### 3. Run GRCh38 pipeline
+
+```bash
+ANNOT=data/hprc-v2-annotations
+snakemake --profile profiles/slurm all \
+  --config \
+    ref=GRCh38 \
+    vg='/path/to/hprc-v2.1-mc-grch38-eval.chroms/!(*.d*).vg' \
+    out_dir=output/v2.1-grch38 \
+    out_name=hprc-v2.1-mc-grch38.nested \
+    refgaps_bed=data/hprc-v2.1-mc-grch38.refgaps.bed \
+    paths_mem_gb=1024 \
+    annot_genes=$ANNOT/hprc-v2-genes-grch38-chm13.bed \
+    annot_repeats=$ANNOT/hprc-v2-rm-grch38-chm13.bed \
+    annot_segdups=$ANNOT/hprc-v2-sd-grch38-chm13.bed \
+    annot_censat=$ANNOT/hprc-v2-censat-grch38-chm13.bed \
+    'samples={HG002: data/HG002.reads.idx}'
+```
+
+### Output
+
+Each run produces the full set of outputs plus annotation overlap files:
+
+```
+output/v2.1-chm13/
+├── hprc-v2.1-mc-chm13.nested.gbz               # augmented reference graph
+├── hprc-v2.1-mc-chm13.nested.augref-segs.tsv   # augref segment table
+├── hprc-v2.1-mc-chm13.nested.vcf.gz            # nested VCF (deconstruct)
+├── hprc-v2.1-mc-chm13.nested.onref.vcf.gz      # on-reference variants
+├── hprc-v2.1-mc-chm13.nested.nestedref.vcf.gz  # nested-reference variants
+├── hprc-v2.1-mc-chm13.nested.offref.vcf.gz     # off-reference variants
+├── hprc-v2.1-mc-chm13.nested.augref-length-hist.png  # segment length histogram
+├── hprc-v2.1-mc-chm13.nested.offref.png        # off-reference density ideogram
+├── hprc-v2.1-mc-chm13.nested.vcf-stats.tsv     # variant statistics (deconstruct)
+├── hprc-v2.1-mc-chm13.nested.variant-types.png  # variant type bar chart
+├── hprc-v2.1-mc-chm13.nested.size-dist.png     # indel/SV size distribution
+├── hprc-v2.1-mc-chm13.nested.af-spectrum.png   # allele frequency spectrum
+├── hprc-v2.1-mc-chm13.nested.annot-per-segment.tsv  # per-segment annotation overlaps
+├── hprc-v2.1-mc-chm13.nested.annot-summary.png      # annotation overlap summary
+├── hprc-v2.1-mc-chm13.nested.annot-scatter.png      # annotation scatter plot
+├── hprc-v2.1-mc-chm13.nested.annot-stats.tsv        # annotation statistics
+├── hprc-v2.1-mc-chm13.nested.hapl              # haplotype index (for giraffe)
+├── hprc-v2.1-mc-chm13.nested.fa.gz             # augmented reference FASTA (bgzipped)
+├── hprc-v2.1-mc-chm13.nested.fa.gz.fai         # FASTA index
+├── hprc-v2.1-mc-chm13.nested.fa.gz.gzi         # bgzip index
+├── HG002.gam                                    # read alignments (genotype)
+├── HG002.bam                                    # surjected alignments (sorted BAM)
+├── HG002.bam.bai                                # BAM index
+├── HG002.pack                                   # coverage pileup
+├── HG002.vcf.gz                                 # genotyped VCF (vg call)
+├── HG002.deepvariant.vcf.gz                     # DeepVariant VCF
+├── HG002.call-offref.png                        # call off-reference density
+├── HG002.dv-offref.png                          # DeepVariant off-reference density
+├── merged.call.vcf.gz                           # merged call VCFs (all)
+├── merged.deepvariant.vcf.gz                    # merged DeepVariant VCFs (all)
+├── merged.call-offref.png                       # merged call density
+├── merged.dv-offref.png                         # merged DV density
+├── merged.call.af-spectrum.png                  # merged call AF spectrum
+└── merged.dv.af-spectrum.png                    # merged DV AF spectrum
+```
 
 ## Cluster Usage
 
@@ -218,74 +317,17 @@ If `$TMPDIR` is not set, the scripts fall back to the output directory.
 Override config values on the command line to run different inputs into separate output directories:
 
 ```bash
-# HPRC v2.1 CHM13 — full pipeline including genotyping + DeepVariant
-GIAB=/private/home/ghickey/dev/work/giab-reads
-snakemake --profile profiles/slurm all \
-  --config \
-    ref=CHM13 \
-    vg='/private/groups/hprc/hprc-graphs/hprc-v2.1-dec23/hprc-v2.1-mc-chm13-eval/hprc-v2.1-mc-chm13-eval.chroms/!(*.d*).vg' \
-    out_dir=output/v2.1-chm13 \
-    out_name=hprc-v2.1-mc-chm13.nested \
-    refgaps_bed=data/hprc-v2.1-mc-chm13.refgaps.bed \
-    paths_mem_gb=1024 \
-    "samples={HG001: $GIAB/HG001.novaseq.pcr-free.gs.paths, HG002: $GIAB/HG002.novaseq.pcr-free.gs.paths, HG003: $GIAB/HG003.novaseq.pcr-free.gs.paths, HG004: $GIAB/HG004.novaseq.pcr-free.gs.paths, HG005: $GIAB/HG005.novaseq.pcr-free.gs.paths, HG006: $GIAB/HG006.novaseq.pcr-free.gs.paths, HG007: $GIAB/HG007.novaseq.pcr-free.gs.paths}"
-
-# HPRC v2.1 GRCh38 — full pipeline including genotyping + DeepVariant
-snakemake --profile profiles/slurm all \
-  --config \
-    ref=GRCh38 \
-    vg='/private/groups/hprc/hprc-graphs/hprc-v2.1-dec23/hprc-v2.1-mc-grch38-eval/hprc-v2.1-mc-grch38-eval.chroms/!(*.d*).vg' \
-    out_dir=output/v2.1-grch38 \
-    out_name=hprc-v2.1-mc-grch38.nested \
-    refgaps_bed=data/hprc-v2.1-mc-grch38.refgaps.bed \
-    paths_mem_gb=1024 \
-    'samples={HG002: data/HG002.reads.idx}'
-
-# HPRC v1.1 CHM13 — without genotyping
+# HPRC v1.1 CHM13 — graph_only (no genotyping or annotations)
 snakemake --profile profiles/slurm graph_only \
   --config \
     ref=CHM13 \
-    vg='/private/groups/hprc/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-chm13/hprc-v1.1-mc-chm13.chroms/!(*.d9).vg' \
+    vg='/path/to/hprc-v1.1-mc-chm13.chroms/!(*.d9).vg' \
     out_dir=output/v1.1-chm13 \
     out_name=hprc-v1.1-mc-chm13.nested \
     refgaps_bed=data/hprc-v1.1-mc-chm13.refgaps.bed
 ```
 
-Each run gets its own output directory with the full set of outputs:
-```
-output/v2.1-chm13/
-├── hprc-v2.1-mc-chm13.nested.gbz               # augmented reference graph
-├── hprc-v2.1-mc-chm13.nested.gfa.gz            # augmented GFA
-├── hprc-v2.1-mc-chm13.nested.augref-segs.tsv   # augref segment table
-├── hprc-v2.1-mc-chm13.nested.vcf.gz            # nested VCF (deconstruct)
-├── hprc-v2.1-mc-chm13.nested.onref.vcf.gz      # on-reference variants
-├── hprc-v2.1-mc-chm13.nested.nestedref.vcf.gz  # nested-reference variants
-├── hprc-v2.1-mc-chm13.nested.offref.vcf.gz     # off-reference variants
-├── hprc-v2.1-mc-chm13.nested.augref-length-hist.png  # segment length histogram
-├── hprc-v2.1-mc-chm13.nested.offref.png        # off-reference density ideogram
-├── hprc-v2.1-mc-chm13.nested.vcf-stats.tsv     # variant statistics (deconstruct)
-├── hprc-v2.1-mc-chm13.nested.variant-types.png  # variant type bar chart
-├── hprc-v2.1-mc-chm13.nested.size-dist.png     # indel/SV size distribution
-├── hprc-v2.1-mc-chm13.nested.af-spectrum.png   # allele frequency spectrum
-├── hprc-v2.1-mc-chm13.nested.hapl              # haplotype index (for giraffe)
-├── hprc-v2.1-mc-chm13.nested.fa.gz             # augmented reference FASTA (bgzipped)
-├── hprc-v2.1-mc-chm13.nested.fa.gz.fai         # FASTA index
-├── hprc-v2.1-mc-chm13.nested.fa.gz.gzi         # bgzip index
-├── HG002.gam                                    # read alignments (genotype)
-├── HG002.bam                                    # surjected alignments (sorted BAM)
-├── HG002.bam.bai                                # BAM index
-├── HG002.pack                                   # coverage pileup
-├── HG002.vcf.gz                                 # genotyped VCF (vg call)
-├── HG002.deepvariant.vcf.gz                     # DeepVariant VCF
-├── HG002.call-offref.png                        # call off-reference density
-├── HG002.dv-offref.png                          # DeepVariant off-reference density
-├── merged.call.vcf.gz                           # merged call VCFs (all)
-├── merged.deepvariant.vcf.gz                    # merged DeepVariant VCFs (all)
-├── merged.call-offref.png                       # merged call density
-├── merged.dv-offref.png                         # merged DV density
-├── merged.call.af-spectrum.png                  # merged call AF spectrum
-└── merged.dv.af-spectrum.png                    # merged DV AF spectrum
-```
+See [HPRC v2.1 Example](#hprc-v21-example) for a full run with annotations and genotyping.
 
 ### Genotyping a sample
 
