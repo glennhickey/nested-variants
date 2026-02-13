@@ -266,9 +266,9 @@ if (has_site_af) {
     geom_freqpoly(bins = 50, linewidth = 0.8) +
     scale_color_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
                        name = NULL) +
-    scale_y_continuous(labels = scales::comma, expand = expansion(mult = c(0, 0.1))) +
+    scale_y_log10(labels = scales::comma) +
     labs(title = title, subtitle = "Non-Reference Allele Frequency Spectrum",
-         x = "Non-Reference Frequency (sum of alt AFs per site)", y = "Sites") +
+         x = "Non-Reference Frequency (sum of alt AFs per site)", y = "Sites (log scale)") +
     theme_minimal() +
     theme(
       plot.title = element_text(hjust = 0.5, face = "bold"),
