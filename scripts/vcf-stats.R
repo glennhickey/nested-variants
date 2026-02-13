@@ -45,9 +45,9 @@ if (is.null(title)) title <- basename(vcf)
 # ---------------------------------------------------------------------------
 cat("Reading VCF:", vcf, "\n")
 
-# Try with AF first
+# Try with AF first (filter out all-homref sites from vg call -A)
 cmd_af <- sprintf(
-  "bcftools norm -m- '%s' 2>/dev/null | bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT\\t%%INFO/AF\\n' 2>/dev/null",
+  "bcftools view -c1 '%s' 2>/dev/null | bcftools norm -m- 2>/dev/null | bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT\\t%%INFO/AF\\n' 2>/dev/null",
   vcf
 )
 dt <- tryCatch(
@@ -61,7 +61,7 @@ has_af <- !is.null(dt) && nrow(dt) > 0 && !all(is.na(dt$AF) | dt$AF == ".")
 if (is.null(dt) || nrow(dt) == 0) {
   # Fallback: read without AF
   cmd_no_af <- sprintf(
-    "bcftools norm -m- '%s' 2>/dev/null | bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT\\n' 2>/dev/null",
+    "bcftools view -c1 '%s' 2>/dev/null | bcftools norm -m- 2>/dev/null | bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT\\n' 2>/dev/null",
     vcf
   )
   dt <- fread(cmd = cmd_no_af, col.names = c("CHROM", "POS", "REF", "ALT"))

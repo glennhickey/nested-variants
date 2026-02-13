@@ -67,7 +67,7 @@ cat("Read", nrow(segs), "unique augref segments\n")
 
 # Read VCF body — only need CHROM and POS
 cat("Reading VCF from:", input_vcf, "\n")
-vcf_data <- fread(cmd = paste0("zcat ", input_vcf, " | grep -v '^#'"),
+vcf_data <- fread(cmd = paste0("bcftools view -c1 -H '", input_vcf, "'"),
                   header = FALSE, sep = "\t",
                   select = c(1, 2),
                   col.names = c("chrom", "pos"),
@@ -92,7 +92,7 @@ if (nrow(vcf_data) == 0) {
   # Fall back to matching short names (part after last #)
   cat("No full-name matches; trying short CHROM names\n")
   segs[, augref_short := sub(".*#", "", augref_path)]
-  vcf_data <- fread(cmd = paste0("zcat ", input_vcf, " | grep -v '^#'"),
+  vcf_data <- fread(cmd = paste0("bcftools view -c1 -H '", input_vcf, "'"),
                     header = FALSE, sep = "\t",
                     select = c(1, 2),
                     col.names = c("chrom", "pos"),
