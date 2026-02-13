@@ -2,12 +2,17 @@
 
 # vcf-stats.R — VCF variant statistics with on-ref vs off-ref breakdown
 #
-# Usage: Rscript scripts/vcf-stats.R <input.vcf.gz> <output_prefix> [--title TITLE]
+# Usage: Rscript scripts/vcf-stats.R <input.vcf.gz> <output_prefix>
+#          [--title TITLE] [--mode sites|variants]
+#
+# Modes:
+#   sites    — (default) read VCF as-is; multi-allelic sites classified by largest allele
+#   variants — pipe through `bcftools norm -m-` first to split multi-allelic records
 #
 # Outputs:
 #   {prefix}.vcf-stats.tsv      — summary table
 #   {prefix}.variant-types.png  — grouped bar chart of variant types
-#   {prefix}.size-dist.png      — indel/SV size distribution
+#   {prefix}.size-dist.png      — indel/SV size distribution (two-panel: indels + SVs)
 #   {prefix}.af-spectrum.png    — allele frequency histogram (only when AF present)
 
 suppressPackageStartupMessages({
@@ -21,60 +26,72 @@ suppressPackageStartupMessages({
 # ---------------------------------------------------------------------------
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 2) {
-  cat("Usage: Rscript vcf-stats.R <input.vcf.gz> <output_prefix> [--title TITLE]\n")
+  cat("Usage: Rscript vcf-stats.R <input.vcf.gz> <output_prefix> [--title TITLE] [--mode sites|variants]\n")
   quit(status = 1)
 }
 
 vcf    <- args[1]
 prefix <- args[2]
 title  <- NULL
+mode   <- "sites"
 
 i <- 3
 while (i <= length(args)) {
   if (args[i] == "--title" && i + 1 <= length(args)) {
     title <- args[i + 1]
     i <- i + 2
+  } else if (args[i] == "--mode" && i + 1 <= length(args)) {
+    mode <- args[i + 1]
+    i <- i + 2
   } else {
     i <- i + 1
   }
 }
+if (!mode %in% c("sites", "variants")) {
+  cat("Error: --mode must be 'sites' or 'variants', got '", mode, "'\n", sep = "")
+  quit(status = 1)
+}
 if (is.null(title)) title <- basename(vcf)
 
+mode_label <- if (mode == "sites") "(per site)" else "(per variant)"
+
 # ---------------------------------------------------------------------------
-# Read VCF via bcftools (normalize multi-allelic, extract fields)
+# Read VCF
 # ---------------------------------------------------------------------------
-cat("Reading VCF:", vcf, "\n")
+cat("Reading VCF:", vcf, " (mode:", mode, ")\n")
+
+# Build pipeline prefix: variants mode pipes through bcftools norm -m- first
+if (mode == "variants") {
+  pipe_prefix <- sprintf("bcftools norm -m- '%s' 2>/dev/null | bcftools view -c1 2>/dev/null", vcf)
+} else {
+  pipe_prefix <- sprintf("bcftools view -c1 '%s' 2>/dev/null", vcf)
+}
 
 # Try with AF first (filter out all-homref sites from vg call -A)
 cmd_af <- sprintf(
-  "bcftools view -c1 '%s' 2>/dev/null | bcftools norm -m- 2>/dev/null | bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT\\t%%INFO/AF\\n' 2>/dev/null",
-  vcf
+  "%s | bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT\\t%%INFO/AF\\n' 2>/dev/null",
+  pipe_prefix
 )
 dt <- tryCatch(
-  fread(cmd = cmd_af, col.names = c("CHROM", "POS", "REF", "ALT", "AF")),
+  fread(cmd = cmd_af, col.names = c("CHROM", "POS", "REF", "ALT", "AF_str")),
   error = function(e) NULL,
   warning = function(w) NULL
 )
 
-has_af <- !is.null(dt) && nrow(dt) > 0 && !all(is.na(dt$AF) | dt$AF == ".")
+has_af <- !is.null(dt) && nrow(dt) > 0 && !all(is.na(dt$AF_str) | dt$AF_str == ".")
 
 if (is.null(dt) || nrow(dt) == 0) {
   # Fallback: read without AF
   cmd_no_af <- sprintf(
-    "bcftools view -c1 '%s' 2>/dev/null | bcftools norm -m- 2>/dev/null | bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT\\n' 2>/dev/null",
-    vcf
+    "%s | bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT\\n' 2>/dev/null",
+    pipe_prefix
   )
   dt <- fread(cmd = cmd_no_af, col.names = c("CHROM", "POS", "REF", "ALT"))
   has_af <- FALSE
 }
 
-if (!has_af && "AF" %in% names(dt)) {
-  dt[, AF := NULL]
-}
-
-if (has_af) {
-  dt[, AF := as.numeric(AF)]
-  dt <- dt[!is.na(AF)]
+if (!has_af && "AF_str" %in% names(dt)) {
+  dt[, AF_str := NULL]
 }
 
 cat("Read", nrow(dt), "variant records\n")
@@ -86,14 +103,19 @@ if (nrow(dt) == 0) {
 }
 
 # ---------------------------------------------------------------------------
-# Classify variants
+# Classify variants (per-site, no multi-allelic splitting)
+# For multi-allelic sites: SV > Indel > SNP (use largest allele)
 # ---------------------------------------------------------------------------
 dt[, ref_len := nchar(REF)]
-dt[, alt_len := nchar(ALT)]
-dt[, size := abs(alt_len - ref_len)]
+
+# Compute max size across comma-separated ALT alleles
+dt[, size := sapply(seq_len(.N), function(i) {
+  alts <- unlist(strsplit(ALT[i], ","))
+  max(abs(nchar(alts) - ref_len[i]))
+})]
 
 dt[, variant_type := fifelse(
-  ref_len == 1L & alt_len == 1L, "SNP",
+  size == 0L, "SNP",
   fifelse(size < 50L, "Indel", "SV")
 )]
 
@@ -102,11 +124,24 @@ dt[, ref_context := fifelse(
   grepl("_[0-9]+_alt$", CHROM), "Off-reference", "On-reference"
 )]
 
-# Ts/Tv classification (SNPs only)
-transitions <- c("AG", "GA", "CT", "TC")
-dt[variant_type == "SNP", tstv := fifelse(
-  paste0(REF, ALT) %in% transitions, "Ts", "Tv"
-)]
+# Ts/Tv classification (SNPs only — biallelic SNPs where ALT has no comma)
+dt[variant_type == "SNP" & !grepl(",", ALT), tstv := {
+  transitions <- c("AG", "GA", "CT", "TC")
+  fifelse(paste0(REF, ALT) %in% transitions, "Ts", "Tv")
+}]
+
+# ---------------------------------------------------------------------------
+# AF: compute per-site non-reference frequency (sum of alt AFs)
+# ---------------------------------------------------------------------------
+if (has_af) {
+  # Ensure AF_str is character (fread may auto-detect as numeric after norm -m-)
+  if (!is.character(dt$AF_str)) dt[, AF_str := as.character(AF_str)]
+  dt[, nonref_af := sapply(AF_str, function(x) {
+    vals <- as.numeric(unlist(strsplit(x, ",")))
+    min(sum(vals, na.rm = TRUE), 1.0)
+  })]
+  dt[, AF_str := NULL]
+}
 
 # ---------------------------------------------------------------------------
 # Summary table
@@ -114,7 +149,7 @@ dt[variant_type == "SNP", tstv := fifelse(
 summary_dt <- dt[, .(count = .N), by = .(ref_context, variant_type)]
 
 # Add Ts/Tv counts for SNPs
-tstv_dt <- dt[variant_type == "SNP",
+tstv_dt <- dt[variant_type == "SNP" & !is.na(tstv),
               .(ts = sum(tstv == "Ts"), tv = sum(tstv == "Tv")),
               by = .(ref_context)]
 tstv_dt[, tstv_ratio := round(ts / tv, 2)]
@@ -124,7 +159,8 @@ summary_dt[variant_type != "SNP", c("ts", "tv", "tstv_ratio") := .(NA, NA, NA)]
 
 # Add AF summaries if available
 if (has_af) {
-  af_dt <- dt[, .(mean_af = round(mean(AF), 4), median_af = round(median(AF), 4)),
+  af_dt <- dt[, .(mean_af = round(mean(nonref_af), 4),
+                   median_af = round(median(nonref_af), 4)),
               by = .(ref_context, variant_type)]
   summary_dt <- merge(summary_dt, af_dt, by = c("ref_context", "variant_type"), all.x = TRUE)
 }
@@ -168,9 +204,13 @@ save_png <- function(plot, file, width = 8, height = 6) {
 plot_dt <- dt[, .(count = .N), by = .(ref_context, variant_type)]
 
 # Get Ts/Tv labels for SNP bars
-tstv_labels <- tstv_dt[, .(ref_context, label = paste0("Ts/Tv=", tstv_ratio))]
-plot_dt <- merge(plot_dt, tstv_labels, by = "ref_context", all.x = TRUE)
-plot_dt[variant_type != "SNP", label := NA_character_]
+if (nrow(tstv_dt) > 0) {
+  tstv_labels <- tstv_dt[, .(ref_context, label = paste0("Ts/Tv=", tstv_ratio))]
+  plot_dt <- merge(plot_dt, tstv_labels, by = "ref_context", all.x = TRUE)
+  plot_dt[variant_type != "SNP", label := NA_character_]
+} else {
+  plot_dt[, label := NA_character_]
+}
 
 # Order variant types
 plot_dt[, variant_type := factor(variant_type, levels = c("SNP", "Indel", "SV"))]
@@ -182,9 +222,9 @@ p1 <- ggplot(plot_dt, aes(x = variant_type, y = count, fill = ref_context)) +
             vjust = -0.5, size = 3, na.rm = TRUE) +
   scale_fill_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
                     name = NULL) +
-  scale_y_continuous(labels = scales::comma, expand = expansion(mult = c(0, 0.15))) +
-  labs(title = title, subtitle = "Variant Type Counts",
-       x = "Variant Type", y = "Count") +
+  scale_y_log10(labels = scales::comma) +
+  labs(title = title, subtitle = paste("Variant Type Counts", mode_label),
+       x = "Variant Type", y = "Count (log scale)") +
   theme_minimal() +
   theme(
     plot.title = element_text(hjust = 0.5, face = "bold"),
@@ -196,31 +236,34 @@ p1 <- ggplot(plot_dt, aes(x = variant_type, y = count, fill = ref_context)) +
 save_png(p1, paste0(prefix, ".variant-types.png"))
 
 # ---------------------------------------------------------------------------
-# Plot 2: Size distribution (indels + SVs only)
+# Plot 2: Size distribution — two-panel (Indels 1-49 bp / SVs 50-1000 bp)
 # ---------------------------------------------------------------------------
 size_dt <- dt[variant_type %in% c("Indel", "SV") & size > 0]
 
 if (nrow(size_dt) > 0) {
-  p2 <- ggplot(size_dt, aes(x = size, fill = ref_context)) +
-    geom_histogram(bins = 50, position = "identity", alpha = 0.5) +
-    geom_vline(xintercept = 50, linetype = "dashed", color = "grey40") +
-    annotate("text", x = 50, y = Inf, label = "50 bp", vjust = 1.5, hjust = -0.1,
-             size = 3, color = "grey40") +
-    scale_x_log10(labels = scales::comma) +
-    scale_fill_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
-                      name = NULL) +
+  size_dt[, panel := fifelse(size < 50L, "Indels (1-49 bp)", "SVs (50-1000 bp)")]
+  size_dt[, panel := factor(panel, levels = c("Indels (1-49 bp)", "SVs (50-1000 bp)"))]
+  size_counts <- size_dt[size <= 1000, .(count = .N), by = .(size, ref_context, panel)]
+
+  p2 <- ggplot(size_counts, aes(x = size, y = count, color = ref_context)) +
+    geom_line(linewidth = 0.6) +
+    facet_wrap(~panel, scales = "free") +
+    scale_color_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
+                       name = NULL) +
     scale_y_continuous(labels = scales::comma, expand = expansion(mult = c(0, 0.1))) +
-    labs(title = title, subtitle = "Indel / SV Size Distribution",
-         x = "Size (bp, log scale)", y = "Count") +
+    labs(title = title, subtitle = paste("Indel / SV Size Distribution", mode_label),
+         x = "Size (bp)", y = "Count") +
     theme_minimal() +
     theme(
       plot.title = element_text(hjust = 0.5, face = "bold"),
       plot.subtitle = element_text(hjust = 0.5),
       panel.background = element_rect(fill = "white", color = NA),
-      plot.background  = element_rect(fill = "white", color = NA)
+      plot.background  = element_rect(fill = "white", color = NA),
+      axis.line = element_line(color = "black", linewidth = 0.5),
+      strip.text = element_text(face = "bold")
     )
 
-  save_png(p2, paste0(prefix, ".size-dist.png"))
+  save_png(p2, paste0(prefix, ".size-dist.png"), width = 12)
 } else {
   cat("No indels/SVs with size > 0; skipping size distribution plot.\n")
   # Create empty file so Snakemake sees the output
@@ -228,47 +271,19 @@ if (nrow(size_dt) > 0) {
 }
 
 # ---------------------------------------------------------------------------
-# Plot 3: AF spectrum — per-site non-reference frequency
+# Plot 3: AF spectrum — per-site non-reference frequency (log y-axis)
 # ---------------------------------------------------------------------------
-# Read AF without splitting multi-allelics: sum alt AFs per site to get
-# the non-reference frequency. This avoids the artifact where splitting
-# a site with many alleles makes every allele appear rare.
-cmd_site_af <- sprintf(
-  "bcftools view -c1 '%s' 2>/dev/null | bcftools query -f '%%CHROM\\t%%POS\\t%%INFO/AF\\n' 2>/dev/null",
-  vcf
-)
-site_af <- tryCatch(
-  fread(cmd = cmd_site_af, col.names = c("CHROM", "POS", "AF_str")),
-  error = function(e) NULL,
-  warning = function(w) NULL
-)
+if (has_af) {
+  cat("AF spectrum: ", nrow(dt), " sites with non-ref AF\n")
 
-has_site_af <- !is.null(site_af) && nrow(site_af) > 0 &&
-  !all(is.na(site_af$AF_str) | site_af$AF_str == ".")
-
-if (has_site_af) {
-  # Sum comma-separated AF values per site (handles multi-allelic)
-  site_af[, nonref_af := sapply(AF_str, function(x) {
-    vals <- as.numeric(unlist(strsplit(x, ",")))
-    sum(vals, na.rm = TRUE)
-  })]
-  site_af[, AF_str := NULL]
-  site_af[, nonref_af := pmin(nonref_af, 1.0)]  # cap at 1.0
-
-  # Classify by ref context
-  site_af[, ref_context := fifelse(
-    grepl("_[0-9]+_alt$", CHROM), "Off-reference", "On-reference"
-  )]
-
-  cat("AF spectrum: ", nrow(site_af), " sites with non-ref AF\n")
-
-  p3 <- ggplot(site_af, aes(x = nonref_af, color = ref_context)) +
+  p3 <- ggplot(dt, aes(x = nonref_af, color = ref_context)) +
     geom_freqpoly(bins = 50, linewidth = 0.8) +
     scale_color_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
                        name = NULL) +
     scale_y_log10(labels = scales::comma) +
-    labs(title = title, subtitle = "Non-Reference Allele Frequency Spectrum",
-         x = "Non-Reference Frequency (sum of alt AFs per site)", y = "Sites (log scale)") +
+    labs(title = title, subtitle = paste("Non-Reference Allele Frequency Spectrum", mode_label),
+         x = "Non-Reference Frequency (sum of alt AFs per site)",
+         y = if (mode == "sites") "Sites (log scale)" else "Variants (log scale)") +
     theme_minimal() +
     theme(
       plot.title = element_text(hjust = 0.5, face = "bold"),

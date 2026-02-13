@@ -195,6 +195,7 @@ This requires `aws`, `parallel`, `bedtools`, `wget`, `dos2unix`, and `bigBedToBe
 
 ### 2. Run CHM13 pipeline
 
+Note that we don't do DeepVariant here since it doesn't seem to handle tons of contigs (something that needs further exploring -- below example tries 5kb length filter).
 ```bash
 ANNOT=data/hprc-v2-annotations
 GIAB=/private/home/ghickey/dev/work/giab-reads
@@ -271,10 +272,14 @@ output/v2.1-chm13/
 ├── hprc-v2.1-mc-chm13.nested.offref.vcf.gz     # off-reference variants
 ├── hprc-v2.1-mc-chm13.nested.augref-length-hist.png  # segment length histogram
 ├── hprc-v2.1-mc-chm13.nested.offref.png        # off-reference density ideogram
-├── hprc-v2.1-mc-chm13.nested.vcf-stats.tsv     # variant statistics (deconstruct)
-├── hprc-v2.1-mc-chm13.nested.variant-types.png  # variant type bar chart
-├── hprc-v2.1-mc-chm13.nested.size-dist.png     # indel/SV size distribution
-├── hprc-v2.1-mc-chm13.nested.af-spectrum.png   # allele frequency spectrum
+├── hprc-v2.1-mc-chm13.nested.sites.vcf-stats.tsv      # variant statistics (per site)
+├── hprc-v2.1-mc-chm13.nested.sites.variant-types.png  # variant type bar chart (per site)
+├── hprc-v2.1-mc-chm13.nested.sites.size-dist.png      # indel/SV size distribution (per site)
+├── hprc-v2.1-mc-chm13.nested.sites.af-spectrum.png    # allele frequency spectrum (per site)
+├── hprc-v2.1-mc-chm13.nested.variants.vcf-stats.tsv      # variant statistics (per variant)
+├── hprc-v2.1-mc-chm13.nested.variants.variant-types.png  # variant type bar chart (per variant)
+├── hprc-v2.1-mc-chm13.nested.variants.size-dist.png      # indel/SV size distribution (per variant)
+├── hprc-v2.1-mc-chm13.nested.variants.af-spectrum.png    # allele frequency spectrum (per variant)
 ├── hprc-v2.1-mc-chm13.nested.annot-per-segment.tsv  # per-segment annotation overlaps
 ├── hprc-v2.1-mc-chm13.nested.annot-summary.png      # annotation overlap summary
 ├── hprc-v2.1-mc-chm13.nested.annot-scatter.png      # annotation scatter plot
@@ -295,8 +300,10 @@ output/v2.1-chm13/
 ├── merged.deepvariant.vcf.gz                    # merged DeepVariant VCFs (all)
 ├── merged.call-offref.png                       # merged call density
 ├── merged.dv-offref.png                         # merged DV density
-├── merged.call.af-spectrum.png                  # merged call AF spectrum
-└── merged.dv.af-spectrum.png                    # merged DV AF spectrum
+├── merged.call.sites.{vcf-stats.tsv,variant-types.png,size-dist.png,af-spectrum.png}
+├── merged.call.variants.{vcf-stats.tsv,variant-types.png,size-dist.png,af-spectrum.png}
+├── merged.dv.sites.{vcf-stats.tsv,variant-types.png,size-dist.png,af-spectrum.png}
+└── merged.dv.variants.{vcf-stats.tsv,variant-types.png,size-dist.png,af-spectrum.png}
 ```
 
 ## Cluster Usage

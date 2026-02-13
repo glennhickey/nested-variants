@@ -94,46 +94,68 @@ rule all:
         # graph_only outputs
         f"{OUT_DIR}/{OUT_NAME}.offref.png",
         f"{OUT_DIR}/{OUT_NAME}.augref-length-hist.png",
-        f"{OUT_DIR}/{OUT_NAME}.vcf-stats.tsv",
-        f"{OUT_DIR}/{OUT_NAME}.variant-types.png",
-        f"{OUT_DIR}/{OUT_NAME}.size-dist.png",
-        f"{OUT_DIR}/{OUT_NAME}.af-spectrum.png",
+        f"{OUT_DIR}/{OUT_NAME}.sites.vcf-stats.tsv",
+        f"{OUT_DIR}/{OUT_NAME}.sites.variant-types.png",
+        f"{OUT_DIR}/{OUT_NAME}.sites.size-dist.png",
+        f"{OUT_DIR}/{OUT_NAME}.sites.af-spectrum.png",
+        f"{OUT_DIR}/{OUT_NAME}.variants.vcf-stats.tsv",
+        f"{OUT_DIR}/{OUT_NAME}.variants.variant-types.png",
+        f"{OUT_DIR}/{OUT_NAME}.variants.size-dist.png",
+        f"{OUT_DIR}/{OUT_NAME}.variants.af-spectrum.png",
         *annotation_outputs(),
         # per-sample genotyping outputs
         expand("{out}/{s}.vcf.gz", out=OUT_DIR, s=SAMPLES),
         expand("{out}/{s}.call-offref.png", out=OUT_DIR, s=SAMPLES),
-        expand("{out}/{s}.call.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES),
-        expand("{out}/{s}.call.variant-types.png", out=OUT_DIR, s=SAMPLES),
-        expand("{out}/{s}.call.size-dist.png", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.call.sites.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.call.sites.variant-types.png", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.call.sites.size-dist.png", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.call.variants.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.call.variants.variant-types.png", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.call.variants.size-dist.png", out=OUT_DIR, s=SAMPLES),
         # per-sample deepvariant outputs
         expand("{out}/{s}.deepvariant.vcf.gz", out=OUT_DIR, s=SAMPLES),
         expand("{out}/{s}.dv-offref.png", out=OUT_DIR, s=SAMPLES),
-        expand("{out}/{s}.dv.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES),
-        expand("{out}/{s}.dv.variant-types.png", out=OUT_DIR, s=SAMPLES),
-        expand("{out}/{s}.dv.size-dist.png", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.dv.sites.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.dv.sites.variant-types.png", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.dv.sites.size-dist.png", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.dv.variants.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.dv.variants.variant-types.png", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.dv.variants.size-dist.png", out=OUT_DIR, s=SAMPLES),
         # merged outputs
         f"{OUT_DIR}/merged.call.vcf.gz",
         f"{OUT_DIR}/merged.deepvariant.vcf.gz",
         f"{OUT_DIR}/merged.call-offref.png",
         f"{OUT_DIR}/merged.dv-offref.png",
-        f"{OUT_DIR}/merged.call.vcf-stats.tsv",
-        f"{OUT_DIR}/merged.call.variant-types.png",
-        f"{OUT_DIR}/merged.call.size-dist.png",
-        f"{OUT_DIR}/merged.call.af-spectrum.png",
-        f"{OUT_DIR}/merged.dv.vcf-stats.tsv",
-        f"{OUT_DIR}/merged.dv.variant-types.png",
-        f"{OUT_DIR}/merged.dv.size-dist.png",
-        f"{OUT_DIR}/merged.dv.af-spectrum.png",
+        f"{OUT_DIR}/merged.call.sites.vcf-stats.tsv",
+        f"{OUT_DIR}/merged.call.sites.variant-types.png",
+        f"{OUT_DIR}/merged.call.sites.size-dist.png",
+        f"{OUT_DIR}/merged.call.sites.af-spectrum.png",
+        f"{OUT_DIR}/merged.call.variants.vcf-stats.tsv",
+        f"{OUT_DIR}/merged.call.variants.variant-types.png",
+        f"{OUT_DIR}/merged.call.variants.size-dist.png",
+        f"{OUT_DIR}/merged.call.variants.af-spectrum.png",
+        f"{OUT_DIR}/merged.dv.sites.vcf-stats.tsv",
+        f"{OUT_DIR}/merged.dv.sites.variant-types.png",
+        f"{OUT_DIR}/merged.dv.sites.size-dist.png",
+        f"{OUT_DIR}/merged.dv.sites.af-spectrum.png",
+        f"{OUT_DIR}/merged.dv.variants.vcf-stats.tsv",
+        f"{OUT_DIR}/merged.dv.variants.variant-types.png",
+        f"{OUT_DIR}/merged.dv.variants.size-dist.png",
+        f"{OUT_DIR}/merged.dv.variants.af-spectrum.png",
 
 rule graph_only:
     """Graph construction + deconstruct + plots (no genotyping)"""
     input:
         f"{OUT_DIR}/{OUT_NAME}.offref.png",
         f"{OUT_DIR}/{OUT_NAME}.augref-length-hist.png",
-        f"{OUT_DIR}/{OUT_NAME}.vcf-stats.tsv",
-        f"{OUT_DIR}/{OUT_NAME}.variant-types.png",
-        f"{OUT_DIR}/{OUT_NAME}.size-dist.png",
-        f"{OUT_DIR}/{OUT_NAME}.af-spectrum.png",
+        f"{OUT_DIR}/{OUT_NAME}.sites.vcf-stats.tsv",
+        f"{OUT_DIR}/{OUT_NAME}.sites.variant-types.png",
+        f"{OUT_DIR}/{OUT_NAME}.sites.size-dist.png",
+        f"{OUT_DIR}/{OUT_NAME}.sites.af-spectrum.png",
+        f"{OUT_DIR}/{OUT_NAME}.variants.vcf-stats.tsv",
+        f"{OUT_DIR}/{OUT_NAME}.variants.variant-types.png",
+        f"{OUT_DIR}/{OUT_NAME}.variants.size-dist.png",
+        f"{OUT_DIR}/{OUT_NAME}.variants.af-spectrum.png",
         *annotation_outputs(),
 
 rule genotype_all:
@@ -141,18 +163,24 @@ rule genotype_all:
     input:
         expand("{out}/{s}.vcf.gz", out=OUT_DIR, s=SAMPLES),
         expand("{out}/{s}.call-offref.png", out=OUT_DIR, s=SAMPLES),
-        expand("{out}/{s}.call.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES),
-        expand("{out}/{s}.call.variant-types.png", out=OUT_DIR, s=SAMPLES),
-        expand("{out}/{s}.call.size-dist.png", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.call.sites.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.call.sites.variant-types.png", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.call.sites.size-dist.png", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.call.variants.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.call.variants.variant-types.png", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.call.variants.size-dist.png", out=OUT_DIR, s=SAMPLES),
 
 rule deepvariant_all:
     """Run DeepVariant on all samples"""
     input:
         expand("{out}/{s}.deepvariant.vcf.gz", out=OUT_DIR, s=SAMPLES),
         expand("{out}/{s}.dv-offref.png", out=OUT_DIR, s=SAMPLES),
-        expand("{out}/{s}.dv.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES),
-        expand("{out}/{s}.dv.variant-types.png", out=OUT_DIR, s=SAMPLES),
-        expand("{out}/{s}.dv.size-dist.png", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.dv.sites.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.dv.sites.variant-types.png", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.dv.sites.size-dist.png", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.dv.variants.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.dv.variants.variant-types.png", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.dv.variants.size-dist.png", out=OUT_DIR, s=SAMPLES),
 
 # Resolve wildcard ambiguities:
 # - {OUT_NAME}.vcf.gz matches both deconstruct and call (sample={OUT_NAME})
@@ -547,75 +575,103 @@ rule deconstruct_stats:
     input:
         f"{OUT_DIR}/{OUT_NAME}.vcf.gz",
     output:
-        f"{OUT_DIR}/{OUT_NAME}.vcf-stats.tsv",
-        f"{OUT_DIR}/{OUT_NAME}.variant-types.png",
-        f"{OUT_DIR}/{OUT_NAME}.size-dist.png",
-        f"{OUT_DIR}/{OUT_NAME}.af-spectrum.png",
+        f"{OUT_DIR}/{OUT_NAME}.sites.vcf-stats.tsv",
+        f"{OUT_DIR}/{OUT_NAME}.sites.variant-types.png",
+        f"{OUT_DIR}/{OUT_NAME}.sites.size-dist.png",
+        f"{OUT_DIR}/{OUT_NAME}.sites.af-spectrum.png",
+        f"{OUT_DIR}/{OUT_NAME}.variants.vcf-stats.tsv",
+        f"{OUT_DIR}/{OUT_NAME}.variants.variant-types.png",
+        f"{OUT_DIR}/{OUT_NAME}.variants.size-dist.png",
+        f"{OUT_DIR}/{OUT_NAME}.variants.af-spectrum.png",
     resources:
         mem_mb=256000,
         runtime=2880,
     shell:
-        "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{OUT_NAME}"
-        " --title '{REF} Deconstruct'"
+        "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{OUT_NAME}.sites"
+        " --mode sites --title '{REF} Deconstruct'"
+        " && Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{OUT_NAME}.variants"
+        " --mode variants --title '{REF} Deconstruct'"
 
 rule call_stats:
     """Per-sample call VCF → variant stats + plots"""
     input:
         f"{OUT_DIR}/{{sample}}.vcf.gz",
     output:
-        f"{OUT_DIR}/{{sample}}.call.vcf-stats.tsv",
-        f"{OUT_DIR}/{{sample}}.call.variant-types.png",
-        f"{OUT_DIR}/{{sample}}.call.size-dist.png",
+        f"{OUT_DIR}/{{sample}}.call.sites.vcf-stats.tsv",
+        f"{OUT_DIR}/{{sample}}.call.sites.variant-types.png",
+        f"{OUT_DIR}/{{sample}}.call.sites.size-dist.png",
+        f"{OUT_DIR}/{{sample}}.call.variants.vcf-stats.tsv",
+        f"{OUT_DIR}/{{sample}}.call.variants.variant-types.png",
+        f"{OUT_DIR}/{{sample}}.call.variants.size-dist.png",
     resources:
         mem_mb=256000,
         runtime=2880,
     shell:
-        "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{wildcards.sample}.call"
-        " --title '{REF} Call ({wildcards.sample})'"
+        "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{wildcards.sample}.call.sites"
+        " --mode sites --title '{REF} Call ({wildcards.sample})'"
+        " && Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{wildcards.sample}.call.variants"
+        " --mode variants --title '{REF} Call ({wildcards.sample})'"
 
 rule dv_stats:
     """Per-sample DeepVariant VCF → variant stats + plots"""
     input:
         f"{OUT_DIR}/{{sample}}.deepvariant.vcf.gz",
     output:
-        f"{OUT_DIR}/{{sample}}.dv.vcf-stats.tsv",
-        f"{OUT_DIR}/{{sample}}.dv.variant-types.png",
-        f"{OUT_DIR}/{{sample}}.dv.size-dist.png",
+        f"{OUT_DIR}/{{sample}}.dv.sites.vcf-stats.tsv",
+        f"{OUT_DIR}/{{sample}}.dv.sites.variant-types.png",
+        f"{OUT_DIR}/{{sample}}.dv.sites.size-dist.png",
+        f"{OUT_DIR}/{{sample}}.dv.variants.vcf-stats.tsv",
+        f"{OUT_DIR}/{{sample}}.dv.variants.variant-types.png",
+        f"{OUT_DIR}/{{sample}}.dv.variants.size-dist.png",
     resources:
         mem_mb=256000,
         runtime=2880,
     shell:
-        "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{wildcards.sample}.dv"
-        " --title '{REF} DeepVariant ({wildcards.sample})'"
+        "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{wildcards.sample}.dv.sites"
+        " --mode sites --title '{REF} DeepVariant ({wildcards.sample})'"
+        " && Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{wildcards.sample}.dv.variants"
+        " --mode variants --title '{REF} DeepVariant ({wildcards.sample})'"
 
 rule merged_call_stats:
     """Merged call VCF → variant stats + plots (includes AF spectrum)"""
     input:
         f"{OUT_DIR}/merged.call.vcf.gz",
     output:
-        f"{OUT_DIR}/merged.call.vcf-stats.tsv",
-        f"{OUT_DIR}/merged.call.variant-types.png",
-        f"{OUT_DIR}/merged.call.size-dist.png",
-        f"{OUT_DIR}/merged.call.af-spectrum.png",
+        f"{OUT_DIR}/merged.call.sites.vcf-stats.tsv",
+        f"{OUT_DIR}/merged.call.sites.variant-types.png",
+        f"{OUT_DIR}/merged.call.sites.size-dist.png",
+        f"{OUT_DIR}/merged.call.sites.af-spectrum.png",
+        f"{OUT_DIR}/merged.call.variants.vcf-stats.tsv",
+        f"{OUT_DIR}/merged.call.variants.variant-types.png",
+        f"{OUT_DIR}/merged.call.variants.size-dist.png",
+        f"{OUT_DIR}/merged.call.variants.af-spectrum.png",
     resources:
         mem_mb=256000,
         runtime=2880,
     shell:
-        "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/merged.call"
-        " --title '{REF} Merged Call'"
+        "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/merged.call.sites"
+        " --mode sites --title '{REF} Merged Call'"
+        " && Rscript scripts/vcf-stats.R {input} {OUT_DIR}/merged.call.variants"
+        " --mode variants --title '{REF} Merged Call'"
 
 rule merged_dv_stats:
     """Merged DeepVariant VCF → variant stats + plots (includes AF spectrum)"""
     input:
         f"{OUT_DIR}/merged.deepvariant.vcf.gz",
     output:
-        f"{OUT_DIR}/merged.dv.vcf-stats.tsv",
-        f"{OUT_DIR}/merged.dv.variant-types.png",
-        f"{OUT_DIR}/merged.dv.size-dist.png",
-        f"{OUT_DIR}/merged.dv.af-spectrum.png",
+        f"{OUT_DIR}/merged.dv.sites.vcf-stats.tsv",
+        f"{OUT_DIR}/merged.dv.sites.variant-types.png",
+        f"{OUT_DIR}/merged.dv.sites.size-dist.png",
+        f"{OUT_DIR}/merged.dv.sites.af-spectrum.png",
+        f"{OUT_DIR}/merged.dv.variants.vcf-stats.tsv",
+        f"{OUT_DIR}/merged.dv.variants.variant-types.png",
+        f"{OUT_DIR}/merged.dv.variants.size-dist.png",
+        f"{OUT_DIR}/merged.dv.variants.af-spectrum.png",
     resources:
         mem_mb=256000,
         runtime=2880,
     shell:
-        "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/merged.dv"
-        " --title '{REF} Merged DeepVariant'"
+        "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/merged.dv.sites"
+        " --mode sites --title '{REF} Merged DeepVariant'"
+        " && Rscript scripts/vcf-stats.R {input} {OUT_DIR}/merged.dv.variants"
+        " --mode variants --title '{REF} Merged DeepVariant'"
