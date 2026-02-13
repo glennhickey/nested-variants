@@ -309,7 +309,7 @@ rule annotation_intersect:
     output:
         f"{OUT_DIR}/{OUT_NAME}.annot-per-segment.tsv",
     resources:
-        mem_mb=256000,
+        mem_mb=512000,
         runtime=2880,
     params:
         names=" ".join(annotation_names()),
