@@ -228,29 +228,56 @@ if (nrow(size_dt) > 0) {
 }
 
 # ---------------------------------------------------------------------------
-# Plot 3: AF spectrum (only when AF is available)
+# Plot 3: AF spectrum — per-site non-reference frequency
 # ---------------------------------------------------------------------------
-if (has_af) {
-  dt[, variant_type_f := factor(variant_type, levels = c("SNP", "Indel", "SV"))]
+# Read AF without splitting multi-allelics: sum alt AFs per site to get
+# the non-reference frequency. This avoids the artifact where splitting
+# a site with many alleles makes every allele appear rare.
+cmd_site_af <- sprintf(
+  "bcftools view -c1 '%s' 2>/dev/null | bcftools query -f '%%CHROM\\t%%POS\\t%%INFO/AF\\n' 2>/dev/null",
+  vcf
+)
+site_af <- tryCatch(
+  fread(cmd = cmd_site_af, col.names = c("CHROM", "POS", "AF_str")),
+  error = function(e) NULL,
+  warning = function(w) NULL
+)
 
-  p3 <- ggplot(dt, aes(x = AF, color = ref_context)) +
+has_site_af <- !is.null(site_af) && nrow(site_af) > 0 &&
+  !all(is.na(site_af$AF_str) | site_af$AF_str == ".")
+
+if (has_site_af) {
+  # Sum comma-separated AF values per site (handles multi-allelic)
+  site_af[, nonref_af := sapply(AF_str, function(x) {
+    vals <- as.numeric(unlist(strsplit(x, ",")))
+    sum(vals, na.rm = TRUE)
+  })]
+  site_af[, AF_str := NULL]
+  site_af[, nonref_af := pmin(nonref_af, 1.0)]  # cap at 1.0
+
+  # Classify by ref context
+  site_af[, ref_context := fifelse(
+    grepl("_[0-9]+_alt$", CHROM), "Off-reference", "On-reference"
+  )]
+
+  cat("AF spectrum: ", nrow(site_af), " sites with non-ref AF\n")
+
+  p3 <- ggplot(site_af, aes(x = nonref_af, color = ref_context)) +
     geom_freqpoly(bins = 50, linewidth = 0.8) +
-    facet_wrap(~ variant_type_f, ncol = 1, scales = "free_y") +
     scale_color_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
                        name = NULL) +
     scale_y_continuous(labels = scales::comma, expand = expansion(mult = c(0, 0.1))) +
-    labs(title = title, subtitle = "Allele Frequency Spectrum",
-         x = "Allele Frequency", y = "Count") +
+    labs(title = title, subtitle = "Non-Reference Allele Frequency Spectrum",
+         x = "Non-Reference Frequency (sum of alt AFs per site)", y = "Sites") +
     theme_minimal() +
     theme(
       plot.title = element_text(hjust = 0.5, face = "bold"),
       plot.subtitle = element_text(hjust = 0.5),
-      strip.text = element_text(face = "bold"),
       panel.background = element_rect(fill = "white", color = NA),
       plot.background  = element_rect(fill = "white", color = NA)
     )
 
-  save_png(p3, paste0(prefix, ".af-spectrum.png"), height = 8)
+  save_png(p3, paste0(prefix, ".af-spectrum.png"), height = 6)
   cat("AF spectrum plot generated.\n")
 } else {
   cat("No AF field; skipping allele frequency spectrum plot.\n")
