@@ -198,7 +198,6 @@ rule paths:
         ancient(VG_FILES),
     output:
         f"{OUT_DIR}/{OUT_NAME}.gbz",
-        f"{OUT_DIR}/{OUT_NAME}.gfa.gz",
         f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
     threads: rule_cpus("paths", 128)
     resources:
@@ -211,7 +210,7 @@ rule paths:
         " --vg '{input}'"
         " --ref {REF}"
         " --out-dir {OUT_DIR}"
-        " --out-name {OUT_NAME}.gfa.gz"
+        " --out-name {OUT_NAME}"
         " --min-augref-len {config[min_augref_len]}"
         " --cpus {threads} --mem {params.mem_gb}gb"
         " --local"

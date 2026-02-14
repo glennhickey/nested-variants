@@ -296,6 +296,8 @@ if (has_af) {
   cat("AF spectrum plot generated.\n")
 } else {
   cat("No AF field; skipping allele frequency spectrum plot.\n")
+  # Create empty file so Snakemake sees the output
+  file.create(paste0(prefix, ".af-spectrum.png"))
 }
 
 cat("Done.\n")
