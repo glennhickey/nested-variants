@@ -363,21 +363,43 @@ def extract_coordinates_per_segment(nesting_file, offref_bed, onref_bed):
     return total_offref_bp, total_onref_bp, num_skipped, segments
 
 
+def sort_bed(input_bed, output_bed=None):
+    """
+    Sort a BED file by chrom,start for use with bedtools -sorted.
+
+    Args:
+        input_bed: Path to input BED file
+        output_bed: Path to output sorted BED file (if None, sort in place)
+
+    Returns:
+        Path to sorted BED file
+    """
+    if output_bed is None:
+        output_bed = input_bed
+    cmd = f"sort -k1,1 -k2,2n '{input_bed}' -o '{output_bed}'"
+    result = subprocess.run(cmd, shell=True, stderr=subprocess.PIPE, text=True)
+    if result.returncode != 0:
+        sys.stderr.write(f"sort failed: {result.stderr}\n")
+        sys.exit(1)
+    return output_bed
+
+
 def calculate_per_segment_coverage(coords_bed, annot_bed, group_column=None):
     """
     Calculate per-segment overlap with an annotation BED using bedtools intersect -wao.
 
-    Streams bedtools output line-by-line to avoid buffering large intersections in memory.
+    Uses -sorted for streaming intersection with constant memory.
+    Streams bedtools output line-by-line to avoid buffering large results in memory.
 
     Args:
-        coords_bed: BED4 file with coordinates (col 4 = augref_path)
-        annot_bed: Annotation BED file
+        coords_bed: BED4 file with coordinates (col 4 = augref_path), must be sorted
+        annot_bed: Annotation BED file, must be sorted
         group_column: 1-indexed column in annotation BED to extract class from (e.g., 6 for RepeatMasker)
 
     Returns:
         dict: augref_path -> {class -> overlap_bp}
     """
-    cmd = ['bedtools', 'intersect', '-a', coords_bed, '-b', annot_bed, '-wao']
+    cmd = ['bedtools', 'intersect', '-a', coords_bed, '-b', annot_bed, '-wao', '-sorted']
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
     coverage = defaultdict(lambda: defaultdict(int))
@@ -551,6 +573,12 @@ def main(command_line=None):
         per_seg_output = options.per_segment_output
         if per_seg_output is None:
             per_seg_output = os.path.join(options.output_dir, 'per_segment_annotations.tsv')
+
+        # Sort coords BEDs for bedtools -sorted (constant memory intersection)
+        # Annotation BEDs are already sorted by download-hprc-annotations.py
+        sys.stderr.write("Sorting coordinate BEDs for streaming intersection...\n")
+        sort_bed(offref_bed)
+        sort_bed(onref_bed)
 
         source_results = []
         ref_results = []
