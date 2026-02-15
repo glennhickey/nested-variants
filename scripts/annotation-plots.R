@@ -77,14 +77,14 @@ save_png <- function(plot, file, width = 8, height = 6) {
 # ---------------------------------------------------------------------------
 
 # Aggregate per annotation: total overlap bp / total segment length
-summary_source <- dt[, .(overlap_bp = sum(source_overlap_bp),
-                         total_bp = sum(source_len)),
+summary_source <- dt[, .(overlap_bp = as.numeric(sum(source_overlap_bp)),
+                         total_bp = as.numeric(sum(source_len))),
                      by = .(annotation)]
 summary_source[, frac := overlap_bp / total_bp]
 summary_source[, coord_type := "Source"]
 
-summary_ref <- dt[, .(overlap_bp = sum(ref_overlap_bp),
-                      total_bp = sum(ref_len)),
+summary_ref <- dt[, .(overlap_bp = as.numeric(sum(ref_overlap_bp)),
+                      total_bp = as.numeric(sum(ref_len))),
                   by = .(annotation)]
 summary_ref[, frac := overlap_bp / total_bp]
 summary_ref[, coord_type := "Reference"]
@@ -167,7 +167,7 @@ if (has_repeat_classes) {
   repeat_dt <- dt[annotation_class != annotation]
 
   # Top 8 classes by total source + ref overlap bp
-  class_totals <- repeat_dt[, .(total = sum(source_overlap_bp) + sum(ref_overlap_bp)),
+  class_totals <- repeat_dt[, .(total = as.numeric(sum(source_overlap_bp)) + as.numeric(sum(ref_overlap_bp))),
                             by = .(annotation_class)]
   setorder(class_totals, -total)
   top_classes <- head(class_totals$annotation_class, 8)
@@ -175,11 +175,11 @@ if (has_repeat_classes) {
                                       annotation_class, "Other")]
 
   # Aggregate for stacked bar
-  src_bar <- repeat_dt[, .(overlap_bp = sum(source_overlap_bp)),
+  src_bar <- repeat_dt[, .(overlap_bp = as.numeric(sum(source_overlap_bp))),
                        by = .(display_class)]
   src_bar[, coord_type := "Source"]
 
-  ref_bar <- repeat_dt[, .(overlap_bp = sum(ref_overlap_bp)),
+  ref_bar <- repeat_dt[, .(overlap_bp = as.numeric(sum(ref_overlap_bp))),
                        by = .(display_class)]
   ref_bar[, coord_type := "Reference"]
 
