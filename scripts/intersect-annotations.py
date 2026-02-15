@@ -367,6 +367,8 @@ def calculate_per_segment_coverage(coords_bed, annot_bed, group_column=None):
     """
     Calculate per-segment overlap with an annotation BED using bedtools intersect -wao.
 
+    Streams bedtools output line-by-line to avoid buffering large intersections in memory.
+
     Args:
         coords_bed: BED4 file with coordinates (col 4 = augref_path)
         annot_bed: Annotation BED file
@@ -376,15 +378,12 @@ def calculate_per_segment_coverage(coords_bed, annot_bed, group_column=None):
         dict: augref_path -> {class -> overlap_bp}
     """
     cmd = ['bedtools', 'intersect', '-a', coords_bed, '-b', annot_bed, '-wao']
-    result = subprocess.run(cmd, capture_output=True, text=True)
-
-    if result.returncode != 0:
-        sys.stderr.write(f"bedtools intersect -wao failed: {result.stderr}\n")
-        return {}
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
     coverage = defaultdict(lambda: defaultdict(int))
 
-    for line in result.stdout.strip().split('\n'):
+    for line in proc.stdout:
+        line = line.rstrip('\n')
         if not line:
             continue
         fields = line.split('\t')
@@ -402,6 +401,13 @@ def calculate_per_segment_coverage(coords_bed, annot_bed, group_column=None):
                 coverage[augref_path]['unknown'] += overlap_bp
         elif overlap_bp > 0:
             coverage[augref_path]['_total'] += overlap_bp
+
+    stderr_output = proc.stderr.read()
+    returncode = proc.wait()
+
+    if returncode != 0:
+        sys.stderr.write(f"bedtools intersect -wao failed: {stderr_output}\n")
+        return {}
 
     return dict(coverage)
 
