@@ -38,7 +38,8 @@ if config.get("samples_tsv"):
 # Constrain {sample} wildcard to configured sample names only, preventing
 # ambiguity between deconstruct ({OUT_NAME}.vcf.gz) and call ({sample}.vcf.gz)
 wildcard_constraints:
-    sample="|".join(SAMPLES) if SAMPLES else "$^"
+    sample="|".join(SAMPLES) if SAMPLES else "$^",
+    filt="all|pass"
 
 # Per-rule resource helpers: look up rule-specific config, fall back to global default
 def rule_cpus(rule_name, default):
@@ -85,6 +86,33 @@ def annotation_outputs():
         ]
     return []
 
+def annotation_snp_outputs(callers=None):
+    """Return annotation SNP heatmap outputs if annotations are configured.
+
+    callers: list of caller types to include, e.g. ["call"], ["deepvariant"],
+             ["deconstruct"], or None for all.
+    Deconstruct VCFs have no FILTER field, so only "all" is generated for them.
+    """
+    if not annotation_inputs():
+        return []
+    if callers is None:
+        callers = ["deconstruct", "call", "deepvariant"]
+    outputs = []
+    for plot in ["annot-snp-counts", "annot-snp-tstv"]:
+        if "deconstruct" in callers:
+            outputs.append(f"{OUT_DIR}/{OUT_NAME}.{plot}.all.png")
+        if "call" in callers:
+            for filt in ["all", "pass"]:
+                for s in SAMPLES:
+                    outputs.append(f"{OUT_DIR}/{s}.{plot}.{filt}.png")
+                outputs.append(f"{OUT_DIR}/merged.call.{plot}.{filt}.png")
+        if "deepvariant" in callers:
+            for filt in ["all", "pass"]:
+                for s in SAMPLES:
+                    outputs.append(f"{OUT_DIR}/{s}.deepvariant.{plot}.{filt}.png")
+                outputs.append(f"{OUT_DIR}/merged.deepvariant.{plot}.{filt}.png")
+    return outputs
+
 ############################################################################
 # Target rules
 ############################################################################
@@ -104,32 +132,25 @@ rule all:
         f"{OUT_DIR}/{OUT_NAME}.variants.size-dist.png",
         f"{OUT_DIR}/{OUT_NAME}.variants.af-spectrum.png",
         *annotation_outputs(),
+        *annotation_snp_outputs(),
         # per-sample genotyping outputs
         expand("{out}/{s}.vcf.gz", out=OUT_DIR, s=SAMPLES),
         expand("{out}/{s}.call-offref.png", out=OUT_DIR, s=SAMPLES),
         expand("{out}/{s}.call.sites.{filt}.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.call.sites.{filt}.variant-types.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.call.sites.{filt}.size-dist.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.call.sites.{filt}.snp-matrix.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.call.sites.{filt}.snp-tstv.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.call.variants.{filt}.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.call.variants.{filt}.variant-types.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.call.variants.{filt}.size-dist.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.call.variants.{filt}.snp-matrix.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.call.variants.{filt}.snp-tstv.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         # per-sample deepvariant outputs
         expand("{out}/{s}.deepvariant.vcf.gz", out=OUT_DIR, s=SAMPLES),
         expand("{out}/{s}.dv-offref.png", out=OUT_DIR, s=SAMPLES),
         expand("{out}/{s}.dv.sites.{filt}.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.dv.sites.{filt}.variant-types.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.dv.sites.{filt}.size-dist.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.dv.sites.{filt}.snp-matrix.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.dv.sites.{filt}.snp-tstv.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.dv.variants.{filt}.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.dv.variants.{filt}.variant-types.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.dv.variants.{filt}.size-dist.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.dv.variants.{filt}.snp-matrix.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.dv.variants.{filt}.snp-tstv.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         # merged outputs
         f"{OUT_DIR}/merged.call.vcf.gz",
         f"{OUT_DIR}/merged.deepvariant.vcf.gz",
@@ -139,50 +160,34 @@ rule all:
         f"{OUT_DIR}/merged.call.sites.all.variant-types.png",
         f"{OUT_DIR}/merged.call.sites.all.size-dist.png",
         f"{OUT_DIR}/merged.call.sites.all.af-spectrum.png",
-        f"{OUT_DIR}/merged.call.sites.all.snp-matrix.png",
-        f"{OUT_DIR}/merged.call.sites.all.snp-tstv.png",
         f"{OUT_DIR}/merged.call.sites.pass.vcf-stats.tsv",
         f"{OUT_DIR}/merged.call.sites.pass.variant-types.png",
         f"{OUT_DIR}/merged.call.sites.pass.size-dist.png",
         f"{OUT_DIR}/merged.call.sites.pass.af-spectrum.png",
-        f"{OUT_DIR}/merged.call.sites.pass.snp-matrix.png",
-        f"{OUT_DIR}/merged.call.sites.pass.snp-tstv.png",
         f"{OUT_DIR}/merged.call.variants.all.vcf-stats.tsv",
         f"{OUT_DIR}/merged.call.variants.all.variant-types.png",
         f"{OUT_DIR}/merged.call.variants.all.size-dist.png",
         f"{OUT_DIR}/merged.call.variants.all.af-spectrum.png",
-        f"{OUT_DIR}/merged.call.variants.all.snp-matrix.png",
-        f"{OUT_DIR}/merged.call.variants.all.snp-tstv.png",
         f"{OUT_DIR}/merged.call.variants.pass.vcf-stats.tsv",
         f"{OUT_DIR}/merged.call.variants.pass.variant-types.png",
         f"{OUT_DIR}/merged.call.variants.pass.size-dist.png",
         f"{OUT_DIR}/merged.call.variants.pass.af-spectrum.png",
-        f"{OUT_DIR}/merged.call.variants.pass.snp-matrix.png",
-        f"{OUT_DIR}/merged.call.variants.pass.snp-tstv.png",
         f"{OUT_DIR}/merged.dv.sites.all.vcf-stats.tsv",
         f"{OUT_DIR}/merged.dv.sites.all.variant-types.png",
         f"{OUT_DIR}/merged.dv.sites.all.size-dist.png",
         f"{OUT_DIR}/merged.dv.sites.all.af-spectrum.png",
-        f"{OUT_DIR}/merged.dv.sites.all.snp-matrix.png",
-        f"{OUT_DIR}/merged.dv.sites.all.snp-tstv.png",
         f"{OUT_DIR}/merged.dv.sites.pass.vcf-stats.tsv",
         f"{OUT_DIR}/merged.dv.sites.pass.variant-types.png",
         f"{OUT_DIR}/merged.dv.sites.pass.size-dist.png",
         f"{OUT_DIR}/merged.dv.sites.pass.af-spectrum.png",
-        f"{OUT_DIR}/merged.dv.sites.pass.snp-matrix.png",
-        f"{OUT_DIR}/merged.dv.sites.pass.snp-tstv.png",
         f"{OUT_DIR}/merged.dv.variants.all.vcf-stats.tsv",
         f"{OUT_DIR}/merged.dv.variants.all.variant-types.png",
         f"{OUT_DIR}/merged.dv.variants.all.size-dist.png",
         f"{OUT_DIR}/merged.dv.variants.all.af-spectrum.png",
-        f"{OUT_DIR}/merged.dv.variants.all.snp-matrix.png",
-        f"{OUT_DIR}/merged.dv.variants.all.snp-tstv.png",
         f"{OUT_DIR}/merged.dv.variants.pass.vcf-stats.tsv",
         f"{OUT_DIR}/merged.dv.variants.pass.variant-types.png",
         f"{OUT_DIR}/merged.dv.variants.pass.size-dist.png",
         f"{OUT_DIR}/merged.dv.variants.pass.af-spectrum.png",
-        f"{OUT_DIR}/merged.dv.variants.pass.snp-matrix.png",
-        f"{OUT_DIR}/merged.dv.variants.pass.snp-tstv.png",
 
 rule graph_only:
     """Graph construction + deconstruct + plots (no genotyping)"""
@@ -198,6 +203,7 @@ rule graph_only:
         f"{OUT_DIR}/{OUT_NAME}.variants.size-dist.png",
         f"{OUT_DIR}/{OUT_NAME}.variants.af-spectrum.png",
         *annotation_outputs(),
+        *annotation_snp_outputs(["deconstruct"]),
 
 rule genotype_all:
     """Genotype all samples (vg call) + merge"""
@@ -207,13 +213,9 @@ rule genotype_all:
         expand("{out}/{s}.call.sites.{filt}.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.call.sites.{filt}.variant-types.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.call.sites.{filt}.size-dist.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.call.sites.{filt}.snp-matrix.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.call.sites.{filt}.snp-tstv.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.call.variants.{filt}.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.call.variants.{filt}.variant-types.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.call.variants.{filt}.size-dist.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.call.variants.{filt}.snp-matrix.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.call.variants.{filt}.snp-tstv.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         # merged call outputs
         f"{OUT_DIR}/merged.call.vcf.gz",
         f"{OUT_DIR}/merged.call-offref.png",
@@ -221,26 +223,19 @@ rule genotype_all:
         f"{OUT_DIR}/merged.call.sites.all.variant-types.png",
         f"{OUT_DIR}/merged.call.sites.all.size-dist.png",
         f"{OUT_DIR}/merged.call.sites.all.af-spectrum.png",
-        f"{OUT_DIR}/merged.call.sites.all.snp-matrix.png",
-        f"{OUT_DIR}/merged.call.sites.all.snp-tstv.png",
         f"{OUT_DIR}/merged.call.sites.pass.vcf-stats.tsv",
         f"{OUT_DIR}/merged.call.sites.pass.variant-types.png",
         f"{OUT_DIR}/merged.call.sites.pass.size-dist.png",
         f"{OUT_DIR}/merged.call.sites.pass.af-spectrum.png",
-        f"{OUT_DIR}/merged.call.sites.pass.snp-matrix.png",
-        f"{OUT_DIR}/merged.call.sites.pass.snp-tstv.png",
         f"{OUT_DIR}/merged.call.variants.all.vcf-stats.tsv",
         f"{OUT_DIR}/merged.call.variants.all.variant-types.png",
         f"{OUT_DIR}/merged.call.variants.all.size-dist.png",
         f"{OUT_DIR}/merged.call.variants.all.af-spectrum.png",
-        f"{OUT_DIR}/merged.call.variants.all.snp-matrix.png",
-        f"{OUT_DIR}/merged.call.variants.all.snp-tstv.png",
         f"{OUT_DIR}/merged.call.variants.pass.vcf-stats.tsv",
         f"{OUT_DIR}/merged.call.variants.pass.variant-types.png",
         f"{OUT_DIR}/merged.call.variants.pass.size-dist.png",
         f"{OUT_DIR}/merged.call.variants.pass.af-spectrum.png",
-        f"{OUT_DIR}/merged.call.variants.pass.snp-matrix.png",
-        f"{OUT_DIR}/merged.call.variants.pass.snp-tstv.png",
+        *annotation_snp_outputs(["call"]),
 
 rule deepvariant_all:
     """Run DeepVariant on all samples"""
@@ -250,13 +245,10 @@ rule deepvariant_all:
         expand("{out}/{s}.dv.sites.{filt}.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.dv.sites.{filt}.variant-types.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.dv.sites.{filt}.size-dist.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.dv.sites.{filt}.snp-matrix.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.dv.sites.{filt}.snp-tstv.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.dv.variants.{filt}.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.dv.variants.{filt}.variant-types.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.dv.variants.{filt}.size-dist.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.dv.variants.{filt}.snp-matrix.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.dv.variants.{filt}.snp-tstv.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
+        *annotation_snp_outputs(["deepvariant"]),
 
 # Resolve wildcard ambiguities:
 # - {OUT_NAME}.vcf.gz matches both deconstruct and call (sample={OUT_NAME})
@@ -440,6 +432,36 @@ rule annotation_plots:
     shell:
         "Rscript scripts/annotation-plots.R {input} {OUT_DIR}/{OUT_NAME}"
         " --title '{REF} Annotation Overlap'"
+
+rule biallelic_snps:
+    """VCF → biallelic SNP VCF (split multi-allelic, filter to true SNPs)"""
+    input:
+        "{prefix}.vcf.gz",
+    output:
+        "{prefix}.biallelic-snps.{filt}.vcf.gz",
+    params:
+        filt_cmd=lambda wc: "bcftools view -f PASS 2>/dev/null |" if wc.filt == "pass" else "",
+    shell:
+        "bcftools norm -m- '{input}' 2>/dev/null"
+        " | {params.filt_cmd} bcftools view -v snps -c1"
+        " -i 'STRLEN(REF)==1 && STRLEN(ALT)==1' -Oz -o {output} 2>/dev/null"
+        " && tabix -p vcf {output}"
+
+rule annotation_snp_heatmaps:
+    """Annotation TSV + biallelic SNP VCF → SNP annotation heatmaps"""
+    input:
+        annot=f"{OUT_DIR}/{OUT_NAME}.annot-per-segment.tsv",
+        vcf=f"{OUT_DIR}/{{vcf_prefix}}.biallelic-snps.{{filt}}.vcf.gz",
+    output:
+        f"{OUT_DIR}/{{vcf_prefix}}.annot-snp-counts.{{filt}}.png",
+        f"{OUT_DIR}/{{vcf_prefix}}.annot-snp-tstv.{{filt}}.png",
+    shell:
+        "Rscript scripts/annotation-plots.R {input.annot}"
+        " {OUT_DIR}/{wildcards.vcf_prefix}.annot-snp"
+        " --vcf {input.vcf}"
+        " --augref-prefix 'augref_{REF}#0#'"
+        " --filter {wildcards.filt}"
+        " --title '{REF} SNP Annotation'"
 
 ############################################################################
 # Per-sample rules (wildcard: {sample})
@@ -676,23 +698,15 @@ rule call_stats:
         f"{OUT_DIR}/{{sample}}.call.sites.all.vcf-stats.tsv",
         f"{OUT_DIR}/{{sample}}.call.sites.all.variant-types.png",
         f"{OUT_DIR}/{{sample}}.call.sites.all.size-dist.png",
-        f"{OUT_DIR}/{{sample}}.call.sites.all.snp-matrix.png",
-        f"{OUT_DIR}/{{sample}}.call.sites.all.snp-tstv.png",
         f"{OUT_DIR}/{{sample}}.call.sites.pass.vcf-stats.tsv",
         f"{OUT_DIR}/{{sample}}.call.sites.pass.variant-types.png",
         f"{OUT_DIR}/{{sample}}.call.sites.pass.size-dist.png",
-        f"{OUT_DIR}/{{sample}}.call.sites.pass.snp-matrix.png",
-        f"{OUT_DIR}/{{sample}}.call.sites.pass.snp-tstv.png",
         f"{OUT_DIR}/{{sample}}.call.variants.all.vcf-stats.tsv",
         f"{OUT_DIR}/{{sample}}.call.variants.all.variant-types.png",
         f"{OUT_DIR}/{{sample}}.call.variants.all.size-dist.png",
-        f"{OUT_DIR}/{{sample}}.call.variants.all.snp-matrix.png",
-        f"{OUT_DIR}/{{sample}}.call.variants.all.snp-tstv.png",
         f"{OUT_DIR}/{{sample}}.call.variants.pass.vcf-stats.tsv",
         f"{OUT_DIR}/{{sample}}.call.variants.pass.variant-types.png",
         f"{OUT_DIR}/{{sample}}.call.variants.pass.size-dist.png",
-        f"{OUT_DIR}/{{sample}}.call.variants.pass.snp-matrix.png",
-        f"{OUT_DIR}/{{sample}}.call.variants.pass.snp-tstv.png",
     resources:
         mem_mb=256000,
         runtime=2880,
@@ -714,23 +728,15 @@ rule dv_stats:
         f"{OUT_DIR}/{{sample}}.dv.sites.all.vcf-stats.tsv",
         f"{OUT_DIR}/{{sample}}.dv.sites.all.variant-types.png",
         f"{OUT_DIR}/{{sample}}.dv.sites.all.size-dist.png",
-        f"{OUT_DIR}/{{sample}}.dv.sites.all.snp-matrix.png",
-        f"{OUT_DIR}/{{sample}}.dv.sites.all.snp-tstv.png",
         f"{OUT_DIR}/{{sample}}.dv.sites.pass.vcf-stats.tsv",
         f"{OUT_DIR}/{{sample}}.dv.sites.pass.variant-types.png",
         f"{OUT_DIR}/{{sample}}.dv.sites.pass.size-dist.png",
-        f"{OUT_DIR}/{{sample}}.dv.sites.pass.snp-matrix.png",
-        f"{OUT_DIR}/{{sample}}.dv.sites.pass.snp-tstv.png",
         f"{OUT_DIR}/{{sample}}.dv.variants.all.vcf-stats.tsv",
         f"{OUT_DIR}/{{sample}}.dv.variants.all.variant-types.png",
         f"{OUT_DIR}/{{sample}}.dv.variants.all.size-dist.png",
-        f"{OUT_DIR}/{{sample}}.dv.variants.all.snp-matrix.png",
-        f"{OUT_DIR}/{{sample}}.dv.variants.all.snp-tstv.png",
         f"{OUT_DIR}/{{sample}}.dv.variants.pass.vcf-stats.tsv",
         f"{OUT_DIR}/{{sample}}.dv.variants.pass.variant-types.png",
         f"{OUT_DIR}/{{sample}}.dv.variants.pass.size-dist.png",
-        f"{OUT_DIR}/{{sample}}.dv.variants.pass.snp-matrix.png",
-        f"{OUT_DIR}/{{sample}}.dv.variants.pass.snp-tstv.png",
     resources:
         mem_mb=256000,
         runtime=2880,
@@ -753,26 +759,18 @@ rule merged_call_stats:
         f"{OUT_DIR}/merged.call.sites.all.variant-types.png",
         f"{OUT_DIR}/merged.call.sites.all.size-dist.png",
         f"{OUT_DIR}/merged.call.sites.all.af-spectrum.png",
-        f"{OUT_DIR}/merged.call.sites.all.snp-matrix.png",
-        f"{OUT_DIR}/merged.call.sites.all.snp-tstv.png",
         f"{OUT_DIR}/merged.call.sites.pass.vcf-stats.tsv",
         f"{OUT_DIR}/merged.call.sites.pass.variant-types.png",
         f"{OUT_DIR}/merged.call.sites.pass.size-dist.png",
         f"{OUT_DIR}/merged.call.sites.pass.af-spectrum.png",
-        f"{OUT_DIR}/merged.call.sites.pass.snp-matrix.png",
-        f"{OUT_DIR}/merged.call.sites.pass.snp-tstv.png",
         f"{OUT_DIR}/merged.call.variants.all.vcf-stats.tsv",
         f"{OUT_DIR}/merged.call.variants.all.variant-types.png",
         f"{OUT_DIR}/merged.call.variants.all.size-dist.png",
         f"{OUT_DIR}/merged.call.variants.all.af-spectrum.png",
-        f"{OUT_DIR}/merged.call.variants.all.snp-matrix.png",
-        f"{OUT_DIR}/merged.call.variants.all.snp-tstv.png",
         f"{OUT_DIR}/merged.call.variants.pass.vcf-stats.tsv",
         f"{OUT_DIR}/merged.call.variants.pass.variant-types.png",
         f"{OUT_DIR}/merged.call.variants.pass.size-dist.png",
         f"{OUT_DIR}/merged.call.variants.pass.af-spectrum.png",
-        f"{OUT_DIR}/merged.call.variants.pass.snp-matrix.png",
-        f"{OUT_DIR}/merged.call.variants.pass.snp-tstv.png",
     resources:
         mem_mb=256000,
         runtime=2880,
@@ -795,26 +793,18 @@ rule merged_dv_stats:
         f"{OUT_DIR}/merged.dv.sites.all.variant-types.png",
         f"{OUT_DIR}/merged.dv.sites.all.size-dist.png",
         f"{OUT_DIR}/merged.dv.sites.all.af-spectrum.png",
-        f"{OUT_DIR}/merged.dv.sites.all.snp-matrix.png",
-        f"{OUT_DIR}/merged.dv.sites.all.snp-tstv.png",
         f"{OUT_DIR}/merged.dv.sites.pass.vcf-stats.tsv",
         f"{OUT_DIR}/merged.dv.sites.pass.variant-types.png",
         f"{OUT_DIR}/merged.dv.sites.pass.size-dist.png",
         f"{OUT_DIR}/merged.dv.sites.pass.af-spectrum.png",
-        f"{OUT_DIR}/merged.dv.sites.pass.snp-matrix.png",
-        f"{OUT_DIR}/merged.dv.sites.pass.snp-tstv.png",
         f"{OUT_DIR}/merged.dv.variants.all.vcf-stats.tsv",
         f"{OUT_DIR}/merged.dv.variants.all.variant-types.png",
         f"{OUT_DIR}/merged.dv.variants.all.size-dist.png",
         f"{OUT_DIR}/merged.dv.variants.all.af-spectrum.png",
-        f"{OUT_DIR}/merged.dv.variants.all.snp-matrix.png",
-        f"{OUT_DIR}/merged.dv.variants.all.snp-tstv.png",
         f"{OUT_DIR}/merged.dv.variants.pass.vcf-stats.tsv",
         f"{OUT_DIR}/merged.dv.variants.pass.variant-types.png",
         f"{OUT_DIR}/merged.dv.variants.pass.size-dist.png",
         f"{OUT_DIR}/merged.dv.variants.pass.af-spectrum.png",
-        f"{OUT_DIR}/merged.dv.variants.pass.snp-matrix.png",
-        f"{OUT_DIR}/merged.dv.variants.pass.snp-tstv.png",
     resources:
         mem_mb=256000,
         runtime=2880,

@@ -3,13 +3,20 @@
 # annotation-plots.R — Annotation overlap plots for augref alt segments
 #
 # Usage: Rscript scripts/annotation-plots.R <per_segment.tsv> <output_prefix> [--title TITLE]
+#        Rscript scripts/annotation-plots.R <per_segment.tsv> <output_prefix>
+#          --vcf <biallelic_snps.vcf.gz> --augref-prefix <prefix> --filter <all|pass>
+#          --title TITLE
 #
-# Outputs:
+# Base mode outputs:
 #   {prefix}.annot-summary.png  — fraction of alt bp overlapping each annotation (source vs ref)
 #   {prefix}.annot-scatter.png  — per-segment source_len vs source_overlap_frac, faceted by annotation
 #   {prefix}.annot-repeats.png  — repeat class breakdown (only when repeat class data present)
 #   {prefix}.annot-cooccur.png  — heatmap of annotation co-occurrence across coord types
 #   {prefix}.annot-stats.tsv    — tabular summary
+#
+# VCF mode outputs (when --vcf is provided):
+#   {prefix}-counts.{filt}.png  — SNP count heatmap by annotation co-occurrence
+#   {prefix}-tstv.{filt}.png    — Ts/Tv ratio heatmap by annotation co-occurrence
 
 suppressPackageStartupMessages({
   library(data.table)
@@ -26,20 +33,33 @@ if (length(args) < 2) {
   quit(status = 1)
 }
 
-input_file <- args[1]
-prefix     <- args[2]
-title      <- NULL
+input_file    <- args[1]
+prefix        <- args[2]
+title         <- NULL
+vcf_file      <- NULL
+augref_prefix <- NULL
+filt          <- NULL
 
 i <- 3
 while (i <= length(args)) {
   if (args[i] == "--title" && i + 1 <= length(args)) {
     title <- args[i + 1]
     i <- i + 2
+  } else if (args[i] == "--vcf" && i + 1 <= length(args)) {
+    vcf_file <- args[i + 1]
+    i <- i + 2
+  } else if (args[i] == "--augref-prefix" && i + 1 <= length(args)) {
+    augref_prefix <- args[i + 1]
+    i <- i + 2
+  } else if (args[i] == "--filter" && i + 1 <= length(args)) {
+    filt <- args[i + 1]
+    i <- i + 2
   } else {
     i <- i + 1
   }
 }
 if (is.null(title)) title <- "Annotation Overlap"
+vcf_mode <- !is.null(vcf_file)
 
 # ---------------------------------------------------------------------------
 # Read data
@@ -72,6 +92,130 @@ save_png <- function(plot, file, width = 8, height = 6) {
   })
   cat("Saved:", file, "\n")
 }
+
+if (vcf_mode) {
+  # =========================================================================
+  # VCF mode: SNP count and Ts/Tv heatmaps by annotation co-occurrence
+  # =========================================================================
+
+  # Aggregate per segment/annotation (same as base co-occurrence logic)
+  seg_ann <- dt[, .(source_overlap_bp = sum(source_overlap_bp),
+                    ref_overlap_bp = sum(ref_overlap_bp)),
+                by = .(augref_path, annotation)]
+
+  # Read biallelic SNP VCF
+  cmd <- sprintf("bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT\\n' '%s'", vcf_file)
+  snps <- tryCatch(fread(cmd = cmd, col.names = c("CHROM", "POS", "REF", "ALT")),
+                   error = function(e) data.table(CHROM = character(), POS = integer(),
+                                                  REF = character(), ALT = character()))
+
+  # Filter to off-reference SNPs
+  snps <- snps[grepl("_[0-9]+_alt$", CHROM)]
+
+  if (nrow(snps) == 0) {
+    cat("No off-reference biallelic SNPs found. Creating empty placeholder files.\n")
+    for (suf in c("counts", "tstv")) {
+      out_file <- paste0(prefix, "-", suf, ".", filt, ".png")
+      grDevices::png(out_file, width = 100, height = 100)
+      plot.new()
+      dev.off()
+      cat("Saved placeholder:", out_file, "\n")
+    }
+  } else {
+    # Map CHROM → augref_path
+    known_paths <- unique(dt$augref_path)
+    if (!any(snps$CHROM %in% known_paths)) {
+      snps[, augref_path := paste0(augref_prefix, CHROM)]
+    } else {
+      snps[, augref_path := CHROM]
+    }
+
+    # Classify Ts/Tv
+    transitions <- c("AG", "GA", "CT", "TC")
+    snps[, tstv := fifelse(paste0(REF, ALT) %in% transitions, "Ts", "Tv")]
+
+    # Build SNP count + Ts/Tv by annotation co-occurrence
+    annotations <- sort(unique(seg_ann$annotation))
+    results <- list()
+    for (a_off in annotations) {
+      segs_off <- seg_ann[annotation == a_off & source_overlap_bp > 0]$augref_path
+      for (a_on in annotations) {
+        segs_on <- seg_ann[annotation == a_on & ref_overlap_bp > 0]$augref_path
+        segs_both <- intersect(segs_off, segs_on)
+        sub <- snps[augref_path %in% segs_both]
+        results[[length(results) + 1]] <- data.table(
+          off_ref = a_off, on_ref = a_on,
+          n_snps = nrow(sub),
+          ts = sum(sub$tstv == "Ts"), tv = sum(sub$tstv == "Tv")
+        )
+      }
+    }
+    result_dt <- rbindlist(results)
+    result_dt[, tstv_ratio := fifelse(tv > 0, round(ts / tv, 2), NA_real_)]
+
+    # Factor levels
+    result_dt[, off_ref := factor(off_ref, levels = annotations)]
+    result_dt[, on_ref := factor(on_ref, levels = annotations)]
+
+    filt_label <- if (!is.null(filt)) toupper(filt) else "ALL"
+
+    # SNP count heatmap
+    result_dt[, count_label := comma(n_snps)]
+    p_counts <- ggplot(result_dt, aes(x = on_ref, y = off_ref, fill = n_snps)) +
+      geom_tile(color = "white", linewidth = 0.5) +
+      geom_text(aes(label = count_label), size = 3.2) +
+      scale_fill_gradient(low = "white", high = "steelblue",
+                          labels = comma, name = "SNP Count") +
+      labs(title = title,
+           subtitle = paste0("Off-Reference Biallelic SNP Count (", filt_label, ")"),
+           x = "On-reference Annotation",
+           y = "Off-reference Annotation") +
+      coord_fixed() +
+      theme_minimal() +
+      theme(
+        plot.title = element_text(hjust = 0.5, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5),
+        panel.grid = element_blank(),
+        panel.background = element_rect(fill = "white", color = NA),
+        plot.background  = element_rect(fill = "white", color = NA),
+        axis.text.x = element_text(angle = 45, hjust = 1)
+      )
+
+    save_png(p_counts, paste0(prefix, "-counts.", filt, ".png"))
+
+    # Ts/Tv ratio heatmap
+    result_dt[, tstv_label := fifelse(is.na(tstv_ratio), "NA",
+                paste0(sprintf("%.2f", tstv_ratio), "\n(", comma(ts), "/", comma(tv), ")"))]
+    p_tstv <- ggplot(result_dt, aes(x = on_ref, y = off_ref, fill = tstv_ratio)) +
+      geom_tile(color = "white", linewidth = 0.5) +
+      geom_text(aes(label = tstv_label), size = 3.0) +
+      scale_fill_gradient(low = "coral", high = "steelblue",
+                          name = "Ts/Tv", na.value = "grey90") +
+      labs(title = title,
+           subtitle = paste0("Off-Reference Biallelic SNP Ts/Tv (", filt_label, ")"),
+           x = "On-reference Annotation",
+           y = "Off-reference Annotation") +
+      coord_fixed() +
+      theme_minimal() +
+      theme(
+        plot.title = element_text(hjust = 0.5, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5),
+        panel.grid = element_blank(),
+        panel.background = element_rect(fill = "white", color = NA),
+        plot.background  = element_rect(fill = "white", color = NA),
+        axis.text.x = element_text(angle = 45, hjust = 1)
+      )
+
+    save_png(p_tstv, paste0(prefix, "-tstv.", filt, ".png"))
+  }
+
+  cat("Done (VCF mode).\n")
+  quit(status = 0)
+}
+
+# =========================================================================
+# Base mode: standard annotation overlap plots
+# =========================================================================
 
 # ---------------------------------------------------------------------------
 # Plot 1: Summary bar chart — fraction of alt bp overlapping each annotation

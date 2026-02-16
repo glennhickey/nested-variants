@@ -14,8 +14,6 @@
 #   {prefix}.variant-types.png  — grouped bar chart of variant types
 #   {prefix}.size-dist.png      — indel/SV size distribution (two-panel: indels + SVs)
 #   {prefix}.af-spectrum.png    — allele frequency histogram (only when AF present)
-#   {prefix}.snp-matrix.png     — 4x4 REF×ALT SNP substitution count heatmap
-#   {prefix}.snp-tstv.png       — 4x4 REF×ALT Ts/Tv classification heatmap
 
 suppressPackageStartupMessages({
   library(data.table)
@@ -341,73 +339,6 @@ if (has_af) {
   cat("No AF field; skipping allele frequency spectrum plot.\n")
   # Create empty file so Snakemake sees the output
   file.create(paste0(prefix, ".af-spectrum.png"))
-}
-
-# ---------------------------------------------------------------------------
-# Plot 4 & 5: SNP substitution heatmaps (biallelic SNPs only)
-# ---------------------------------------------------------------------------
-snp_biallelic <- dt[variant_type == "SNP" & !grepl(",", ALT)]
-bases <- c("A", "C", "G", "T")
-snp_biallelic <- snp_biallelic[REF %in% bases & ALT %in% bases]
-
-if (nrow(snp_biallelic) > 0) {
-  snp_matrix <- snp_biallelic[, .(count = .N), by = .(REF, ALT)]
-  snp_matrix[, REF := factor(REF, levels = bases)]
-  snp_matrix[, ALT := factor(ALT, levels = bases)]
-
-  # Classify Ts vs Tv
-  transitions <- c("AG", "GA", "CT", "TC")
-  snp_matrix[, tstv_class := fifelse(paste0(REF, ALT) %in% transitions, "Ts", "Tv")]
-
-  # --- Plot 4: SNP count heatmap ---
-  p4 <- ggplot(snp_matrix, aes(x = ALT, y = REF, fill = count)) +
-    geom_tile(color = "white", linewidth = 0.5) +
-    geom_text(aes(label = count), size = 4) +
-    scale_fill_gradient(low = "white", high = "steelblue", name = "Count") +
-    coord_fixed() +
-    labs(title = title,
-         subtitle = paste0("SNP Substitution Counts ", mode_label, filter_label),
-         x = "ALT", y = "REF") +
-    theme_minimal() +
-    theme(
-      plot.title = element_text(hjust = 0.5, face = "bold"),
-      plot.subtitle = element_text(hjust = 0.5),
-      panel.grid = element_blank(),
-      panel.background = element_rect(fill = "white", color = NA),
-      plot.background  = element_rect(fill = "white", color = NA)
-    )
-
-  save_png(p4, paste0(prefix, ".snp-matrix.png"))
-
-  # --- Plot 5: Ts/Tv classification heatmap ---
-  ts_count <- snp_matrix[tstv_class == "Ts", sum(count)]
-  tv_count <- snp_matrix[tstv_class == "Tv", sum(count)]
-  tstv_ratio_val <- if (tv_count > 0) round(ts_count / tv_count, 2) else NA
-
-  ratio_label <- if (!is.na(tstv_ratio_val)) paste0(" — Ts/Tv = ", tstv_ratio_val) else ""
-
-  p5 <- ggplot(snp_matrix, aes(x = ALT, y = REF, fill = tstv_class)) +
-    geom_tile(color = "white", linewidth = 0.5) +
-    geom_text(aes(label = count), size = 4) +
-    scale_fill_manual(values = c("Ts" = "steelblue", "Tv" = "coral"), name = "Class") +
-    coord_fixed() +
-    labs(title = title,
-         subtitle = paste0("Ts/Tv Classification ", mode_label, filter_label, ratio_label),
-         x = "ALT", y = "REF") +
-    theme_minimal() +
-    theme(
-      plot.title = element_text(hjust = 0.5, face = "bold"),
-      plot.subtitle = element_text(hjust = 0.5),
-      panel.grid = element_blank(),
-      panel.background = element_rect(fill = "white", color = NA),
-      plot.background  = element_rect(fill = "white", color = NA)
-    )
-
-  save_png(p5, paste0(prefix, ".snp-tstv.png"))
-} else {
-  cat("No biallelic SNPs; skipping SNP heatmap plots.\n")
-  file.create(paste0(prefix, ".snp-matrix.png"))
-  file.create(paste0(prefix, ".snp-tstv.png"))
 }
 
 cat("Done.\n")
