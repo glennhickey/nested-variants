@@ -439,6 +439,9 @@ rule biallelic_snps:
         "{prefix}.vcf.gz",
     output:
         "{prefix}.biallelic-snps.{filt}.vcf.gz",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
     params:
         filt_cmd=lambda wc: "bcftools view -f PASS 2>/dev/null |" if wc.filt == "pass" else "",
     shell:
@@ -455,6 +458,9 @@ rule annotation_snp_heatmaps:
     output:
         f"{OUT_DIR}/{{vcf_prefix}}.annot-snp-counts.{{filt}}.png",
         f"{OUT_DIR}/{{vcf_prefix}}.annot-snp-tstv.{{filt}}.png",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
     shell:
         "Rscript scripts/annotation-plots.R {input.annot}"
         " {OUT_DIR}/{wildcards.vcf_prefix}.annot-snp"
