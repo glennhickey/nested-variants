@@ -72,7 +72,11 @@ snakemake --cores 4 all \
   --config vg=yeast-test/chrI.vg ref=S288C \
            out_dir=yeast-test/output out_name=chrI.nested \
            'samples={SK1: yeast-test/SK1.reads.idx, YPS128: yeast-test/YPS128.reads.idx}' \
-           mem_gb=4
+           mem_gb=4 \
+           annot_genes=yeast-test/fake-genes.bed \
+           annot_repeats=yeast-test/fake-repeats.bed \
+           annot_segdups=yeast-test/fake-segdups.bed \
+           annot_censat=yeast-test/fake-censat.bed
 ```
 
 The fake annotation BED files (`fake-genes.bed`, `fake-repeats.bed`,
@@ -85,44 +89,77 @@ in column 6.
 
 ```
 yeast-test/output/
-├── chrI.nested.gbz                   # augmented reference graph
-├── chrI.nested.augref-segs.tsv       # augref segment table
-├── chrI.nested.gfa.gz                # augmented GFA
-├── chrI.nested.hapl                  # haplotype index
-├── chrI.nested.vcf.gz                # deconstructed VCF
-├── chrI.nested.onref.vcf.gz          # on-reference variants
-├── chrI.nested.nestedref.vcf.gz      # nested-reference variants
-├── chrI.nested.offref.vcf.gz         # off-reference variants
-├── chrI.nested.augref-length-hist.png # augref segment length histogram
-├── chrI.nested.offref.png            # offref density ideogram
-├── chrI.nested.fa.gz                 # augmented reference FASTA (bgzipped)
-├── chrI.nested.fa.gz.fai             # FASTA index
-├── chrI.nested.fa.gz.gzi             # bgzip index
-├── SK1.gam                           # SK1 read alignments
-├── SK1.bam                           # SK1 surjected BAM
-├── SK1.bam.bai                       # SK1 BAM index
-├── SK1.pack                          # SK1 coverage pileup
-├── SK1.vcf.gz                        # SK1 genotyped VCF (vg call)
-├── SK1.deepvariant.vcf.gz            # SK1 DeepVariant VCF
-├── SK1.call-offref.png               # SK1 call off-reference density
-├── SK1.dv-offref.png                 # SK1 DeepVariant off-reference density
-├── YPS128.gam                        # YPS128 read alignments
-├── YPS128.bam                        # YPS128 surjected BAM
-├── YPS128.bam.bai                    # YPS128 BAM index
-├── YPS128.pack                       # YPS128 coverage pileup
-├── YPS128.vcf.gz                     # YPS128 genotyped VCF (vg call)
-├── YPS128.deepvariant.vcf.gz         # YPS128 DeepVariant VCF
-├── YPS128.call-offref.png            # YPS128 call off-reference density
-├── YPS128.dv-offref.png              # YPS128 DeepVariant off-reference density
-├── merged.call.vcf.gz                # merged call VCFs (bcftools merge)
-├── merged.deepvariant.vcf.gz         # merged DeepVariant VCFs (bcftools merge)
-├── merged.call-offref.png            # merged call density
-├── merged.dv-offref.png              # merged DV density
-├── chrI.nested.annot-per-segment.tsv # per-segment annotation overlap table
-├── chrI.nested.annot-summary.png     # annotation overlap bar chart
-├── chrI.nested.annot-scatter.png     # length vs overlap scatter
-├── chrI.nested.annot-repeats.png     # repeat class breakdown (if repeats provided)
-└── chrI.nested.annot-stats.tsv       # annotation overlap summary stats
+#
+# --- Graph construction & deconstruct ---
+#
+├── chrI.nested.gbz                        # augmented reference graph
+├── chrI.nested.augref-segs.tsv            # augref segment table
+├── chrI.nested.hapl                       # haplotype index
+├── chrI.nested.fa.gz                      # augmented reference FASTA
+├── chrI.nested.vcf.gz                     # deconstructed VCF
+├── chrI.nested.augref-length-hist.png     # augref segment length histogram
+├── chrI.nested.offref.png                 # offref density ideogram
+├── chrI.nested.sites.vcf-stats.tsv        # deconstruct site-level stats
+├── chrI.nested.sites.variant-types.png
+├── chrI.nested.sites.size-dist.png
+├── chrI.nested.sites.af-spectrum.png
+├── chrI.nested.variants.vcf-stats.tsv     # deconstruct variant-level stats
+├── chrI.nested.variants.variant-types.png
+├── chrI.nested.variants.size-dist.png
+├── chrI.nested.variants.af-spectrum.png
+#
+# --- Annotation overlap (when annot_* configured) ---
+#
+├── chrI.nested.annot-per-segment.tsv      # per-segment annotation overlap table
+├── chrI.nested.annot-summary.png          # annotation overlap bar chart
+├── chrI.nested.annot-scatter.png          # length vs overlap scatter
+├── chrI.nested.annot-cooccur.png          # annotation co-occurrence heatmap
+├── chrI.nested.annot-repeats.png          # repeat class breakdown (if repeats)
+├── chrI.nested.annot-stats.tsv            # annotation overlap summary stats
+├── chrI.nested.annot-snp-counts.all.png   # deconstruct SNP count by annotation
+├── chrI.nested.annot-snp-tstv.all.png     # deconstruct Ts/Tv by annotation
+#
+# --- Per-sample call (SK1 shown; YPS128 identical) ---
+#
+├── SK1.vcf.gz                             # genotyped VCF (vg call)
+├── SK1.call-offref.png                    # call off-reference density
+├── SK1.call.{sites,variants}.{all,pass}.vcf-stats.tsv
+├── SK1.call.{sites,variants}.{all,pass}.variant-types.png
+├── SK1.call.{sites,variants}.{all,pass}.size-dist.png
+├── SK1.annot-snp-counts.{all,pass}.png    # call SNP count by annotation
+├── SK1.annot-snp-tstv.{all,pass}.png      # call Ts/Tv by annotation
+#
+# --- Per-sample DeepVariant (SK1 shown; YPS128 identical) ---
+#
+├── SK1.deepvariant.vcf.gz                 # DeepVariant VCF
+├── SK1.dv-offref.png                      # DV off-reference density
+├── SK1.dv.{sites,variants}.{all,pass}.vcf-stats.tsv
+├── SK1.dv.{sites,variants}.{all,pass}.variant-types.png
+├── SK1.dv.{sites,variants}.{all,pass}.size-dist.png
+├── SK1.deepvariant.annot-snp-counts.{all,pass}.png
+├── SK1.deepvariant.annot-snp-tstv.{all,pass}.png
+#
+# --- Merged call ---
+#
+├── merged.call.vcf.gz
+├── merged.call-offref.png
+├── merged.call.{sites,variants}.{all,pass}.vcf-stats.tsv
+├── merged.call.{sites,variants}.{all,pass}.variant-types.png
+├── merged.call.{sites,variants}.{all,pass}.size-dist.png
+├── merged.call.{sites,variants}.{all,pass}.af-spectrum.png
+├── merged.call.annot-snp-counts.{all,pass}.png
+├── merged.call.annot-snp-tstv.{all,pass}.png
+#
+# --- Merged DeepVariant ---
+#
+├── merged.deepvariant.vcf.gz
+├── merged.dv-offref.png
+├── merged.dv.{sites,variants}.{all,pass}.vcf-stats.tsv
+├── merged.dv.{sites,variants}.{all,pass}.variant-types.png
+├── merged.dv.{sites,variants}.{all,pass}.size-dist.png
+├── merged.dv.{sites,variants}.{all,pass}.af-spectrum.png
+├── merged.deepvariant.annot-snp-counts.{all,pass}.png
+└── merged.deepvariant.annot-snp-tstv.{all,pass}.png
 ```
 
 ## Clean up
