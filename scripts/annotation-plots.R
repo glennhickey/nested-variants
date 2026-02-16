@@ -81,13 +81,13 @@ summary_source <- dt[, .(overlap_bp = as.numeric(sum(source_overlap_bp)),
                          total_bp = as.numeric(sum(source_len))),
                      by = .(annotation)]
 summary_source[, frac := overlap_bp / total_bp]
-summary_source[, coord_type := "Source"]
+summary_source[, coord_type := "Off-reference"]
 
 summary_ref <- dt[, .(overlap_bp = as.numeric(sum(ref_overlap_bp)),
                       total_bp = as.numeric(sum(ref_len))),
                   by = .(annotation)]
 summary_ref[, frac := overlap_bp / total_bp]
-summary_ref[, coord_type := "Reference"]
+summary_ref[, coord_type := "On-reference"]
 
 # For grouped annotations (repeats), avoid double-counting segments:
 # the total_bp is summed across all classes per segment, so we need unique segments
@@ -109,7 +109,7 @@ bar_dt <- rbind(summary_source[, .(annotation, frac, coord_type)],
 
 p1 <- ggplot(bar_dt, aes(x = annotation, y = frac, fill = coord_type)) +
   geom_col(position = "dodge", width = 0.7) +
-  scale_fill_manual(values = c("Source" = "coral", "Reference" = "steelblue"),
+  scale_fill_manual(values = c("Off-reference" = "coral", "On-reference" = "steelblue"),
                     name = NULL) +
   scale_y_continuous(labels = percent, expand = expansion(mult = c(0, 0.1))) +
   labs(title = title, subtitle = "Fraction of Alt Segment bp Overlapping Annotations",
@@ -177,11 +177,11 @@ if (has_repeat_classes) {
   # Aggregate for stacked bar
   src_bar <- repeat_dt[, .(overlap_bp = as.numeric(sum(source_overlap_bp))),
                        by = .(display_class)]
-  src_bar[, coord_type := "Source"]
+  src_bar[, coord_type := "Off-reference"]
 
   ref_bar <- repeat_dt[, .(overlap_bp = as.numeric(sum(ref_overlap_bp))),
                        by = .(display_class)]
-  ref_bar[, coord_type := "Reference"]
+  ref_bar[, coord_type := "On-reference"]
 
   stack_dt <- rbind(src_bar, ref_bar)
   # Order classes: top classes first, Other last
@@ -236,7 +236,7 @@ for (ann in unique(dt$annotation)) {
 
   stats_list[[length(stats_list) + 1]] <- data.table(
     annotation = ann,
-    coord_type = "source",
+    coord_type = "off-reference",
     total_bp = total_source_bp,
     overlap_bp = src_overlap,
     overlap_frac = if (total_source_bp > 0) src_overlap / total_source_bp else 0,
@@ -245,7 +245,7 @@ for (ann in unique(dt$annotation)) {
   )
   stats_list[[length(stats_list) + 1]] <- data.table(
     annotation = ann,
-    coord_type = "reference",
+    coord_type = "on-reference",
     total_bp = total_ref_bp,
     overlap_bp = ref_overlap,
     overlap_frac = if (total_ref_bp > 0) ref_overlap / total_ref_bp else 0,
