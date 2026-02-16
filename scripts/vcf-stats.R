@@ -61,10 +61,11 @@ mode_label <- if (mode == "sites") "(per site)" else "(per variant)"
 cat("Reading VCF:", vcf, " (mode:", mode, ")\n")
 
 # Build pipeline prefix: variants mode pipes through bcftools norm -m- first
+# +fill-tags computes AF from genotypes when INFO/AF is absent (e.g., single-sample vg call)
 if (mode == "variants") {
-  pipe_prefix <- sprintf("bcftools norm -m- '%s' 2>/dev/null | bcftools view -c1 2>/dev/null", vcf)
+  pipe_prefix <- sprintf("bcftools norm -m- '%s' 2>/dev/null | bcftools view -c1 2>/dev/null | bcftools +fill-tags - -- -t AF 2>/dev/null", vcf)
 } else {
-  pipe_prefix <- sprintf("bcftools view -c1 '%s' 2>/dev/null", vcf)
+  pipe_prefix <- sprintf("bcftools view -c1 '%s' 2>/dev/null | bcftools +fill-tags - -- -t AF 2>/dev/null", vcf)
 }
 
 # Try with AF first (filter out all-homref sites from vg call -A)
@@ -276,15 +277,13 @@ if (nrow(size_dt) > 0) {
 if (has_af) {
   cat("AF spectrum: ", nrow(dt), " sites with non-ref AF\n")
 
-  p3 <- ggplot(dt, aes(x = nonref_af, color = ref_context)) +
-    geom_freqpoly(bins = 50, linewidth = 0.8) +
-    scale_color_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
-                       name = NULL) +
-    scale_y_log10(labels = scales::comma) +
-    labs(title = title, subtitle = paste("Non-Reference Allele Frequency Spectrum", mode_label),
-         x = "Non-Reference Frequency (sum of alt AFs per site)",
-         y = if (mode == "sites") "Sites (log scale)" else "Variants (log scale)") +
-    theme_minimal() +
+  # Adaptive plot: bar chart for discrete AF (few samples), freqpoly for continuous
+  dt[, af_rounded := round(nonref_af, 2)]
+  n_unique <- length(unique(dt$af_rounded))
+  cat("Unique AF values (rounded):", n_unique, "\n")
+
+  y_label <- if (mode == "sites") "Sites (log scale)" else "Variants (log scale)"
+  common_theme <- theme_minimal() +
     theme(
       plot.title = element_text(hjust = 0.5, face = "bold"),
       plot.subtitle = element_text(hjust = 0.5),
@@ -292,6 +291,36 @@ if (has_af) {
       plot.background  = element_rect(fill = "white", color = NA)
     )
 
+  if (n_unique <= 30) {
+    # Discrete AF: count exact rounded values, use bar chart
+    af_counts <- dt[, .(count = .N), by = .(af_rounded, ref_context)]
+
+    # Bar width: 80% of minimum spacing (or 0.02 if only one value)
+    af_unique <- sort(unique(af_counts$af_rounded))
+    bar_width <- if (length(af_unique) > 1) 0.8 * min(diff(af_unique)) else 0.02
+
+    p3 <- ggplot(af_counts, aes(x = af_rounded, y = count, fill = ref_context)) +
+      geom_col(position = position_dodge(width = bar_width), width = bar_width) +
+      scale_fill_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
+                        name = NULL) +
+      scale_y_log10(labels = scales::comma) +
+      scale_x_continuous(breaks = af_unique, limits = c(-0.02, 1.02)) +
+      labs(title = title, subtitle = paste("Non-Reference Allele Frequency Spectrum", mode_label),
+           x = "Non-Reference Frequency", y = y_label) +
+      common_theme
+  } else {
+    # Continuous AF: use frequency polygon (many samples)
+    p3 <- ggplot(dt, aes(x = nonref_af, color = ref_context)) +
+      geom_freqpoly(bins = 50, linewidth = 0.8) +
+      scale_color_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
+                         name = NULL) +
+      scale_y_log10(labels = scales::comma) +
+      labs(title = title, subtitle = paste("Non-Reference Allele Frequency Spectrum", mode_label),
+           x = "Non-Reference Frequency (sum of alt AFs per site)", y = y_label) +
+      common_theme
+  }
+
+  dt[, af_rounded := NULL]
   save_png(p3, paste0(prefix, ".af-spectrum.png"), height = 6)
   cat("AF spectrum plot generated.\n")
 } else {
