@@ -8,6 +8,7 @@
 #   {prefix}.annot-summary.png  — fraction of alt bp overlapping each annotation (source vs ref)
 #   {prefix}.annot-scatter.png  — per-segment source_len vs source_overlap_frac, faceted by annotation
 #   {prefix}.annot-repeats.png  — repeat class breakdown (only when repeat class data present)
+#   {prefix}.annot-cooccur.png  — heatmap of annotation co-occurrence across coord types
 #   {prefix}.annot-stats.tsv    — tabular summary
 
 suppressPackageStartupMessages({
@@ -225,6 +226,66 @@ if (has_repeat_classes) {
 } else {
   cat("No repeat class data; skipping repeat breakdown plot.\n")
 }
+
+# ---------------------------------------------------------------------------
+# Plot 4: Annotation co-occurrence heatmap across coord types
+# ---------------------------------------------------------------------------
+
+# For each segment, determine which annotations it overlaps in off-ref and on-ref
+# Aggregate across annotation classes (e.g., multiple repeat classes → single "repeats")
+seg_ann <- dt[, .(source_overlap_bp = sum(source_overlap_bp),
+                  ref_overlap_bp = sum(ref_overlap_bp)),
+              by = .(augref_path, annotation)]
+
+annotations <- sort(unique(seg_ann$annotation))
+all_segs <- unique(seg_ann$augref_path)
+n_segs <- length(all_segs)
+
+# Build co-occurrence: for each pair (off-ref ann A, on-ref ann B),
+# count segments with overlap in both
+cooccur_list <- list()
+for (a_off in annotations) {
+  segs_off <- seg_ann[annotation == a_off & source_overlap_bp > 0]$augref_path
+  for (a_on in annotations) {
+    segs_on <- seg_ann[annotation == a_on & ref_overlap_bp > 0]$augref_path
+    n_both <- length(intersect(segs_off, segs_on))
+    cooccur_list[[length(cooccur_list) + 1]] <- data.table(
+      off_ref = a_off, on_ref = a_on,
+      n_segments = n_both,
+      frac_segments = n_both / n_segs
+    )
+  }
+}
+cooccur_dt <- rbindlist(cooccur_list)
+
+# Factor levels for consistent ordering
+cooccur_dt[, off_ref := factor(off_ref, levels = annotations)]
+cooccur_dt[, on_ref := factor(on_ref, levels = annotations)]
+
+# Format segment count labels
+cooccur_dt[, label := paste0(n_segments, "\n(", sprintf("%.1f%%", 100 * frac_segments), ")")]
+
+p4 <- ggplot(cooccur_dt, aes(x = on_ref, y = off_ref, fill = frac_segments)) +
+  geom_tile(color = "white", linewidth = 0.5) +
+  geom_text(aes(label = label), size = 3.2) +
+  scale_fill_gradient(low = "white", high = "steelblue",
+                      labels = percent, name = "Fraction of\nSegments") +
+  labs(title = title,
+       subtitle = paste0("Annotation Co-occurrence (", n_segs, " segments)"),
+       x = "On-reference Annotation",
+       y = "Off-reference Annotation") +
+  coord_fixed() +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5),
+    panel.grid = element_blank(),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background  = element_rect(fill = "white", color = NA),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+save_png(p4, paste0(prefix, ".annot-cooccur.png"))
 
 # ---------------------------------------------------------------------------
 # Output TSV: per-annotation summary

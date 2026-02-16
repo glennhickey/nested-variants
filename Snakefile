@@ -80,6 +80,7 @@ def annotation_outputs():
         return [
             f"{OUT_DIR}/{OUT_NAME}.annot-summary.png",
             f"{OUT_DIR}/{OUT_NAME}.annot-scatter.png",
+            f"{OUT_DIR}/{OUT_NAME}.annot-cooccur.png",
             f"{OUT_DIR}/{OUT_NAME}.annot-stats.tsv",
         ]
     return []
@@ -367,6 +368,7 @@ rule annotation_plots:
     output:
         f"{OUT_DIR}/{OUT_NAME}.annot-summary.png",
         f"{OUT_DIR}/{OUT_NAME}.annot-scatter.png",
+        f"{OUT_DIR}/{OUT_NAME}.annot-cooccur.png",
         f"{OUT_DIR}/{OUT_NAME}.annot-stats.tsv",
     resources:
         mem_mb=256000,
