@@ -104,14 +104,26 @@ for (ann in unique(dt$annotation)) {
   }
 }
 
-bar_dt <- rbind(summary_source[, .(annotation, frac, coord_type)],
-                summary_ref[, .(annotation, frac, coord_type)])
+bar_dt <- rbind(summary_source[, .(annotation, frac, overlap_bp, coord_type)],
+                summary_ref[, .(annotation, frac, overlap_bp, coord_type)])
+
+# Human-readable bp label (e.g., "474 Mb", "21 kb")
+format_bp <- function(x) {
+  ifelse(x >= 1e9, paste0(round(x / 1e9, 1), " Gb"),
+  ifelse(x >= 1e6, paste0(round(x / 1e6, 1), " Mb"),
+  ifelse(x >= 1e3, paste0(round(x / 1e3, 1), " kb"),
+  paste0(x, " bp"))))
+}
+bar_dt[, bp_label := format_bp(overlap_bp)]
 
 p1 <- ggplot(bar_dt, aes(x = annotation, y = frac, fill = coord_type)) +
   geom_col(position = "dodge", width = 0.7) +
+  geom_text(aes(label = bp_label),
+            position = position_dodge(width = 0.7),
+            vjust = -0.3, size = 2.5) +
   scale_fill_manual(values = c("Off-reference" = "coral", "On-reference" = "steelblue"),
                     name = NULL) +
-  scale_y_continuous(labels = percent, expand = expansion(mult = c(0, 0.1))) +
+  scale_y_continuous(labels = percent, expand = expansion(mult = c(0, 0.15))) +
   labs(title = title, subtitle = "Fraction of Alt Segment bp Overlapping Annotations",
        x = "Annotation", y = "Overlap Fraction") +
   theme_minimal() +
