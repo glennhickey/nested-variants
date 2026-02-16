@@ -113,6 +113,10 @@ def annotation_snp_outputs(callers=None):
                 outputs.append(f"{OUT_DIR}/merged.deepvariant.{plot}.{filt}.png")
     return outputs
 
+def polymorphism_outputs():
+    """Return segment polymorphism table output."""
+    return [f"{OUT_DIR}/{OUT_NAME}.segment-polymorphism.tsv"]
+
 ############################################################################
 # Target rules
 ############################################################################
@@ -133,6 +137,7 @@ rule all:
         f"{OUT_DIR}/{OUT_NAME}.variants.af-spectrum.png",
         *annotation_outputs(),
         *annotation_snp_outputs(),
+        *polymorphism_outputs(),
         # per-sample genotyping outputs
         expand("{out}/{s}.vcf.gz", out=OUT_DIR, s=SAMPLES),
         expand("{out}/{s}.call-offref.png", out=OUT_DIR, s=SAMPLES),
@@ -204,6 +209,7 @@ rule graph_only:
         f"{OUT_DIR}/{OUT_NAME}.variants.af-spectrum.png",
         *annotation_outputs(),
         *annotation_snp_outputs(["deconstruct"]),
+        *polymorphism_outputs(),
 
 rule genotype_all:
     """Genotype all samples (vg call) + merge"""
@@ -468,6 +474,25 @@ rule annotation_snp_heatmaps:
         " --augref-prefix 'augref_{REF}#0#'"
         " --filter {wildcards.filt}"
         " --title '{REF} SNP Annotation'"
+
+rule segment_polymorphism:
+    """Deconstruct VCF → per-segment polymorphism table"""
+    input:
+        vcf=f"{OUT_DIR}/{OUT_NAME}.vcf.gz",
+        annot=f"{OUT_DIR}/{OUT_NAME}.annot-per-segment.tsv" if annotation_inputs() else [],
+    output:
+        f"{OUT_DIR}/{OUT_NAME}.segment-polymorphism.tsv",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
+    params:
+        annot_arg=lambda wc, input: f"--annot {input.annot}" if annotation_inputs() else "",
+    shell:
+        "Rscript scripts/segment-polymorphism.R"
+        " --vcf {input.vcf}"
+        " --augref-prefix '{AUGREF}#0#'"
+        " {params.annot_arg}"
+        " --output {output}"
 
 ############################################################################
 # Per-sample rules (wildcard: {sample})

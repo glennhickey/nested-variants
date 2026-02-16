@@ -118,6 +118,7 @@ yeast-test/output/
 ├── chrI.nested.annot-stats.tsv            # annotation overlap summary stats
 ├── chrI.nested.annot-snp-counts.all.png   # deconstruct SNP count by annotation
 ├── chrI.nested.annot-snp-tstv.all.png     # deconstruct Ts/Tv by annotation
+├── chrI.nested.segment-polymorphism.tsv   # per-segment polymorphism table
 #
 # --- Per-sample call (SK1 shown; YPS128 identical) ---
 #
