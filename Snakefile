@@ -159,7 +159,7 @@ rule graph_only:
         *annotation_outputs(),
 
 rule genotype_all:
-    """Genotype all samples (vg call)"""
+    """Genotype all samples (vg call) + merge"""
     input:
         expand("{out}/{s}.vcf.gz", out=OUT_DIR, s=SAMPLES),
         expand("{out}/{s}.call-offref.png", out=OUT_DIR, s=SAMPLES),
@@ -169,6 +169,17 @@ rule genotype_all:
         expand("{out}/{s}.call.variants.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES),
         expand("{out}/{s}.call.variants.variant-types.png", out=OUT_DIR, s=SAMPLES),
         expand("{out}/{s}.call.variants.size-dist.png", out=OUT_DIR, s=SAMPLES),
+        # merged call outputs
+        f"{OUT_DIR}/merged.call.vcf.gz",
+        f"{OUT_DIR}/merged.call-offref.png",
+        f"{OUT_DIR}/merged.call.sites.vcf-stats.tsv",
+        f"{OUT_DIR}/merged.call.sites.variant-types.png",
+        f"{OUT_DIR}/merged.call.sites.size-dist.png",
+        f"{OUT_DIR}/merged.call.sites.af-spectrum.png",
+        f"{OUT_DIR}/merged.call.variants.vcf-stats.tsv",
+        f"{OUT_DIR}/merged.call.variants.variant-types.png",
+        f"{OUT_DIR}/merged.call.variants.size-dist.png",
+        f"{OUT_DIR}/merged.call.variants.af-spectrum.png",
 
 rule deepvariant_all:
     """Run DeepVariant on all samples"""
