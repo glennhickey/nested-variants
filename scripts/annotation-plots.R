@@ -166,20 +166,27 @@ has_repeat_classes <- any(dt$annotation_class != dt$annotation)
 if (has_repeat_classes) {
   repeat_dt <- dt[annotation_class != annotation]
 
-  # Top 8 classes by total source + ref overlap bp
-  class_totals <- repeat_dt[, .(total = as.numeric(sum(source_overlap_bp)) + as.numeric(sum(ref_overlap_bp))),
-                            by = .(annotation_class)]
-  setorder(class_totals, -total)
+  # Total bp per coord type (unique segments to avoid double-counting across classes)
+  seg_dt <- unique(repeat_dt[, .(augref_path, source_len, ref_len)])
+  total_source_bp <- as.numeric(sum(seg_dt$source_len))
+  total_ref_bp <- as.numeric(sum(seg_dt$ref_len))
+
+  # Top 8 classes by combined overlap fraction
+  class_totals <- repeat_dt[, .(total_frac =
+    as.numeric(sum(source_overlap_bp)) / total_source_bp +
+    as.numeric(sum(ref_overlap_bp)) / total_ref_bp),
+    by = .(annotation_class)]
+  setorder(class_totals, -total_frac)
   top_classes <- head(class_totals$annotation_class, 8)
   repeat_dt[, display_class := ifelse(annotation_class %in% top_classes,
                                       annotation_class, "Other")]
 
-  # Aggregate for stacked bar
-  src_bar <- repeat_dt[, .(overlap_bp = as.numeric(sum(source_overlap_bp))),
+  # Aggregate overlap fractions per class
+  src_bar <- repeat_dt[, .(overlap_frac = as.numeric(sum(source_overlap_bp)) / total_source_bp),
                        by = .(display_class)]
   src_bar[, coord_type := "Off-reference"]
 
-  ref_bar <- repeat_dt[, .(overlap_bp = as.numeric(sum(ref_overlap_bp))),
+  ref_bar <- repeat_dt[, .(overlap_frac = as.numeric(sum(ref_overlap_bp)) / total_ref_bp),
                        by = .(display_class)]
   ref_bar[, coord_type := "On-reference"]
 
@@ -188,19 +195,12 @@ if (has_repeat_classes) {
   class_order <- c(top_classes[top_classes %in% stack_dt$display_class], "Other")
   stack_dt[, display_class := factor(display_class, levels = rev(class_order))]
 
-  n_classes <- length(unique(stack_dt$display_class))
-  if (n_classes <= 8) {
-    fill_pal <- scale_fill_brewer(palette = "Set2", name = "Repeat Class")
-  } else {
-    fill_pal <- scale_fill_brewer(palette = "Set2", name = "Repeat Class")
-  }
-
-  p3 <- ggplot(stack_dt, aes(x = coord_type, y = overlap_bp, fill = display_class)) +
+  p3 <- ggplot(stack_dt, aes(x = coord_type, y = overlap_frac, fill = display_class)) +
     geom_col(width = 0.6) +
-    fill_pal +
-    scale_y_continuous(labels = comma, expand = expansion(mult = c(0, 0.05))) +
-    labs(title = title, subtitle = "Repeat Class Breakdown",
-         x = NULL, y = "Overlap (bp)") +
+    scale_fill_brewer(palette = "Set2", name = "Repeat Class") +
+    scale_y_continuous(labels = percent, expand = expansion(mult = c(0, 0.05))) +
+    labs(title = title, subtitle = "Repeat Class Breakdown (fraction of segment bp)",
+         x = NULL, y = "Overlap Fraction") +
     theme_minimal() +
     theme(
       plot.title = element_text(hjust = 0.5, face = "bold"),
