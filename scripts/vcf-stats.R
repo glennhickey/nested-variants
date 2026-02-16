@@ -3,7 +3,7 @@
 # vcf-stats.R — VCF variant statistics with on-ref vs off-ref breakdown
 #
 # Usage: Rscript scripts/vcf-stats.R <input.vcf.gz> <output_prefix>
-#          [--title TITLE] [--mode sites|variants]
+#          [--title TITLE] [--mode sites|variants] [--filter all|pass]
 #
 # Modes:
 #   sites    — (default) read VCF as-is; multi-allelic sites classified by largest allele
@@ -34,6 +34,7 @@ vcf    <- args[1]
 prefix <- args[2]
 title  <- NULL
 mode   <- "sites"
+filter <- "all"
 
 i <- 3
 while (i <= length(args)) {
@@ -43,6 +44,9 @@ while (i <= length(args)) {
   } else if (args[i] == "--mode" && i + 1 <= length(args)) {
     mode <- args[i + 1]
     i <- i + 2
+  } else if (args[i] == "--filter" && i + 1 <= length(args)) {
+    filter <- args[i + 1]
+    i <- i + 2
   } else {
     i <- i + 1
   }
@@ -51,21 +55,29 @@ if (!mode %in% c("sites", "variants")) {
   cat("Error: --mode must be 'sites' or 'variants', got '", mode, "'\n", sep = "")
   quit(status = 1)
 }
+if (!filter %in% c("all", "pass")) {
+  cat("Error: --filter must be 'all' or 'pass', got '", filter, "'\n", sep = "")
+  quit(status = 1)
+}
 if (is.null(title)) title <- basename(vcf)
 
 mode_label <- if (mode == "sites") "(per site)" else "(per variant)"
+filter_label <- if (filter == "pass") ", PASS only" else ""
 
 # ---------------------------------------------------------------------------
 # Read VCF
 # ---------------------------------------------------------------------------
-cat("Reading VCF:", vcf, " (mode:", mode, ")\n")
+cat("Reading VCF:", vcf, " (mode:", mode, ", filter:", filter, ")\n")
 
 # Build pipeline prefix: variants mode pipes through bcftools norm -m- first
 # +fill-tags computes AF from genotypes when INFO/AF is absent (e.g., single-sample vg call)
+# When filter=="pass", insert bcftools view -f PASS to keep only PASS variants
+filter_cmd <- if (filter == "pass") "bcftools view -f PASS 2>/dev/null |" else ""
+
 if (mode == "variants") {
-  pipe_prefix <- sprintf("bcftools norm -m- '%s' 2>/dev/null | bcftools view -c1 2>/dev/null | bcftools +fill-tags - -- -t AF 2>/dev/null", vcf)
+  pipe_prefix <- sprintf("bcftools norm -m- '%s' 2>/dev/null | bcftools view -c1 2>/dev/null | %s bcftools +fill-tags - -- -t AF 2>/dev/null", vcf, filter_cmd)
 } else {
-  pipe_prefix <- sprintf("bcftools view -c1 '%s' 2>/dev/null | bcftools +fill-tags - -- -t AF 2>/dev/null", vcf)
+  pipe_prefix <- sprintf("bcftools view -c1 '%s' 2>/dev/null | %s bcftools +fill-tags - -- -t AF 2>/dev/null", vcf, filter_cmd)
 }
 
 # Try with AF first (filter out all-homref sites from vg call -A)
@@ -224,7 +236,7 @@ p1 <- ggplot(plot_dt, aes(x = variant_type, y = count, fill = ref_context)) +
   scale_fill_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
                     name = NULL) +
   scale_y_log10(labels = scales::comma) +
-  labs(title = title, subtitle = paste("Variant Type Counts", mode_label),
+  labs(title = title, subtitle = paste0("Variant Type Counts ", mode_label, filter_label),
        x = "Variant Type", y = "Count (log scale)") +
   theme_minimal() +
   theme(
@@ -252,7 +264,7 @@ if (nrow(size_dt) > 0) {
     scale_color_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
                        name = NULL) +
     scale_y_continuous(labels = scales::comma, expand = expansion(mult = c(0, 0.1))) +
-    labs(title = title, subtitle = paste("Indel / SV Size Distribution", mode_label),
+    labs(title = title, subtitle = paste0("Indel / SV Size Distribution ", mode_label, filter_label),
          x = "Size (bp)", y = "Count") +
     theme_minimal() +
     theme(
@@ -305,7 +317,7 @@ if (has_af) {
                         name = NULL) +
       scale_y_log10(labels = scales::comma) +
       scale_x_continuous(breaks = af_unique, limits = c(-0.02, 1.02)) +
-      labs(title = title, subtitle = paste("Non-Reference Allele Frequency Spectrum", mode_label),
+      labs(title = title, subtitle = paste0("Non-Reference Allele Frequency Spectrum ", mode_label, filter_label),
            x = "Non-Reference Frequency", y = y_label) +
       common_theme
   } else {
@@ -315,7 +327,7 @@ if (has_af) {
       scale_color_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
                          name = NULL) +
       scale_y_log10(labels = scales::comma) +
-      labs(title = title, subtitle = paste("Non-Reference Allele Frequency Spectrum", mode_label),
+      labs(title = title, subtitle = paste0("Non-Reference Allele Frequency Spectrum ", mode_label, filter_label),
            x = "Non-Reference Frequency (sum of alt AFs per site)", y = y_label) +
       common_theme
   }
