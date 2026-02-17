@@ -528,10 +528,10 @@ def main(command_line=None):
     if len(annot_names) != len(options.annotation_files):
         sys.exit(f"Error: {len(annot_names)} annotation names provided for {len(options.annotation_files)} annotation files")
 
-    # Build per-annotation group_column list: only the annotation whose name is "repeats" gets grouping
+    # Build per-annotation group_column list: annotations with class labels in a specific column get grouping
     annot_group_columns = []
     for name in annot_names:
-        if name == 'repeats' and options.group_by_column:
+        if name in ('repeats', 'pclai') and options.group_by_column:
             annot_group_columns.append(options.group_by_column)
         else:
             annot_group_columns.append(None)

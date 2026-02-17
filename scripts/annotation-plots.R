@@ -12,6 +12,7 @@
 #   {prefix}.annot-scatter.png  — per-segment source_len vs source_overlap_frac, faceted by annotation
 #   {prefix}.annot-repeats.png  — repeat class breakdown (only when repeat class data present)
 #   {prefix}.annot-cooccur.png  — heatmap of annotation co-occurrence across coord types
+#   {prefix}.annot-ancestry.png — PCLAI ancestry co-occurrence heatmap (when pclai data present)
 #   {prefix}.annot-stats.tsv    — tabular summary
 #
 # VCF mode outputs (when --vcf is provided):
@@ -318,10 +319,10 @@ save_png(p2, paste0(prefix, ".annot-scatter.png"))
 # Plot 3: Repeat class breakdown (only when repeat class data present)
 # ---------------------------------------------------------------------------
 
-has_repeat_classes <- any(dt$annotation_class != dt$annotation)
+has_repeat_classes <- any(dt$annotation == "repeats" & dt$annotation_class != dt$annotation)
 
 if (has_repeat_classes) {
-  repeat_dt <- dt[annotation_class != annotation]
+  repeat_dt <- dt[annotation == "repeats" & annotation_class != annotation]
 
   # Total bp per coord type (unique segments to avoid double-counting across classes)
   seg_dt <- unique(repeat_dt[, .(augref_path, source_len, ref_len)])
@@ -430,6 +431,72 @@ p4 <- ggplot(cooccur_dt, aes(x = on_ref, y = off_ref, fill = frac_segments)) +
   )
 
 save_png(p4, paste0(prefix, ".annot-cooccur.png"))
+
+# ---------------------------------------------------------------------------
+# Plot 5: PCLAI ancestry co-occurrence heatmap
+# ---------------------------------------------------------------------------
+
+pclai_dt <- dt[annotation == "pclai"]
+if (nrow(pclai_dt) > 0) {
+  # Each row has annotation_class = super-population, with source/ref overlap bp
+  # For each segment, determine dominant ancestry in each coord type
+  # (the class with the most overlap bp)
+  seg_src_anc <- pclai_dt[source_overlap_bp > 0,
+    .(annotation_class = annotation_class[which.max(source_overlap_bp)]),
+    by = augref_path]
+  setnames(seg_src_anc, "annotation_class", "off_ref_anc")
+
+  seg_ref_anc <- pclai_dt[ref_overlap_bp > 0,
+    .(annotation_class = annotation_class[which.max(ref_overlap_bp)]),
+    by = augref_path]
+  setnames(seg_ref_anc, "annotation_class", "on_ref_anc")
+
+  anc_pairs <- merge(seg_src_anc, seg_ref_anc, by = "augref_path")
+  n_anc_segs <- nrow(anc_pairs)
+
+  if (n_anc_segs > 0) {
+    # Count segments per (off_ref, on_ref) ancestry pair
+    anc_cooccur <- anc_pairs[, .N, by = .(off_ref_anc, on_ref_anc)]
+    setnames(anc_cooccur, "N", "n_segments")
+    anc_cooccur[, frac_segments := n_segments / n_anc_segs]
+
+    # Ensure all pairs present (fill missing with 0)
+    superpops <- sort(unique(c(anc_cooccur$off_ref_anc, anc_cooccur$on_ref_anc)))
+    all_pairs <- CJ(off_ref_anc = superpops, on_ref_anc = superpops)
+    anc_cooccur <- merge(all_pairs, anc_cooccur, by = c("off_ref_anc", "on_ref_anc"), all.x = TRUE)
+    anc_cooccur[is.na(n_segments), c("n_segments", "frac_segments") := .(0, 0)]
+
+    anc_cooccur[, off_ref_anc := factor(off_ref_anc, levels = superpops)]
+    anc_cooccur[, on_ref_anc := factor(on_ref_anc, levels = superpops)]
+    anc_cooccur[, label := paste0(n_segments, "\n(", sprintf("%.1f%%", 100 * frac_segments), ")")]
+
+    p5 <- ggplot(anc_cooccur, aes(x = on_ref_anc, y = off_ref_anc, fill = frac_segments)) +
+      geom_tile(color = "white", linewidth = 0.5) +
+      geom_text(aes(label = label), size = 3.2) +
+      scale_fill_gradient(low = "white", high = "steelblue",
+                          labels = percent, name = "Fraction of\nSegments") +
+      labs(title = title,
+           subtitle = paste0("Local Ancestry Co-occurrence (", n_anc_segs, " segments)"),
+           x = "On-reference Ancestry",
+           y = "Off-reference Ancestry") +
+      coord_fixed() +
+      theme_minimal() +
+      theme(
+        plot.title = element_text(hjust = 0.5, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5),
+        panel.grid = element_blank(),
+        panel.background = element_rect(fill = "white", color = NA),
+        plot.background  = element_rect(fill = "white", color = NA),
+        axis.text.x = element_text(angle = 45, hjust = 1)
+      )
+
+    save_png(p5, paste0(prefix, ".annot-ancestry.png"))
+  } else {
+    cat("No segments with PCLAI ancestry in both coords; skipping ancestry heatmap.\n")
+  }
+} else {
+  cat("No PCLAI data; skipping ancestry heatmap.\n")
+}
 
 # ---------------------------------------------------------------------------
 # Output TSV: per-annotation summary

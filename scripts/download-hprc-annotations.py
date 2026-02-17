@@ -9,6 +9,7 @@ use --skip-grch38 or --skip-chm13 to disable.
 
 import os
 import sys
+import re
 import subprocess
 import argparse
 
@@ -30,6 +31,94 @@ UCSC_HS1_GENES = 'https://hgdownload.soe.ucsc.edu/goldenPath/hs1/bigZips/genes/h
 # (centromeric regions are mostly gaps in GRCh38, so detailed CenSat is unavailable)
 UCSC_HG38_CENTROMERES = 'https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/centromeres.txt.gz'
 UCSC_HS1_CENSAT = 'https://hgdownload.soe.ucsc.edu/gbdb/hs1/censat/censat.bb'
+
+# PCLAI (PC-based Local Ancestry Inference) index URLs
+PCLAI_ASM_IDX_URL = 'https://raw.githubusercontent.com/human-pangenomics/hprc_intermediate_assembly/refs/heads/main/data_tables/annotation/pclai/pclai_v0.1_asm_coord_local_hprc_r2_v1.0.index.csv'
+PCLAI_CHM13_IDX_URL = 'https://raw.githubusercontent.com/human-pangenomics/hprc_intermediate_assembly/refs/heads/main/data_tables/annotation/pclai/pclai_v0.1_chm13_coord_local_hprc_r2_v1.0.index.csv'
+
+# Super-population centroids in PCLAI PCA space (from ai-sandbox/hprc-pclai reference metadata)
+SUPERPOP_CENTROIDS = {
+    'AFR': (-1.7428, 0.2066),
+    'EUR': (0.4450, -1.3142),
+    'EAS': (0.7508, 1.4198),
+    'SAS': (0.4768, -0.5071),
+    'AMR': (0.6384, 0.3940),
+}
+
+# GRCh38 standard chromosome sizes (for placeholder PCLAI BED)
+GRCH38_CHROM_SIZES = {
+    'chr1': 248956422, 'chr2': 242193529, 'chr3': 198295559, 'chr4': 190214555,
+    'chr5': 181538259, 'chr6': 170805979, 'chr7': 159345973, 'chr8': 145138636,
+    'chr9': 138394717, 'chr10': 133797422, 'chr11': 135086622, 'chr12': 133275309,
+    'chr13': 114364328, 'chr14': 107043718, 'chr15': 101991189, 'chr16': 90338345,
+    'chr17': 83257441, 'chr18': 80373285, 'chr19': 58617616, 'chr20': 64444167,
+    'chr21': 46709983, 'chr22': 50818468, 'chrX': 156040895, 'chrY': 57227415,
+    'chrM': 16569,
+}
+
+
+def classify_superpop(pc1, pc2):
+    """Classify a (PC1, PC2) coordinate to the nearest super-population centroid."""
+    best_pop, best_dist = 'unknown', float('inf')
+    for pop, (c1, c2) in SUPERPOP_CENTROIDS.items():
+        d = (pc1 - c1) ** 2 + (pc2 - c2) ** 2
+        if d < best_dist:
+            best_dist = d
+            best_pop = pop
+    return best_pop
+
+
+def convert_pclai_to_ancestry_bed(input_bed, output_bed):
+    """
+    Convert PCLAI BED9 to 6-column ancestry BED.
+
+    Input name field: 'HG00097/h1/chr1_w0002_(0.440,-1.405)'
+    Output: chrom, start, end, window_name, score, superpopulation
+    """
+    if os.path.isfile(output_bed):
+        sys.stderr.write(f'  {output_bed} exists, skipping conversion\n')
+        return output_bed
+
+    pc_re = re.compile(r'\(([^,]+),([^)]+)\)')
+    # Extract short window name: 'HG00097/h1/chr1_w0002_(...)' -> 'chr1_w0002'
+    win_re = re.compile(r'[^/]+/[^/]+/(\S+?)_\(')
+
+    sys.stderr.write(f'  Converting {input_bed} to ancestry BED...\n')
+    with open(input_bed) as fin, open(output_bed, 'w') as fout:
+        for line in fin:
+            fields = line.rstrip('\n').split('\t')
+            if len(fields) < 9:
+                continue
+            chrom, start, end, name, score = fields[0], fields[1], fields[2], fields[3], fields[4]
+
+            # Extract PC coordinates
+            m = pc_re.search(name)
+            if m:
+                pc1, pc2 = float(m.group(1)), float(m.group(2))
+                pop = classify_superpop(pc1, pc2)
+            else:
+                pop = 'unknown'
+
+            # Extract short window name
+            wm = win_re.search(name)
+            win_name = wm.group(1) if wm else name
+
+            fout.write(f'{chrom}\t{start}\t{end}\t{win_name}\t{score}\t{pop}\n')
+
+    return output_bed
+
+
+def generate_grch38_pclai_placeholder(out_bed):
+    """Generate a placeholder PCLAI BED for GRCh38 with 'unknown' ancestry."""
+    if os.path.isfile(out_bed):
+        sys.stderr.write(f'  {out_bed} exists, skipping generation\n')
+        return out_bed
+    sys.stderr.write(f'  Generating GRCh38 PCLAI placeholder...\n')
+    with open(out_bed, 'w') as f:
+        for chrom in sorted(GRCH38_CHROM_SIZES.keys()):
+            size = GRCH38_CHROM_SIZES[chrom]
+            f.write(f'{chrom}\t0\t{size}\t{chrom}_placeholder\t0\tunknown\n')
+    return out_bed
 
 
 def check_dependencies(need_bigbed=False):
@@ -308,6 +397,8 @@ def main(command_line=None):
                         help='Skip downloading segmental duplications')
     parser.add_argument('--skip-censat', action='store_true',
                         help='Skip downloading CenSat (centromeric satellite) annotations')
+    parser.add_argument('--skip-pclai', action='store_true',
+                        help='Skip downloading PCLAI (local ancestry) annotations')
     parser.add_argument('--test', action='store_true',
                         help='Test mode: download only one HPRC sample (both haplotypes)')
 
@@ -439,6 +530,48 @@ def main(command_line=None):
                 suffix += f'-{ref_name}'
                 out = os.path.join(options.output_dir, f'hprc-v2-censat{suffix}.bed')
                 add_local(ref_beds['censat'], current, out, prefix=prefix, max_col=3)
+                current = out
+
+    # PCLAI (local ancestry)
+    if not options.skip_pclai:
+        sys.stderr.write('\nDownloading PCLAI local ancestry annotations...\n')
+
+        # Download HPRC sample PCLAI (asm_coord — assembly-native contigs)
+        raw_pclai = download_from_table(
+            PCLAI_ASM_IDX_URL, 4, options.threads, 'hprc-v2-pclai-raw.bed', options.output_dir,
+            test_sample=options.test or None
+        )
+        pclai_path = os.path.join(options.output_dir, 'hprc-v2-pclai.bed')
+        convert_pclai_to_ancestry_bed(raw_pclai, pclai_path)
+        intermediates.append(raw_pclai)
+
+        # CHM13 PCLAI from chm13_coord index
+        if not options.skip_chm13:
+            raw_chm13 = download_from_table(
+                PCLAI_CHM13_IDX_URL, 4, options.threads, 'chm13-pclai-raw.bed', options.output_dir,
+                test_sample='CHM13'
+            )
+            chm13_pclai = os.path.join(options.output_dir, 'chm13-pclai.bed')
+            convert_pclai_to_ancestry_bed(raw_chm13, chm13_pclai)
+            chm13['pclai'] = chm13_pclai
+            intermediates += [raw_chm13, chm13_pclai]
+
+        # GRCh38 placeholder (full chromosomes labeled 'unknown')
+        if not options.skip_grch38:
+            hg38['pclai'] = generate_grch38_pclai_placeholder(
+                os.path.join(options.output_dir, 'grch38-pclai.bed'))
+            intermediates.append(hg38['pclai'])
+
+        # Chain: HPRC → +GRCh38 → +CHM13
+        current = pclai_path
+        suffix = ''
+        for prefix, ref_beds, ref_name in [('GRCh38#0#', hg38, 'grch38'),
+                                            ('CHM13#0#', chm13, 'chm13')]:
+            if 'pclai' in ref_beds:
+                intermediates.append(current)
+                suffix += f'-{ref_name}'
+                out = os.path.join(options.output_dir, f'hprc-v2-pclai{suffix}.bed')
+                add_local(ref_beds['pclai'], current, out, prefix=prefix, max_col=6)
                 current = out
 
     # Clean up intermediate files

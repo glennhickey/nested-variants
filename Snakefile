@@ -65,12 +65,12 @@ def decon_opts():
 # Annotation helpers
 def annotation_inputs():
     """Return list of configured annotation BED files."""
-    return [config[k] for k in ["annot_genes", "annot_repeats", "annot_segdups", "annot_censat"] if config.get(k, "")]
+    return [config[k] for k in ["annot_genes", "annot_repeats", "annot_segdups", "annot_censat", "annot_pclai"] if config.get(k, "")]
 
 def annotation_names():
     """Return clean display names for configured annotations."""
     names = []
-    for k, name in [("annot_genes", "genes"), ("annot_repeats", "repeats"), ("annot_segdups", "segdups"), ("annot_censat", "censat")]:
+    for k, name in [("annot_genes", "genes"), ("annot_repeats", "repeats"), ("annot_segdups", "segdups"), ("annot_censat", "censat"), ("annot_pclai", "pclai")]:
         if config.get(k, ""):
             names.append(name)
     return names
@@ -78,12 +78,15 @@ def annotation_names():
 def annotation_outputs():
     """Return annotation output files if any annotations are configured."""
     if annotation_inputs():
-        return [
+        outputs = [
             f"{OUT_DIR}/{OUT_NAME}.annot-summary.png",
             f"{OUT_DIR}/{OUT_NAME}.annot-scatter.png",
             f"{OUT_DIR}/{OUT_NAME}.annot-cooccur.png",
             f"{OUT_DIR}/{OUT_NAME}.annot-stats.tsv",
         ]
+        if config.get("annot_pclai", ""):
+            outputs.append(f"{OUT_DIR}/{OUT_NAME}.annot-ancestry.png")
+        return outputs
     return []
 
 def annotation_snp_outputs(callers=None):
@@ -414,7 +417,7 @@ rule annotation_intersect:
         runtime=2880,
     params:
         names=" ".join(annotation_names()),
-        group_arg="--group-by-column 6" if config.get("annot_repeats", "") else "",
+        group_arg="--group-by-column 6" if config.get("annot_repeats", "") or config.get("annot_pclai", "") else "",
     shell:
         "python scripts/intersect-annotations.py"
         " {input.segs} {input.annots}"
@@ -428,10 +431,7 @@ rule annotation_plots:
     input:
         f"{OUT_DIR}/{OUT_NAME}.annot-per-segment.tsv",
     output:
-        f"{OUT_DIR}/{OUT_NAME}.annot-summary.png",
-        f"{OUT_DIR}/{OUT_NAME}.annot-scatter.png",
-        f"{OUT_DIR}/{OUT_NAME}.annot-cooccur.png",
-        f"{OUT_DIR}/{OUT_NAME}.annot-stats.tsv",
+        annotation_outputs(),
     resources:
         mem_mb=256000,
         runtime=2880,

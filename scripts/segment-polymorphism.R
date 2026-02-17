@@ -133,8 +133,17 @@ master[, polymorphic_density_per_kb := round(polymorphic_variants / (segment_len
 if (!is.null(annot_file)) {
   cat("Joining annotation overlaps from:", annot_file, "\n")
   annot <- fread(annot_file)
-  # One column per annotation: max source_overlap_frac across sub-classes
-  annot_wide <- dcast(annot, augref_path ~ annotation,
+
+  # For grouped annotations where annotation_class differs from annotation
+  # (e.g., pclai with AFR/EUR/EAS/SAS/AMR), create per-class columns.
+  # Other annotations (genes, segdups, censat) and repeats get a single column
+  # with the max overlap fraction across sub-classes.
+  annot[, pivot_col := fifelse(
+    annotation == "pclai" & annotation_class != annotation,
+    paste0(annotation, "_", annotation_class),
+    annotation)]
+
+  annot_wide <- dcast(annot, augref_path ~ pivot_col,
                       value.var = "source_overlap_frac",
                       fun.aggregate = max, fill = 0)
   master <- merge(master, annot_wide, by = "augref_path", all.x = TRUE)
