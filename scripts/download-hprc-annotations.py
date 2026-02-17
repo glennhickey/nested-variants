@@ -252,7 +252,7 @@ def convert_gtf_to_bed(gtf_gz, out_bed):
 
 
 def download_from_table(table_url, column, threads, out_annot_path, out_dir, gff=False,
-                        test_sample=None, max_col=None):
+                        test_sample=None, max_col=None, reformat_cmd=None):
     """
     Download annotation files listed in a CSV index table.
 
@@ -269,6 +269,7 @@ def download_from_table(table_url, column, threads, out_annot_path, out_dir, gff
         gff: If True, extract BED coordinates from GFF format
         test_sample: If set, only download this sample's rows (both haplotypes)
         max_col: Maximum number of columns to keep (None for all)
+        reformat_cmd: Shell pipe command to reformat columns (inserted before cut/sort)
     """
     full_out_path = os.path.join(out_dir, out_annot_path)
 
@@ -328,10 +329,11 @@ def download_from_table(table_url, column, threads, out_annot_path, out_dir, gff
             strip_cmd = " | grep -v '^track\\|^browser\\|^#'"
             # GFF path: extract coords, sort, merge (already produces sorted output)
             gff_cmd = ' | cut -f1,4,5 | bedtools sort | bedtools merge' if gff else ''
+            reformat = f' | {reformat_cmd}' if reformat_cmd and not gff else ''
             cut_cmd = f' | cut -f1-{max_col}' if max_col and not gff else ''
             sort_cmd = '' if gff else ' | sort -k1,1 -k2,2n'
 
-            cmds.write(f'{cat_cmd} {annot_path}{strip_cmd}{gff_cmd}{cut_cmd}{sort_cmd}'
+            cmds.write(f'{cat_cmd} {annot_path}{strip_cmd}{gff_cmd}{reformat}{cut_cmd}{sort_cmd}'
                        f' > {sorted_path} && rm {annot_path}\n')
             sorted_files.append(sorted_path)
 
@@ -483,9 +485,12 @@ def main(command_line=None):
 
     # RepeatMasker
     if not options.skip_rm:
+        # HPRC RM BED format: chrom, start, end, name, score, strand, class, family, ...
+        # Reformat to match reference RM BEDs: chrom, start, end, name, score, class/family
+        rm_reformat = r"""awk -F'\t' '{OFS="\t"; print $1,$2,$3,$4,$5,$7"/"$8}'"""
         rm_path = download_from_table(
             RM_IDX_URL, 4, options.threads, 'hprc-v2-rm.bed', options.output_dir,
-            test_sample=options.test or None, max_col=6
+            test_sample=options.test or None, reformat_cmd=rm_reformat
         )
         current = rm_path
         suffix = ''
