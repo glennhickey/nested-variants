@@ -127,9 +127,12 @@ dt[, size := sapply(seq_len(.N), function(i) {
   max(abs(nchar(alts) - ref_len[i]))
 })]
 
+# NA size can arise from unusual ALT fields (e.g., '*' spanning deletions)
 dt[, variant_type := fifelse(
-  size == 0L, "SNP",
-  fifelse(size < 50L, "Indel", "SV")
+  is.na(size), "Other",
+  fifelse(size == 0L & ref_len == 1L, "SNP",
+  fifelse(size == 0L, "MNP",
+  fifelse(size < 50L, "Indel", "SV")))
 )]
 
 # On-ref vs off-ref
@@ -220,13 +223,13 @@ plot_dt <- dt[, .(count = .N), by = .(ref_context, variant_type)]
 if (nrow(tstv_dt) > 0) {
   tstv_labels <- tstv_dt[, .(ref_context, label = paste0("Ts/Tv=", tstv_ratio))]
   plot_dt <- merge(plot_dt, tstv_labels, by = "ref_context", all.x = TRUE)
-  plot_dt[variant_type != "SNP", label := NA_character_]
+  plot_dt[!variant_type %in% "SNP", label := NA_character_]
 } else {
   plot_dt[, label := NA_character_]
 }
 
-# Order variant types
-plot_dt[, variant_type := factor(variant_type, levels = c("SNP", "Indel", "SV"))]
+# Order variant types (drop empty levels)
+plot_dt[, variant_type := factor(variant_type, levels = intersect(c("SNP", "MNP", "Indel", "SV", "Other"), unique(variant_type)))]
 
 p1 <- ggplot(plot_dt, aes(x = variant_type, y = count, fill = ref_context)) +
   geom_col(position = "dodge", width = 0.7) +
