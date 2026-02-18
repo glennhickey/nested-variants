@@ -163,7 +163,8 @@ JOB_SCRIPT="${OUTPUT_DIR}/${OUTPUT_NAME%.gam}.giraffe.sh"
 cat > "$JOB_SCRIPT" << EOF
 #!/bin/bash
 set -ex
-WORK_TMPDIR="\${TMPDIR:-${OUTPUT_DIR}}"
+WORK_TMPDIR=\$(mktemp -d "\${TMPDIR:-${OUTPUT_DIR}}/giraffe.${SAMPLE}.XXXXXX")
+trap '[ -n "\${WORK_TMPDIR}" ] && rm -rf "\${WORK_TMPDIR}"' EXIT
 
 # Stage GBZ and HAPL to node-local scratch for fast random I/O
 echo "Staging GBZ and HAPL to \${WORK_TMPDIR}"
@@ -210,15 +211,6 @@ kmc -k29 -m${MEM_NUM} -okff -t${CPUS} -hp "@\${LOCAL_READS}" "\${WORK_TMPDIR}/${
   --kff-name "\${WORK_TMPDIR}/${SAMPLE}.kff" \\
   --index-basename "\${WORK_TMPDIR}/${SAMPLE}" \\
   -N ${SAMPLE} \$FASTQ_ARGS > "${GAM}"
-
-# Cleanup staged files and downloads
-rm -f "\${WORK_TMPDIR}/${GBZ_BASE}" "\${WORK_TMPDIR}/${HAPL_BASE}" \\
-  "\${WORK_TMPDIR}/${SAMPLE}.kff" "\${WORK_TMPDIR}/${SAMPLE}.kff.kmc_pre" "\${WORK_TMPDIR}/${SAMPLE}.kff.kmc_suf" \\
-  "\${WORK_TMPDIR}/${SAMPLE}.dist" "\${WORK_TMPDIR}/${SAMPLE}.min"
-while IFS= read -r fq; do
-  case "\$fq" in "\${WORK_TMPDIR}"/*) rm -f "\$fq" ;; esac
-done < "\${LOCAL_READS}"
-rm -f "\${LOCAL_READS}"
 EOF
 
 if $LOCAL; then

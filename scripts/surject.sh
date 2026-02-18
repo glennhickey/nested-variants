@@ -152,26 +152,31 @@ mkdir -p "$OUTPUT_DIR"
 
 BAM="${OUTPUT_DIR}/${OUTPUT_NAME}"
 
-# Build the command to run
-# Use TMPDIR if set (node-local scratch on clusters), otherwise fall back to output dir
-# Stage GBZ to local scratch for fast random I/O
-# Use local scratch for samtools sort temp files and intermediate BAM
+# Write job script (avoids escaping issues and supports mktemp/trap)
 GBZ_BASE=$(basename "$GBZ")
 BAM_BASE=$(basename "$BAM")
-CMD="WORK_TMPDIR=\${TMPDIR:-${OUTPUT_DIR}} && \\
-echo \"Staging GBZ to \${WORK_TMPDIR}\" && \\
-cp \"${GBZ}\" \"\${WORK_TMPDIR}/${GBZ_BASE}\" && \\
-/usr/bin/time -v vg surject -x \"\${WORK_TMPDIR}/${GBZ_BASE}\" -n ${REF} -N ${SAMPLE} -i -b -t ${CPUS} \"${GAM}\" | \\
-/usr/bin/time -v samtools sort -@ ${CPUS} -T \"\${WORK_TMPDIR}/sort_${SAMPLE}\" -o \"\${WORK_TMPDIR}/${BAM_BASE}\" && \\
-mv \"\${WORK_TMPDIR}/${BAM_BASE}\" \"${BAM}\" && \\
-/usr/bin/time -v samtools index -@ ${CPUS} \"${BAM}\" && \\
-rm -f \"\${WORK_TMPDIR}/${GBZ_BASE}\""
+JOB_SCRIPT="${OUTPUT_DIR}/${OUTPUT_NAME%.bam}.surject.sh"
+
+cat > "$JOB_SCRIPT" << EOF
+#!/bin/bash
+set -exo pipefail
+WORK_TMPDIR=\$(mktemp -d "\${TMPDIR:-${OUTPUT_DIR}}/surject.${SAMPLE}.XXXXXX")
+trap '[ -n "\${WORK_TMPDIR}" ] && rm -rf "\${WORK_TMPDIR}"' EXIT
+
+# Stage GBZ to node-local scratch for fast random I/O
+echo "Staging GBZ to \${WORK_TMPDIR}"
+cp "${GBZ}" "\${WORK_TMPDIR}/${GBZ_BASE}"
+
+# Surject GAM → BAM via local scratch
+/usr/bin/time -v vg surject -x "\${WORK_TMPDIR}/${GBZ_BASE}" -n ${REF} -N ${SAMPLE} -i -b -t ${CPUS} "${GAM}" | \\
+/usr/bin/time -v samtools sort -@ ${CPUS} -T "\${WORK_TMPDIR}/sort_${SAMPLE}" -o "\${WORK_TMPDIR}/${BAM_BASE}"
+mv "\${WORK_TMPDIR}/${BAM_BASE}" "${BAM}"
+/usr/bin/time -v samtools index -@ ${CPUS} "${BAM}"
+EOF
 
 if $LOCAL; then
-    # Run locally
-    bash -c "$CMD"
+    bash "$JOB_SCRIPT"
 else
-    # Submit SLURM job with resource requirements
     sbatch -W \
         --job-name="${JOB_NAME}" \
         --partition="${PARTITION}" \
@@ -182,5 +187,5 @@ else
         --time="${TIME}" \
         --output=/dev/null \
         --error="${OUTPUT_DIR}/${OUTPUT_NAME%.bam}.surject.log" \
-        --wrap="$CMD"
+        "$JOB_SCRIPT"
 fi
