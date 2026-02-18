@@ -129,6 +129,7 @@ rule all:
     input:
         # graph_only outputs
         f"{OUT_DIR}/{OUT_NAME}.offref.png",
+        f"{OUT_DIR}/{OUT_NAME}.offref-segs.png",
         f"{OUT_DIR}/{OUT_NAME}.augref-length-hist.png",
         f"{OUT_DIR}/{OUT_NAME}.sites.vcf-stats.tsv",
         f"{OUT_DIR}/{OUT_NAME}.sites.variant-types.png",
@@ -201,6 +202,7 @@ rule graph_only:
     """Graph construction + deconstruct + plots (no genotyping)"""
     input:
         f"{OUT_DIR}/{OUT_NAME}.offref.png",
+        f"{OUT_DIR}/{OUT_NAME}.offref-segs.png",
         f"{OUT_DIR}/{OUT_NAME}.augref-length-hist.png",
         f"{OUT_DIR}/{OUT_NAME}.sites.vcf-stats.tsv",
         f"{OUT_DIR}/{OUT_NAME}.sites.variant-types.png",
@@ -383,6 +385,22 @@ rule length_hist:
         runtime=2880,
     shell:
         "Rscript scripts/offref-length-hist.R {output} {input} TRUE"
+
+rule segment_density:
+    """Augref segments → off-reference segment density ideogram"""
+    input:
+        f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
+    output:
+        f"{OUT_DIR}/{OUT_NAME}.offref-segs.png",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
+    shell:
+        "Rscript scripts/chrom-density-tsv.R"
+        " {input} {output}"
+        " '{REF} Off-Reference Segment Density'"
+        " {config[min_augref_len]} {config[refgaps_bed]} {config[scale_type]}"
+        " --ref {REF}"
 
 rule plots:
     """Deconstruct VCF → off-reference density ideogram"""
