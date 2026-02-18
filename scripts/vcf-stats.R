@@ -243,9 +243,9 @@ p1 <- ggplot(plot_dt, aes(x = variant_type, y = count, fill = ref_context)) +
             vjust = -0.5, size = 3, na.rm = TRUE) +
   scale_fill_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
                     name = NULL) +
-  scale_y_log10(labels = scales::comma) +
+  scale_y_continuous(labels = scales::comma) +
   labs(title = title, subtitle = paste0("Variant Type Counts ", mode_label, filter_label),
-       x = "Variant Type", y = "Count (log scale)") +
+       x = "Variant Type", y = "Count") +
   theme_minimal() +
   theme(
     plot.title = element_text(hjust = 0.5, face = "bold"),
