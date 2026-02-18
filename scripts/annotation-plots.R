@@ -3,9 +3,10 @@
 # annotation-plots.R — Annotation overlap plots for augref alt segments
 #
 # Usage: Rscript scripts/annotation-plots.R <per_segment.tsv> <output_prefix> [--title TITLE]
+#          [--min-overlap FRAC]  (minimum overlap fraction to count; default 0)
 #        Rscript scripts/annotation-plots.R <per_segment.tsv> <output_prefix>
 #          --vcf <biallelic_snps.vcf.gz> --augref-prefix <prefix> --filter <all|pass>
-#          --title TITLE
+#          --title TITLE [--min-overlap FRAC]
 #
 # Base mode outputs:
 #   {prefix}.annot-summary.png  — fraction of alt bp overlapping each annotation (source vs ref)
@@ -40,6 +41,7 @@ title         <- NULL
 vcf_file      <- NULL
 augref_prefix <- NULL
 filt          <- NULL
+min_overlap   <- 0
 
 i <- 3
 while (i <= length(args)) {
@@ -55,6 +57,9 @@ while (i <= length(args)) {
   } else if (args[i] == "--filter" && i + 1 <= length(args)) {
     filt <- args[i + 1]
     i <- i + 2
+  } else if (args[i] == "--min-overlap" && i + 1 <= length(args)) {
+    min_overlap <- as.numeric(args[i + 1])
+    i <- i + 2
   } else {
     i <- i + 1
   }
@@ -66,6 +71,7 @@ vcf_mode <- !is.null(vcf_file)
 # Read data
 # ---------------------------------------------------------------------------
 cat("Reading:", input_file, "\n")
+cat("Min overlap fraction:", min_overlap, "\n")
 dt <- fread(input_file)
 
 if (nrow(dt) == 0) {
@@ -101,7 +107,9 @@ if (vcf_mode) {
 
   # Aggregate per segment/annotation (same as base co-occurrence logic)
   seg_ann <- dt[, .(source_overlap_bp = sum(source_overlap_bp),
-                    ref_overlap_bp = sum(ref_overlap_bp)),
+                    ref_overlap_bp = sum(ref_overlap_bp),
+                    source_overlap_frac = sum(source_overlap_frac),
+                    ref_overlap_frac = sum(ref_overlap_frac)),
                 by = .(augref_path, annotation)]
 
   # Read biallelic SNP VCF
@@ -139,9 +147,9 @@ if (vcf_mode) {
     annotations <- sort(unique(seg_ann$annotation))
     results <- list()
     for (a_off in annotations) {
-      segs_off <- seg_ann[annotation == a_off & source_overlap_bp > 0]$augref_path
+      segs_off <- seg_ann[annotation == a_off & source_overlap_frac > min_overlap]$augref_path
       for (a_on in annotations) {
-        segs_on <- seg_ann[annotation == a_on & ref_overlap_bp > 0]$augref_path
+        segs_on <- seg_ann[annotation == a_on & ref_overlap_frac > min_overlap]$augref_path
         segs_both <- intersect(segs_off, segs_on)
         sub <- snps[augref_path %in% segs_both]
         results[[length(results) + 1]] <- data.table(
@@ -379,7 +387,9 @@ if (has_repeat_classes) {
 # For each segment, determine which annotations it overlaps in off-ref and on-ref
 # Aggregate across annotation classes (e.g., multiple repeat classes → single "repeats")
 seg_ann <- dt[, .(source_overlap_bp = sum(source_overlap_bp),
-                  ref_overlap_bp = sum(ref_overlap_bp)),
+                  ref_overlap_bp = sum(ref_overlap_bp),
+                  source_overlap_frac = sum(source_overlap_frac),
+                  ref_overlap_frac = sum(ref_overlap_frac)),
               by = .(augref_path, annotation)]
 
 annotations <- sort(unique(seg_ann$annotation))
@@ -387,12 +397,12 @@ all_segs <- unique(seg_ann$augref_path)
 n_segs <- length(all_segs)
 
 # Build co-occurrence: for each pair (off-ref ann A, on-ref ann B),
-# count segments with overlap in both
+# count segments with overlap fraction above threshold in both
 cooccur_list <- list()
 for (a_off in annotations) {
-  segs_off <- seg_ann[annotation == a_off & source_overlap_bp > 0]$augref_path
+  segs_off <- seg_ann[annotation == a_off & source_overlap_frac > min_overlap]$augref_path
   for (a_on in annotations) {
-    segs_on <- seg_ann[annotation == a_on & ref_overlap_bp > 0]$augref_path
+    segs_on <- seg_ann[annotation == a_on & ref_overlap_frac > min_overlap]$augref_path
     n_both <- length(intersect(segs_off, segs_on))
     cooccur_list[[length(cooccur_list) + 1]] <- data.table(
       off_ref = a_off, on_ref = a_on,
@@ -441,12 +451,12 @@ if (nrow(pclai_dt) > 0) {
   # Each row has annotation_class = super-population, with source/ref overlap bp
   # For each segment, determine dominant ancestry in each coord type
   # (the class with the most overlap bp)
-  seg_src_anc <- pclai_dt[source_overlap_bp > 0,
+  seg_src_anc <- pclai_dt[source_overlap_frac > min_overlap,
     .(annotation_class = annotation_class[which.max(source_overlap_bp)]),
     by = augref_path]
   setnames(seg_src_anc, "annotation_class", "off_ref_anc")
 
-  seg_ref_anc <- pclai_dt[ref_overlap_bp > 0,
+  seg_ref_anc <- pclai_dt[ref_overlap_frac > min_overlap,
     .(annotation_class = annotation_class[which.max(ref_overlap_bp)]),
     by = augref_path]
   setnames(seg_ref_anc, "annotation_class", "on_ref_anc")

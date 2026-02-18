@@ -455,7 +455,7 @@ rule annotation_plots:
         runtime=2880,
     shell:
         "Rscript scripts/annotation-plots.R {input} {OUT_DIR}/{OUT_NAME}"
-        " --title '{REF} Annotation Overlap'"
+        " --min-overlap 0.3 --title '{REF} Annotation Overlap'"
 
 rule biallelic_snps:
     """VCF → biallelic SNP VCF (split multi-allelic, filter to true SNPs)"""
@@ -491,6 +491,7 @@ rule annotation_snp_heatmaps:
         " --vcf {input.vcf}"
         " --augref-prefix 'augref_{REF}#0#'"
         " --filter {wildcards.filt}"
+        " --min-overlap 0.3"
         " --title '{REF} SNP Annotation'"
 
 rule segment_polymorphism:
