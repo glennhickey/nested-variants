@@ -4,6 +4,7 @@
 #
 # Usage: Rscript scripts/vcf-stats.R <input.vcf.gz> <output_prefix>
 #          [--title TITLE] [--mode sites|variants] [--filter all|pass]
+#          [--af-step SIZE]  (AF rounding step for spectrum plot; default 0.1)
 #
 # Modes:
 #   sites    — (default) read VCF as-is; multi-allelic sites classified by largest allele
@@ -32,9 +33,10 @@ if (length(args) < 2) {
 
 vcf    <- args[1]
 prefix <- args[2]
-title  <- NULL
-mode   <- "sites"
-filter <- "all"
+title   <- NULL
+mode    <- "sites"
+filter  <- "all"
+af_step <- 0.1
 
 i <- 3
 while (i <= length(args)) {
@@ -46,6 +48,9 @@ while (i <= length(args)) {
     i <- i + 2
   } else if (args[i] == "--filter" && i + 1 <= length(args)) {
     filter <- args[i + 1]
+    i <- i + 2
+  } else if (args[i] == "--af-step" && i + 1 <= length(args)) {
+    af_step <- as.numeric(args[i + 1])
     i <- i + 2
   } else {
     i <- i + 1
@@ -288,14 +293,24 @@ if (nrow(size_dt) > 0) {
 
 # ---------------------------------------------------------------------------
 # Plot 3: AF spectrum — per-site non-reference frequency (log y-axis)
+#
+# AF values are inherently discrete (multiples of 1/(2N) for N diploid samples),
+# so we always count exact values rather than binning.  When there are many
+# unique values (large N), we round to ~100 evenly-spaced bins first.
 # ---------------------------------------------------------------------------
 if (has_af) {
   cat("AF spectrum: ", nrow(dt), " sites with non-ref AF\n")
 
-  # Adaptive plot: bar chart for discrete AF (few samples), freqpoly for continuous
-  dt[, af_rounded := round(nonref_af, 2)]
-  n_unique <- length(unique(dt$af_rounded))
-  cat("Unique AF values (rounded):", n_unique, "\n")
+  n_raw <- length(unique(dt$nonref_af))
+  cat("Unique raw AF values:", n_raw, "\n")
+
+  # Round AF to nearest step (default 0.1 = 10%)
+  dt[, af_plot := round(nonref_af / af_step) * af_step]
+  n_unique <- length(unique(dt$af_plot))
+  cat("Unique AF values for plot:", n_unique, "\n")
+
+  af_counts <- dt[, .(count = .N), by = .(af_plot, ref_context)]
+  af_unique <- sort(unique(af_counts$af_plot))
 
   y_label <- if (mode == "sites") "Sites (log scale)" else "Variants (log scale)"
   common_theme <- theme_minimal() +
@@ -306,36 +321,18 @@ if (has_af) {
       plot.background  = element_rect(fill = "white", color = NA)
     )
 
-  if (n_unique <= 30) {
-    # Discrete AF: count exact rounded values, use bar chart
-    af_counts <- dt[, .(count = .N), by = .(af_rounded, ref_context)]
+  p3 <- ggplot(af_counts, aes(x = af_plot, y = count, color = ref_context)) +
+    geom_line(linewidth = 0.6) +
+    geom_point(size = 1.2) +
+    scale_color_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
+                       name = NULL) +
+    scale_y_log10(labels = scales::comma) +
+    scale_x_continuous(limits = c(-0.02, 1.02)) +
+    labs(title = title, subtitle = paste0("Non-Reference Allele Frequency Spectrum ", mode_label, filter_label),
+         x = "Non-Reference Frequency", y = y_label) +
+    common_theme
 
-    # Bar width: 80% of minimum spacing (or 0.02 if only one value)
-    af_unique <- sort(unique(af_counts$af_rounded))
-    bar_width <- if (length(af_unique) > 1) 0.8 * min(diff(af_unique)) else 0.02
-
-    p3 <- ggplot(af_counts, aes(x = af_rounded, y = count, fill = ref_context)) +
-      geom_col(position = position_dodge(width = bar_width), width = bar_width) +
-      scale_fill_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
-                        name = NULL) +
-      scale_y_log10(labels = scales::comma) +
-      scale_x_continuous(breaks = af_unique, limits = c(-0.02, 1.02)) +
-      labs(title = title, subtitle = paste0("Non-Reference Allele Frequency Spectrum ", mode_label, filter_label),
-           x = "Non-Reference Frequency", y = y_label) +
-      common_theme
-  } else {
-    # Continuous AF: use frequency polygon (many samples)
-    p3 <- ggplot(dt, aes(x = nonref_af, color = ref_context)) +
-      geom_freqpoly(bins = 50, linewidth = 0.8) +
-      scale_color_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
-                         name = NULL) +
-      scale_y_log10(labels = scales::comma) +
-      labs(title = title, subtitle = paste0("Non-Reference Allele Frequency Spectrum ", mode_label, filter_label),
-           x = "Non-Reference Frequency (sum of alt AFs per site)", y = y_label) +
-      common_theme
-  }
-
-  dt[, af_rounded := NULL]
+  dt[, af_plot := NULL]
   save_png(p3, paste0(prefix, ".af-spectrum.png"), height = 6)
   cat("AF spectrum plot generated.\n")
 } else {

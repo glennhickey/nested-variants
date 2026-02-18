@@ -735,9 +735,9 @@ rule deconstruct_stats:
         runtime=2880,
     shell:
         "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{OUT_NAME}.sites"
-        " --mode sites --title '{REF} Deconstruct'"
+        " --mode sites --af-step 0.05 --title '{REF} Deconstruct'"
         " && Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{OUT_NAME}.variants"
-        " --mode variants --title '{REF} Deconstruct'"
+        " --mode variants --af-step 0.05 --title '{REF} Deconstruct'"
 
 rule call_stats:
     """Per-sample call VCF → variant stats + plots"""
