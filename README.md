@@ -205,7 +205,7 @@ snakemake --profile profiles/slurm graph_only genotype_all \
     vg='/private/groups/hprc/hprc-graphs/hprc-v2.1-dec23/hprc-v2.1-mc-chm13-eval/hprc-v2.1-mc-chm13-eval.chroms/!(*.d*).vg' \
     out_dir=output/v2.1-chm13 \
     out_name=hprc-v2.1-mc-chm13.nested \
-    refgaps_bed=data/hprc-v2.1-mc-chm13.refgaps.bed \
+    refgaps_bed=/private/groups/hprc/hprc-graphs/hprc-v2.1-dec23/hprc-v2.1-mc-chm13-eval/hprc-v2.1-mc-chm13-eval.refgaps.bed \
     paths_mem_gb=1024 \
     annot_genes=$ANNOT/hprc-v2-genes-grch38-chm13.bed \
     annot_repeats=$ANNOT/hprc-v2-rm-grch38-chm13.bed \
@@ -228,7 +228,7 @@ snakemake --profile profiles/slurm all \
     out_dir=output/v2.1-chm13-min5k \
     out_name=hprc-v2.1-mc-chm13.nested \
     min_augref_len=5000 \
-    refgaps_bed=data/hprc-v2.1-mc-chm13.refgaps.bed \
+    refgaps_bed=/private/groups/hprc/hprc-graphs/hprc-v2.1-dec23/hprc-v2.1-mc-chm13-eval/hprc-v2.1-mc-chm13-eval.refgaps.bed \
     paths_mem_gb=1024 \
     annot_genes=$ANNOT/hprc-v2-genes-grch38-chm13.bed \
     annot_repeats=$ANNOT/hprc-v2-rm-grch38-chm13.bed \
@@ -249,7 +249,7 @@ snakemake --profile profiles/slurm all \
     vg='/private/groups/hprc/hprc-graphs/hprc-v2.1-dec23/hprc-v2.1-mc-grch38-eval/hprc-v2.1-mc-grch38-eval.chroms/!(*.d*).vg' \
     out_dir=output/v2.1-grch38 \
     out_name=hprc-v2.1-mc-grch38.nested \
-    refgaps_bed=data/hprc-v2.1-mc-grch38.refgaps.bed \
+    refgaps_bed=/private/groups/hprc/hprc-graphs/hprc-v2.1-dec23/hprc-v2.1-mc-grch38-eval/hprc-v2.1-mc-grch38-eval.refgaps.bed \
     paths_mem_gb=1024 \
     annot_genes=$ANNOT/hprc-v2-genes-grch38-chm13.bed \
     annot_repeats=$ANNOT/hprc-v2-rm-grch38-chm13.bed \
@@ -356,7 +356,7 @@ snakemake --profile profiles/slurm graph_only \
     vg='/private/groups/hprc/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-chm13/hprc-v1.1-mc-chm13.chroms/!(*.d9).vg' \
     out_dir=output/v1.1-chm13 \
     out_name=hprc-v1.1-mc-chm13.nested \
-    refgaps_bed=data/hprc-v1.1-mc-chm13.refgaps.bed
+    refgaps_bed=/private/groups/hprc/hprc-graphs/hprc-v1.1-jul4/hprc-v1.1-mc-chm13/hprc-v1.1-mc-chm13.refgaps.bed
 ```
 
 See [HPRC v2.1 Example](#hprc-v21-example) for a full run with annotations and genotyping.
