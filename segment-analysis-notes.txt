@@ -1,0 +1,179 @@
+Segment Polymorphism Analysis Notes
+====================================
+Source: hprc-v2.1-mc-chm13.nested.segment-polymorphism.tsv
+Date: 2026-02-18
+
+Overview
+--------
+770,775 total augref alt segments
+496,971 (64%) have at least one polymorphic variant
+161,962 (21%) overlap genes >30%
+Median segment length: 149 bp
+Median polymorphic variants per segment: 1
+
+Ranking Strategies
+------------------
+Three approaches were used to identify segments enriched for polymorphic
+nested variants in genic regions:
+
+1. Raw polymorphic count (genic >30%, segment >= 1kb)
+2. Balanced score: geometric mean of (polymorphic count x density per kb)
+   Filters: genic >30%, >= 500bp, >= 20 polymorphic variants
+3. Common polymorphisms: genic >50%, repeat <30%, AF 0.1-0.5, >= 500bp
+
+Top Candidates (Strategy 2: balanced count x density)
+-----------------------------------------------------
+chr4_10698_alt   31kb  100% genic  0% repeat  3,445 poly  Ts/Tv=20.1  AF=0.23
+chr6_1406_alt    39kb  100% genic  0% repeat  3,518 poly  Ts/Tv=5.1   AF=0.40
+chr19_9986_alt  147kb   79% genic 30% repeat  6,594 poly  Ts/Tv=1.3   AF=0.33
+chr12_2442_alt   13kb  100% genic  0% repeat  1,958 poly  Ts/Tv=0.3   AF=0.33
+chr21_2012_alt   65kb   49% genic 98% repeat  4,037 poly  Ts/Tv=0.8   AF=0.33
+chr14_43848_alt  33kb  100% genic 98% repeat  2,781 poly  Ts/Tv=0.8   AF=0.15
+chr7_17012_alt   14kb  100% genic  0% repeat  1,358 poly  Ts/Tv=9.3   AF=0.24
+chr16_8960_alt    4kb  100% genic  0% repeat    683 poly  Ts/Tv=2.7   AF=0.31
+
+Notable Observations
+--------------------
+- Several segments have extremely high Ts/Tv ratios (>10), which could
+  indicate CpG-rich regions or regions under selection. chr4_10698_alt
+  (Ts/Tv=20.1) and chr7_12751_alt (Ts/Tv=26.1) are standouts.
+
+- chr12_2440/2441/2442 appear to be adjacent segments in the same region,
+  all 100% genic, 0% repeat. Worth investigating as a cluster.
+
+- The cleanest candidates (high genic, low repeat, reasonable AF) from
+  Strategy 3 yield 3,007 segments.
+
+Detailed Segment Analysis
+=========================
+
+chr19_9986_alt — PSG (Pregnancy-Specific Glycoprotein) Gene Cluster
+--------------------------------------------------------------------
+Source haplotype: HG01261#1#JBHDVG010000010.1:44,969,708-45,116,660
+CHM13 ref coords: chr19:45,663,890-46,167,387 (503 kb on ref, 147 kb off ref)
+Segment stats: 6,594 polymorphic variants, 5,292 SNPs, Ts/Tv=1.29, AF=0.33
+Annotations: 79% genic, 30% repeat, 100% segdup, 0% censat
+
+Genes in CHM13 reference region (CAT/Liftoff, 19 genes):
+  PSG1, PSG2, PSG4, PSG5, PSG6, PSG7, PSG8, PSG9, PSG10P, PSG11
+  CEACAMP4, CEACAMP7, CEACAMP8, CEACAMP9, CEACAMP10, CEACAMP11
+  AC004784.1, AC005392.1, AC005392.2
+
+This is the PSG gene cluster at chr19q13.2-13.3, part of the larger
+carcinoembryonic antigen (CEA) family. Key biology:
+
+- 11 tandemly arrayed PSG genes, expressed almost exclusively in
+  placental trophoblasts during pregnancy.
+- Known copy number variation: PSG gene deletions are enriched in
+  pre-eclampsia patients; low PSG levels associated with intrauterine
+  growth retardation (PMID: 27753020).
+- Rapidly evolving: rodent and primate PSG families expanded
+  independently, likely driven by maternal-fetal conflict
+  (PMID: 35007205).
+- 100% segdup overlap on reference — consistent with tandem duplication
+  architecture of the cluster.
+- The large size discrepancy (147 kb off-ref vs 503 kb on-ref) suggests
+  a substantial contraction in the HG01261 haplotype relative to CHM13,
+  or complex rearrangement within the cluster.
+
+Genes on source haplotype HG01261#1 (CAT annotation, 44,969,708-45,116,660):
+  PSG2          45,093,555-45,112,384  protein_coding
+  PSG11         45,037,002-45,055,828  protein_coding
+  PSG11-AS1     45,006,799-45,201,181  lncRNA (antisense, extends beyond segment)
+  CEACAMP7      44,978,832-44,979,716  unprocessed_pseudogene
+  CEACAMP8      45,065,222-45,070,601  unprocessed_pseudogene
+  ENSG00000307642  44,961,164-44,974,468  lncRNA
+
+Full PSG cluster on HG01261#1 contig JBHDVG010000010.1 (~43.6M-45.6M):
+  Protein-coding PSG genes (14 copies of 10 genes):
+    PSG1 x1, PSG3 x1, PSG6 x1, PSG7 x1, PSG8 x1, PSG9 x1
+    PSG2 x2, PSG4 x2, PSG5 x2, PSG11 x2
+  CEACAMP pseudogenes: 13 copies
+  Total cluster span: ~2 Mb
+
+Comparison CHM13 vs HG01261#1:
+  CHM13 (503 kb ref window):  10 PSG genes + 5 CEACAMP pseudogenes
+  HG01261#1 (full cluster):   14 PSG gene copies (10 unique) + 13 CEACAMP
+
+  HG01261 has MORE PSG genes than CHM13 in this window — PSG2, PSG4, PSG5,
+  and PSG11 are each duplicated. The 147 kb augref segment captures an
+  inserted portion of the cluster not present in the CHM13 reference at
+  this position, likely part of the tandem expansion.
+
+  The high polymorphic variant count (6,594) in this segment reflects the
+  difficulty of aligning duplicated, divergent PSG paralogs within the
+  pangenome graph — variants arise from paralog-specific differences
+  being represented as polymorphisms.
+
+References:
+- https://pubmed.ncbi.nlm.nih.gov/27753020/ (PSG CNV in pre-eclampsia)
+- https://rep.bioscientifica.com/view/journals/rep/163/2/REP-21-0390.xml (PSG evolution/function review)
+- https://pubmed.ncbi.nlm.nih.gov/7851895/ (PSG region 700kb cosmid assembly)
+
+Top Candidates: Genic, Non-Segdup, Non-Repeat (2,201 segments)
+==============================================================
+Filters: genes >50%, segdups=0, repeats <30%, >=500bp, >=10 poly variants,
+         AF 0.1-0.5. Ranked by geometric mean of (count x density).
+
+chr4_10698_alt — FRG1-DT locus (FSHD region)
+----------------------------------------------
+Source: NA18508#2#JBHIJH010000004.1
+CHM13 ref coords: chr4:193,196,794-193,197,379 (585 bp on ref, 31 kb off ref)
+Stats: 3,445 poly, 1,604 SNPs, Ts/Tv=20.1, AF=0.23, 100% genic, 0% repeat/segdup
+
+Gene: FRG1-DT (lncRNA divergent transcript of FRG1)
+FRG1 (FSHD Region Gene 1) is a candidate gene for facioscapulohumeral
+muscular dystrophy (FSHD). FRG1 protein is an actin-bundling/RNA-associated
+protein critical for muscle sarcomere structure and angiogenesis.
+The extremely high Ts/Tv (20.1) is notable — could indicate CpG-rich
+regulatory region or strong purifying selection on transitions.
+585 bp ref vs 31 kb insertion = large novel sequence not in CHM13.
+
+chr12_2440/2441/2442 — RIMBP2 insertions (same ref locus)
+-----------------------------------------------------------
+All three map to CHM13 chr12:130,684,042-130,684,477 (435 bp on ref)
+  chr12_2442_alt: 13 kb, 1,958 poly, Ts/Tv=0.33, AF=0.33 (NA18971#2)
+  chr12_2441_alt:  9 kb, 1,418 poly, Ts/Tv=0.85, AF=0.22 (HG00438#1)
+  chr12_2440_alt:  6 kb,   991 poly, Ts/Tv=1.02, AF=0.22 (HG02602#2)
+
+Gene: RIMBP2 (RIMS Binding Protein 2) — presynaptic active zone protein
+  essential for synaptic vesicle regulation and Ca2+-dependent release.
+  Associated with autosomal dominant deafness (DFNA41) and centronuclear
+  myopathy type 6.
+Three independent haplotypes each have large insertions (6-13 kb) at the
+same 435 bp ref position inside RIMBP2. Different sizes suggest multiple
+independent insertion events or variable-length expansion of a repeat/
+structural element within the gene. The low Ts/Tv in chr12_2442 (0.33)
+suggests transversion-enriched mutations, possibly from a non-standard
+mutational process.
+
+chr6_1406_alt — intergenic, chr6:170.2 Mb
+-------------------------------------------
+Source: HG02984#1#CM098791.1
+CHM13 ref: chr6:170,185,731-170,188,101 (2.4 kb on ref, 39 kb off ref)
+Stats: 3,518 poly, 1,634 SNPs, Ts/Tv=5.05, AF=0.40, 100% genic, 0% repeat/segdup
+No CHM13 CAT/Liftoff genes in this window (may be genic on source haplotype).
+
+chr7_14892_alt — Ts/Tv=22.0
+-----------------------------
+Source: NA19468#2#CM087834.1
+CHM13 ref: chr7:159,476,734-159,477,498 (764 bp on ref, 4 kb off ref)
+Stats: 663 poly, 322 SNPs, Ts/Tv=22.0, AF=0.34
+
+chr2_21982_alt — Ts/Tv=70.5 (extreme outlier)
+-----------------------------------------------
+Source: HG03521#2#JBIREG010000048.1
+CHM13 ref: chr2:1,166,897-12,562,682 (11.4 Mb on ref, 2.1 kb off ref)
+Stats: 446 poly, 286 SNPs, Ts/Tv=70.5, AF=0.31
+Maps to an enormous 11.4 Mb ref span — likely a misalignment or complex
+rearrangement. The extreme Ts/Tv may be artifactual.
+
+TODO
+----
+- Download CAT annotation for NA18508 to check FRG1-DT region
+- Download CAT for NA18971/HG00438/HG02602 to check RIMBP2 insertions
+- Investigate chr7_14892 and chr2_21982 extreme Ts/Tv values
+- Check if high Ts/Tv segments overlap CpG islands
+- Check if high Ts/Tv segments overlap CpG islands
+- Investigate chr12 cluster in more detail
+- Compare on-ref vs off-ref coordinates for top segments

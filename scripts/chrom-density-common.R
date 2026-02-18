@@ -125,7 +125,7 @@ compute_density_bins <- function(data, chrom_lengths, chrom_levels, bin_size = N
 #' @param chrom_levels Character vector of chromosome levels to keep
 #' @return data.frame with chromosome, start, end columns, or NULL
 read_bed_overlay <- function(bed_file, chrom_levels) {
-  if (is.null(bed_file)) return(NULL)
+  if (is.null(bed_file) || !nzchar(bed_file)) return(NULL)
   if (!file.exists(bed_file)) {
     stop("BED overlay file not found: ", bed_file)
   }
