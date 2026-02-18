@@ -14,6 +14,7 @@
 #   {prefix}.vcf-stats.tsv      — summary table
 #   {prefix}.variant-types.png  — grouped bar chart of variant types
 #   {prefix}.size-dist.png      — indel/SV size distribution (two-panel: indels + SVs)
+#   {prefix}.size-dist-log.png  — same as above with log y-axis
 #   {prefix}.af-spectrum.png    — allele frequency histogram (only when AF present)
 
 suppressPackageStartupMessages({
@@ -285,10 +286,16 @@ if (nrow(size_dt) > 0) {
     )
 
   save_png(p2, paste0(prefix, ".size-dist.png"), width = 12)
+
+  p2log <- p2 +
+    scale_y_log10(labels = scales::comma) +
+    labs(y = "Count (log scale)")
+  save_png(p2log, paste0(prefix, ".size-dist-log.png"), width = 12)
 } else {
   cat("No indels/SVs with size > 0; skipping size distribution plot.\n")
-  # Create empty file so Snakemake sees the output
+  # Create empty files so Snakemake sees the outputs
   file.create(paste0(prefix, ".size-dist.png"))
+  file.create(paste0(prefix, ".size-dist-log.png"))
 }
 
 # ---------------------------------------------------------------------------
