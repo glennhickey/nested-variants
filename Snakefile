@@ -86,6 +86,7 @@ def annotation_outputs():
         ]
         if config.get("annot_pclai", ""):
             outputs.append(f"{OUT_DIR}/{OUT_NAME}.annot-ancestry.png")
+            outputs.append(f"{OUT_DIR}/{OUT_NAME}.annot-pclai-summary.png")
         return outputs
     return []
 
@@ -114,6 +115,20 @@ def annotation_snp_outputs(callers=None):
                 for s in SAMPLES:
                     outputs.append(f"{OUT_DIR}/{s}.deepvariant.{plot}.{filt}.png")
                 outputs.append(f"{OUT_DIR}/merged.deepvariant.{plot}.{filt}.png")
+    if config.get("annot_pclai", ""):
+        for plot in ["annot-pclai-snp-counts", "annot-pclai-snp-tstv"]:
+            if "deconstruct" in callers:
+                outputs.append(f"{OUT_DIR}/{OUT_NAME}.{plot}.all.png")
+            if "call" in callers:
+                for filt in ["all", "pass"]:
+                    for s in SAMPLES:
+                        outputs.append(f"{OUT_DIR}/{s}.{plot}.{filt}.png")
+                    outputs.append(f"{OUT_DIR}/merged.call.{plot}.{filt}.png")
+            if "deepvariant" in callers:
+                for filt in ["all", "pass"]:
+                    for s in SAMPLES:
+                        outputs.append(f"{OUT_DIR}/{s}.deepvariant.{plot}.{filt}.png")
+                    outputs.append(f"{OUT_DIR}/merged.deepvariant.{plot}.{filt}.png")
     return outputs
 
 def polymorphism_outputs():
@@ -506,6 +521,9 @@ rule annotation_snp_heatmaps:
     output:
         f"{OUT_DIR}/{{vcf_prefix}}.annot-snp-counts.{{filt}}.png",
         f"{OUT_DIR}/{{vcf_prefix}}.annot-snp-tstv.{{filt}}.png",
+        *([f"{OUT_DIR}/{{vcf_prefix}}.annot-pclai-snp-counts.{{filt}}.png",
+           f"{OUT_DIR}/{{vcf_prefix}}.annot-pclai-snp-tstv.{{filt}}.png"]
+          if config.get("annot_pclai", "") else []),
     resources:
         mem_mb=256000,
         runtime=2880,

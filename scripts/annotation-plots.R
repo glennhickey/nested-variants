@@ -9,16 +9,19 @@
 #          --title TITLE [--min-overlap FRAC]
 #
 # Base mode outputs:
-#   {prefix}.annot-summary.png  — fraction of alt bp overlapping each annotation (source vs ref)
-#   {prefix}.annot-scatter.png  — per-segment source_len vs source_overlap_frac, faceted by annotation
-#   {prefix}.annot-repeats.png  — repeat class breakdown (only when repeat class data present)
-#   {prefix}.annot-cooccur.png  — heatmap of annotation co-occurrence across coord types
-#   {prefix}.annot-ancestry.png — PCLAI ancestry co-occurrence heatmap (when pclai data present)
-#   {prefix}.annot-stats.tsv    — tabular summary
+#   {prefix}.annot-summary.png       — fraction of alt bp overlapping each annotation (source vs ref)
+#   {prefix}.annot-scatter.png       — per-segment source_len vs source_overlap_frac, faceted by annotation
+#   {prefix}.annot-repeats.png       — repeat class breakdown (only when repeat class data present)
+#   {prefix}.annot-cooccur.png       — heatmap of annotation co-occurrence across coord types
+#   {prefix}.annot-ancestry.png      — PCLAI ancestry co-occurrence heatmap (when pclai data present)
+#   {prefix}.annot-pclai-summary.png — PCLAI ancestry breakdown bar chart (when pclai data present)
+#   {prefix}.annot-stats.tsv         — tabular summary (excludes pclai)
 #
 # VCF mode outputs (when --vcf is provided):
-#   {prefix}-counts.{filt}.png  — SNP count heatmap by annotation co-occurrence
-#   {prefix}-tstv.{filt}.png    — Ts/Tv ratio heatmap by annotation co-occurrence
+#   {prefix}-counts.{filt}.png            — SNP count heatmap by annotation co-occurrence
+#   {prefix}-tstv.{filt}.png              — Ts/Tv ratio heatmap by annotation co-occurrence
+#   {pclai_prefix}-counts.{filt}.png      — ancestry SNP count heatmap (when pclai data present)
+#   {pclai_prefix}-tstv.{filt}.png        — ancestry SNP Ts/Tv heatmap (when pclai data present)
 
 suppressPackageStartupMessages({
   library(data.table)
@@ -109,17 +112,18 @@ dt_agg <- rbind(
   dt[annotation %in% total_anns & annotation_class == "_total"],
   dt[!annotation %in% total_anns]
 )
+dt_shared <- dt_agg[annotation != "pclai"]
 
 if (vcf_mode) {
   # =========================================================================
   # VCF mode: SNP count and Ts/Tv heatmaps by annotation co-occurrence
   # =========================================================================
 
-  seg_ann <- dt_agg[, .(source_overlap_bp = sum(source_overlap_bp),
-                        ref_overlap_bp = sum(ref_overlap_bp),
-                        source_overlap_frac = sum(source_overlap_frac),
-                        ref_overlap_frac = sum(ref_overlap_frac)),
-                    by = .(augref_path, annotation)]
+  seg_ann <- dt_shared[, .(source_overlap_bp = sum(source_overlap_bp),
+                           ref_overlap_bp = sum(ref_overlap_bp),
+                           source_overlap_frac = sum(source_overlap_frac),
+                           ref_overlap_frac = sum(ref_overlap_frac)),
+                       by = .(augref_path, annotation)]
 
   # Read biallelic SNP VCF
   cmd <- sprintf("bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT\\n' '%s'", vcf_file)
@@ -227,6 +231,119 @@ if (vcf_mode) {
     save_png(p_tstv, paste0(prefix, "-tstv.", filt, ".png"))
   }
 
+  # -------------------------------------------------------------------------
+  # PCLAI ancestry SNP heatmaps (dominant ancestry per segment)
+  # -------------------------------------------------------------------------
+  pclai_prefix <- sub("\\.annot-snp$", ".annot-pclai-snp", prefix)
+  pclai_dt_vcf <- dt[annotation == "pclai" & annotation_class != "_total"]
+
+  if (nrow(pclai_dt_vcf) == 0 || nrow(snps) == 0) {
+    cat("No PCLAI or SNP data; creating empty PCLAI-SNP placeholders.\n")
+    for (suf in c("counts", "tstv")) {
+      out_file <- paste0(pclai_prefix, "-", suf, ".", filt, ".png")
+      grDevices::png(out_file, width = 100, height = 100)
+      plot.new()
+      dev.off()
+      cat("Saved placeholder:", out_file, "\n")
+    }
+  } else {
+    # For each segment, find dominant ancestry off-ref and on-ref
+    seg_src_anc <- pclai_dt_vcf[source_overlap_frac > min_overlap,
+      .(annotation_class = annotation_class[which.max(source_overlap_bp)]),
+      by = augref_path]
+    setnames(seg_src_anc, "annotation_class", "off_ref_anc")
+
+    seg_ref_anc <- pclai_dt_vcf[ref_overlap_frac > min_overlap,
+      .(annotation_class = annotation_class[which.max(ref_overlap_bp)]),
+      by = augref_path]
+    setnames(seg_ref_anc, "annotation_class", "on_ref_anc")
+
+    anc_pairs <- merge(seg_src_anc, seg_ref_anc, by = "augref_path")
+
+    if (nrow(anc_pairs) == 0) {
+      cat("No segments with PCLAI ancestry in both coords; creating empty placeholders.\n")
+      for (suf in c("counts", "tstv")) {
+        out_file <- paste0(pclai_prefix, "-", suf, ".", filt, ".png")
+        grDevices::png(out_file, width = 100, height = 100)
+        plot.new()
+        dev.off()
+        cat("Saved placeholder:", out_file, "\n")
+      }
+    } else {
+      # Join with SNPs, group by (off_ref_anc, on_ref_anc)
+      snp_anc <- merge(snps, anc_pairs, by = "augref_path")
+      superpops <- sort(unique(c(anc_pairs$off_ref_anc, anc_pairs$on_ref_anc)))
+
+      anc_results <- list()
+      for (a_off in superpops) {
+        for (a_on in superpops) {
+          sub <- snp_anc[off_ref_anc == a_off & on_ref_anc == a_on]
+          anc_results[[length(anc_results) + 1]] <- data.table(
+            off_ref = a_off, on_ref = a_on,
+            n_snps = nrow(sub),
+            ts = sum(sub$tstv == "Ts"), tv = sum(sub$tstv == "Tv")
+          )
+        }
+      }
+      anc_result_dt <- rbindlist(anc_results)
+      anc_result_dt[, tstv_ratio := fifelse(tv > 0, round(ts / tv, 2), NA_real_)]
+
+      anc_result_dt[, off_ref := factor(off_ref, levels = superpops)]
+      anc_result_dt[, on_ref := factor(on_ref, levels = superpops)]
+
+      filt_label <- if (!is.null(filt)) toupper(filt) else "ALL"
+
+      # Ancestry SNP count heatmap
+      anc_result_dt[, count_label := comma(n_snps)]
+      p_anc_counts <- ggplot(anc_result_dt, aes(x = on_ref, y = off_ref, fill = n_snps)) +
+        geom_tile(color = "white", linewidth = 0.5) +
+        geom_text(aes(label = count_label), size = 3.2) +
+        scale_fill_gradient(low = "white", high = "steelblue",
+                            labels = comma, name = "SNP Count") +
+        labs(title = title,
+             subtitle = paste0("Ancestry SNP Count (", filt_label, ")"),
+             x = "On-reference Ancestry",
+             y = "Off-reference Ancestry") +
+        coord_fixed() +
+        theme_minimal() +
+        theme(
+          plot.title = element_text(hjust = 0.5, face = "bold"),
+          plot.subtitle = element_text(hjust = 0.5),
+          panel.grid = element_blank(),
+          panel.background = element_rect(fill = "white", color = NA),
+          plot.background  = element_rect(fill = "white", color = NA),
+          axis.text.x = element_text(angle = 45, hjust = 1)
+        )
+
+      save_png(p_anc_counts, paste0(pclai_prefix, "-counts.", filt, ".png"))
+
+      # Ancestry Ts/Tv ratio heatmap
+      anc_result_dt[, tstv_label := fifelse(is.na(tstv_ratio), "NA",
+          paste0(sprintf("%.2f", tstv_ratio), "\n(", comma(ts), "/", comma(tv), ")"))]
+      p_anc_tstv <- ggplot(anc_result_dt, aes(x = on_ref, y = off_ref, fill = tstv_ratio)) +
+        geom_tile(color = "white", linewidth = 0.5) +
+        geom_text(aes(label = tstv_label), size = 3.0) +
+        scale_fill_gradient(low = "coral", high = "steelblue",
+                            name = "Ts/Tv", na.value = "grey90") +
+        labs(title = title,
+             subtitle = paste0("Ancestry SNP Ts/Tv (", filt_label, ")"),
+             x = "On-reference Ancestry",
+             y = "Off-reference Ancestry") +
+        coord_fixed() +
+        theme_minimal() +
+        theme(
+          plot.title = element_text(hjust = 0.5, face = "bold"),
+          plot.subtitle = element_text(hjust = 0.5),
+          panel.grid = element_blank(),
+          panel.background = element_rect(fill = "white", color = NA),
+          plot.background  = element_rect(fill = "white", color = NA),
+          axis.text.x = element_text(angle = 45, hjust = 1)
+        )
+
+      save_png(p_anc_tstv, paste0(pclai_prefix, "-tstv.", filt, ".png"))
+    }
+  }
+
   cat("Done (VCF mode).\n")
   quit(status = 0)
 }
@@ -239,15 +356,15 @@ if (vcf_mode) {
 # Plot 1: Summary bar chart — fraction of alt bp overlapping each annotation
 # ---------------------------------------------------------------------------
 
-summary_source <- dt_agg[, .(overlap_bp = as.numeric(sum(source_overlap_bp)),
-                              total_bp = as.numeric(sum(source_len))),
-                          by = .(annotation)]
+summary_source <- dt_shared[, .(overlap_bp = as.numeric(sum(source_overlap_bp)),
+                                total_bp = as.numeric(sum(source_len))),
+                            by = .(annotation)]
 summary_source[, frac := overlap_bp / total_bp]
 summary_source[, coord_type := "Off-reference"]
 
-summary_ref <- dt_agg[, .(overlap_bp = as.numeric(sum(ref_overlap_bp)),
-                           total_bp = as.numeric(sum(ref_len))),
-                       by = .(annotation)]
+summary_ref <- dt_shared[, .(overlap_bp = as.numeric(sum(ref_overlap_bp)),
+                              total_bp = as.numeric(sum(ref_len))),
+                          by = .(annotation)]
 summary_ref[, frac := overlap_bp / total_bp]
 summary_ref[, coord_type := "On-reference"]
 
@@ -288,10 +405,10 @@ save_png(p1, paste0(prefix, ".annot-summary.png"))
 # ---------------------------------------------------------------------------
 
 # Use _total rows for grouped annotations (accurate class-agnostic overlap)
-scatter_dt <- dt_agg[, .(source_overlap_bp = sum(source_overlap_bp),
-                         source_len = source_len[1],
-                         ref_len = ref_len[1]),
-                     by = .(augref_path, annotation)]
+scatter_dt <- dt_shared[, .(source_overlap_bp = sum(source_overlap_bp),
+                            source_len = source_len[1],
+                            ref_len = ref_len[1]),
+                        by = .(augref_path, annotation)]
 scatter_dt[, source_overlap_frac := pmin(source_overlap_bp / source_len, 1.0)]
 scatter_dt[source_len == 0, source_overlap_frac := 0]
 
@@ -381,11 +498,11 @@ if (has_repeat_classes) {
 
 # For each segment, determine which annotations it overlaps in off-ref and on-ref
 # Use _total rows for grouped annotations to avoid cross-class double-counting
-seg_ann <- dt_agg[, .(source_overlap_bp = sum(source_overlap_bp),
-                      ref_overlap_bp = sum(ref_overlap_bp),
-                      source_overlap_frac = sum(source_overlap_frac),
-                      ref_overlap_frac = sum(ref_overlap_frac)),
-                  by = .(augref_path, annotation)]
+seg_ann <- dt_shared[, .(source_overlap_bp = sum(source_overlap_bp),
+                         ref_overlap_bp = sum(ref_overlap_bp),
+                         source_overlap_frac = sum(source_overlap_frac),
+                         ref_overlap_frac = sum(ref_overlap_frac)),
+                     by = .(augref_path, annotation)]
 
 annotations <- sort(unique(seg_ann$annotation))
 all_segs <- unique(seg_ann$augref_path)
@@ -504,13 +621,59 @@ if (nrow(pclai_dt) > 0) {
 }
 
 # ---------------------------------------------------------------------------
+# Plot 6: PCLAI ancestry summary bar chart
+# ---------------------------------------------------------------------------
+
+pclai_anc_dt <- dt[annotation == "pclai" & annotation_class != "_total"]
+if (nrow(pclai_anc_dt) > 0) {
+  # Total bp per coord type (unique segments to avoid double-counting across ancestries)
+  seg_dt_pclai <- unique(pclai_anc_dt[, .(augref_path, source_len, ref_len)])
+  total_source_bp_pclai <- as.numeric(sum(seg_dt_pclai$source_len))
+  total_ref_bp_pclai <- as.numeric(sum(seg_dt_pclai$ref_len))
+
+  src_anc_bar <- pclai_anc_dt[, .(overlap_frac = as.numeric(sum(source_overlap_bp)) / total_source_bp_pclai),
+                               by = .(annotation_class)]
+  src_anc_bar[, coord_type := "Off-reference"]
+
+  ref_anc_bar <- pclai_anc_dt[, .(overlap_frac = as.numeric(sum(ref_overlap_bp)) / total_ref_bp_pclai),
+                               by = .(annotation_class)]
+  ref_anc_bar[, coord_type := "On-reference"]
+
+  anc_bar_dt <- rbind(src_anc_bar, ref_anc_bar)
+  # Order by total fraction (off + on)
+  anc_order <- anc_bar_dt[, .(total = sum(overlap_frac)), by = annotation_class]
+  setorder(anc_order, -total)
+  anc_bar_dt[, annotation_class := factor(annotation_class, levels = rev(anc_order$annotation_class))]
+
+  p6 <- ggplot(anc_bar_dt, aes(x = annotation_class, y = overlap_frac, fill = coord_type)) +
+    geom_col(position = "dodge", width = 0.7) +
+    scale_fill_manual(values = c("Off-reference" = "coral", "On-reference" = "steelblue"),
+                      name = NULL) +
+    scale_y_continuous(labels = percent, expand = expansion(mult = c(0, 0.1))) +
+    labs(title = title, subtitle = "Local Ancestry Breakdown (fraction of segment bp)",
+         x = NULL, y = "Overlap Fraction") +
+    coord_flip() +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(hjust = 0.5, face = "bold"),
+      plot.subtitle = element_text(hjust = 0.5),
+      panel.background = element_rect(fill = "white", color = NA),
+      plot.background  = element_rect(fill = "white", color = NA)
+    )
+
+  save_png(p6, paste0(prefix, ".annot-pclai-summary.png"))
+} else {
+  cat("No PCLAI data; skipping ancestry summary bar chart.\n")
+}
+
+# ---------------------------------------------------------------------------
 # Output TSV: per-annotation summary
 # ---------------------------------------------------------------------------
 
 # Use _total rows for grouped annotations to avoid cross-class double-counting
 stats_list <- list()
-for (ann in unique(dt_agg$annotation)) {
-  sub <- dt_agg[annotation == ann]
+for (ann in unique(dt_shared$annotation)) {
+  sub <- dt_shared[annotation == ann]
   seg_dt <- unique(sub[, .(augref_path, source_len, ref_len)])
 
   total_source_bp <- sum(seg_dt$source_len)
