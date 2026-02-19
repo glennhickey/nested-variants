@@ -13,6 +13,9 @@ import re
 import subprocess
 import argparse
 
+# Absolute path to this script (embedded in parallel commands for --merge-bed-classes)
+_SCRIPT_PATH = os.path.abspath(__file__)
+
 # HPRC index URLs
 RM_IDX_URL = 'https://raw.githubusercontent.com/human-pangenomics/hprc_intermediate_assembly/refs/heads/main/data_tables/annotation/repeat_masker/repeat_masker_bed_hprc_r2_v1.0.index.csv'
 SD_IDX_URL = 'https://raw.githubusercontent.com/human-pangenomics/hprc_intermediate_assembly/refs/heads/main/data_tables/annotation/segdups/segdups_hprc_r2_v1.1.index.csv'
@@ -119,6 +122,74 @@ def generate_grch38_pclai_placeholder(out_bed):
             size = GRCH38_CHROM_SIZES[chrom]
             f.write(f'{chrom}\t0\t{size}\t{chrom}_placeholder\t0\tunknown\n')
     return out_bed
+
+
+def _merge_bed_classes_stream(fin, fout, class_col):
+    """
+    Core per-class merge: read sorted BED lines from fin, write merged to fout.
+
+    Input must be sorted by chrom, start. Within each class, overlapping or
+    adjacent intervals are merged (keeps fields from the first interval).
+    Output within each chromosome has classes interleaved; pipe through
+    ``sort -k1,1 -k2,2n`` if downstream needs globally sorted BED.
+    """
+    col_idx = class_col - 1
+    active = {}  # class -> [chrom, start, end, fields]
+    prev_chrom = None
+
+    def flush():
+        for cls, (chrom, start, end, fields) in active.items():
+            fields[1] = str(start)
+            fields[2] = str(end)
+            fout.write('\t'.join(fields) + '\n')
+        active.clear()
+
+    for line in fin:
+        fields = line.rstrip('\n').split('\t')
+        if len(fields) <= col_idx:
+            continue
+
+        cls = fields[col_idx]
+        chrom = fields[0]
+        start = int(fields[1])
+        end = int(fields[2])
+
+        if chrom != prev_chrom:
+            if prev_chrom is not None:
+                flush()
+            prev_chrom = chrom
+
+        if cls in active:
+            a_chrom, a_start, a_end, a_fields = active[cls]
+            if start <= a_end:
+                active[cls] = [chrom, a_start, max(a_end, end), a_fields]
+            else:
+                a_fields[1] = str(a_start)
+                a_fields[2] = str(a_end)
+                fout.write('\t'.join(a_fields) + '\n')
+                active[cls] = [chrom, start, end, fields]
+        else:
+            active[cls] = [chrom, start, end, fields]
+
+    flush()
+
+
+def merge_bed_classes_stdin(class_col):
+    """Pipe mode: read sorted BED from stdin, merge per class, write to stdout."""
+    _merge_bed_classes_stream(sys.stdin, sys.stdout, class_col)
+
+
+def merge_bed_classes_file(input_bed, output_bed, class_col):
+    """
+    Merge overlapping intervals per class in a sorted BED file.
+
+    Output is re-sorted by chrom, start (the merge interleaves classes).
+    """
+    tmp = output_bed + '.unsorted'
+    with open(input_bed) as fin, open(tmp, 'w') as fout:
+        _merge_bed_classes_stream(fin, fout, class_col)
+    run(f"sort -k1,1 -k2,2n '{tmp}' -o '{output_bed}'", shell=True)
+    os.remove(tmp)
 
 
 def check_dependencies(need_bigbed=False):
@@ -252,7 +323,8 @@ def convert_gtf_to_bed(gtf_gz, out_bed):
 
 
 def download_from_table(table_url, column, threads, out_annot_path, out_dir, gff=False,
-                        test_sample=None, max_col=None, reformat_cmd=None):
+                        test_sample=None, max_col=None, reformat_cmd=None,
+                        merge_class_col=None):
     """
     Download annotation files listed in a CSV index table.
 
@@ -270,6 +342,8 @@ def download_from_table(table_url, column, threads, out_annot_path, out_dir, gff
         test_sample: If set, only download this sample's rows (both haplotypes)
         max_col: Maximum number of columns to keep (None for all)
         reformat_cmd: Shell pipe command to reformat columns (inserted before cut/sort)
+        merge_class_col: If set, merge overlapping intervals per class (1-indexed column)
+                         after sorting each sample's file
     """
     full_out_path = os.path.join(out_dir, out_annot_path)
 
@@ -332,8 +406,14 @@ def download_from_table(table_url, column, threads, out_annot_path, out_dir, gff
             reformat = f' | {reformat_cmd}' if reformat_cmd and not gff else ''
             cut_cmd = f' | cut -f1-{max_col}' if max_col and not gff else ''
             sort_cmd = '' if gff else ' | sort -k1,1 -k2,2n'
+            if merge_class_col and not gff:
+                merge_cmd = (f' | {sys.executable} {_SCRIPT_PATH}'
+                             f' --merge-bed-classes {merge_class_col}'
+                             f' | sort -k1,1 -k2,2n')
+            else:
+                merge_cmd = ''
 
-            cmds.write(f'{cat_cmd} {annot_path}{strip_cmd}{gff_cmd}{reformat}{cut_cmd}{sort_cmd}'
+            cmds.write(f'{cat_cmd} {annot_path}{strip_cmd}{gff_cmd}{reformat}{cut_cmd}{sort_cmd}{merge_cmd}'
                        f' > {sorted_path} && rm {annot_path}\n')
             sorted_files.append(sorted_path)
 
@@ -490,7 +570,8 @@ def main(command_line=None):
         rm_reformat = r"""awk -F'\t' '{OFS="\t"; print $1,$2,$3,$4,$5,$7"/"$8}'"""
         rm_path = download_from_table(
             RM_IDX_URL, 4, options.threads, 'hprc-v2-rm.bed', options.output_dir,
-            test_sample=options.test or None, reformat_cmd=rm_reformat
+            test_sample=options.test or None, reformat_cmd=rm_reformat,
+            merge_class_col=6
         )
         current = rm_path
         suffix = ''
@@ -548,6 +629,9 @@ def main(command_line=None):
         )
         pclai_path = os.path.join(options.output_dir, 'hprc-v2-pclai.bed')
         convert_pclai_to_ancestry_bed(raw_pclai, pclai_path)
+        sys.stderr.write('  Merging PCLAI per-ancestry overlaps...\n')
+        merge_bed_classes_file(pclai_path, pclai_path + '.merged', class_col=6)
+        os.rename(pclai_path + '.merged', pclai_path)
         intermediates.append(raw_pclai)
 
         # CHM13 PCLAI from chm13_coord index
@@ -558,6 +642,8 @@ def main(command_line=None):
             )
             chm13_pclai = os.path.join(options.output_dir, 'chm13-pclai.bed')
             convert_pclai_to_ancestry_bed(raw_chm13, chm13_pclai)
+            merge_bed_classes_file(chm13_pclai, chm13_pclai + '.merged', class_col=6)
+            os.rename(chm13_pclai + '.merged', chm13_pclai)
             chm13['pclai'] = chm13_pclai
             intermediates += [raw_chm13, chm13_pclai]
 
@@ -589,4 +675,9 @@ def main(command_line=None):
 
 
 if __name__ == '__main__':
+    # Pipe mode: merge per-class overlapping intervals (used internally by parallel download)
+    if '--merge-bed-classes' in sys.argv:
+        idx = sys.argv.index('--merge-bed-classes')
+        merge_bed_classes_stdin(int(sys.argv[idx + 1]))
+        sys.exit(0)
     main()

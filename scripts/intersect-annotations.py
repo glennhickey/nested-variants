@@ -385,103 +385,25 @@ def sort_bed(input_bed, output_bed=None):
     return output_bed
 
 
-def merge_annotation_bed(annot_bed, output_bed, group_column=None):
+def merge_annotation_bed(annot_bed, output_bed):
     """
     Merge overlapping intervals in an annotation BED to prevent double-counting.
 
-    For ungrouped annotations, runs a simple bedtools merge.
-    For grouped annotations, sorts by class+chrom+start and streams through,
-    merging overlapping intervals within each class separately.
+    Uses bedtools sort | bedtools merge for a class-agnostic merge
+    (streaming, constant memory).  For grouped annotations (repeats, PCLAI),
+    per-class merging is done at download time by download-hprc-annotations.py.
 
     Args:
         annot_bed: Input annotation BED file path
         output_bed: Output merged BED file path
-        group_column: 1-indexed column for class labels (merge within each class)
     """
-    if group_column is None:
-        # Simple merge via bedtools (streaming, constant memory)
-        cmd = f"bedtools sort -i '{annot_bed}' | bedtools merge"
-        with open(output_bed, 'w') as out:
-            result = subprocess.run(cmd, shell=True, stdout=out, stderr=subprocess.PIPE, text=True)
-        if result.returncode != 0:
-            sys.stderr.write(f"Warning: bedtools merge failed: {result.stderr}\n")
-            sys.stderr.write(f"Falling back to unmerged annotation.\n")
-            shutil.copy(annot_bed, output_bed)
-        return
-
-    # Per-class streaming merge (handles large files with constant memory per class transition)
-    col_idx = group_column - 1
-    sorted_path = None
-    merged_path = None
-
-    try:
-        # Step 1: Sort by class, then chrom, then start (external sort for large files)
-        sorted_tmp = tempfile.NamedTemporaryFile(suffix='.bed', delete=False)
-        sorted_path = sorted_tmp.name
-        sorted_tmp.close()
-        cmd = f"sort -t'\t' -k{group_column},{group_column} -k1,1 -k2,2n '{annot_bed}' -o '{sorted_path}'"
-        result = subprocess.run(cmd, shell=True, stderr=subprocess.PIPE, text=True)
-        if result.returncode != 0:
-            sys.stderr.write(f"Warning: sort failed for per-class merge: {result.stderr}\n")
-            shutil.copy(annot_bed, output_bed)
-            return
-
-        # Step 2: Stream through sorted file, merge overlapping intervals within each class
-        merged_tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.bed', delete=False)
-        merged_path = merged_tmp.name
-        n_before = 0
-        n_after = 0
-        # Padding columns between end (col 3) and class column
-        padding = '\t'.join(['.'] * (col_idx - 3)) if col_idx > 3 else ''
-
-        prev_cls = None
-        prev_chrom = None
-        prev_start = 0
-        prev_end = 0
-
-        def flush_interval():
-            nonlocal n_after
-            if prev_cls is not None:
-                if padding:
-                    merged_tmp.write(f"{prev_chrom}\t{prev_start}\t{prev_end}\t{padding}\t{prev_cls}\n")
-                else:
-                    merged_tmp.write(f"{prev_chrom}\t{prev_start}\t{prev_end}\t{prev_cls}\n")
-                n_after += 1
-
-        with open(sorted_path) as f:
-            for line in f:
-                n_before += 1
-                fields = line.rstrip('\n').split('\t')
-                if len(fields) <= col_idx:
-                    continue
-
-                cls = fields[col_idx]
-                chrom = fields[0]
-                start = int(fields[1])
-                end = int(fields[2])
-
-                if cls == prev_cls and chrom == prev_chrom and start <= prev_end:
-                    # Overlapping or adjacent within same class+chrom — extend
-                    prev_end = max(prev_end, end)
-                else:
-                    flush_interval()
-                    prev_cls = cls
-                    prev_chrom = chrom
-                    prev_start = start
-                    prev_end = end
-
-        flush_interval()
-        merged_tmp.close()
-
-        # Step 3: Re-sort by chrom, start for bedtools -sorted
-        sort_bed(merged_path, output_bed)
-
-        sys.stderr.write(f"    {os.path.basename(annot_bed)}: {n_before:,} -> {n_after:,} intervals "
-                         f"({n_before - n_after:,} within-class overlaps removed)\n")
-    finally:
-        for path in (sorted_path, merged_path):
-            if path is not None and os.path.exists(path):
-                os.remove(path)
+    cmd = f"bedtools sort -i '{annot_bed}' | bedtools merge"
+    with open(output_bed, 'w') as out:
+        result = subprocess.run(cmd, shell=True, stdout=out, stderr=subprocess.PIPE, text=True)
+    if result.returncode != 0:
+        sys.stderr.write(f"Warning: bedtools merge failed: {result.stderr}\n")
+        sys.stderr.write(f"Falling back to unmerged annotation.\n")
+        shutil.copy(annot_bed, output_bed)
 
 
 def calculate_per_segment_coverage(coords_bed, annot_bed, group_column=None):
@@ -722,24 +644,32 @@ def main(command_line=None):
         merged_annot_files = []
         total_annot_files = []
 
-        # Merge annotation BEDs to remove overlapping intervals before intersection
+        # Merge annotation BEDs to remove overlapping intervals before intersection.
+        # Per-class merge for grouped annotations (repeats, PCLAI) is done at download
+        # time; here we only do class-agnostic merges for _total rows and ungrouped annotations.
+        temp_files = []
         sys.stderr.write("Merging annotation BEDs to remove overlapping intervals...\n")
         for i, annot_file in enumerate(options.annotation_files):
             gc = annot_group_columns[i]
-            merged_tmp = tempfile.NamedTemporaryFile(suffix='.bed', delete=False)
-            merged_tmp.close()
-            merge_annotation_bed(annot_file, merged_tmp.name, group_column=gc)
-            merged_annot_files.append(merged_tmp.name)
 
             if gc is not None:
-                # Grouped annotation: also create a fully merged BED (ignoring classes)
-                # for accurate total overlap in the summary plot
+                # Grouped annotation: per-class merge done at download time,
+                # use annotation file directly for per-class intersection.
+                # Create class-agnostic merge for _total rows only.
+                merged_annot_files.append(annot_file)
                 total_tmp = tempfile.NamedTemporaryFile(suffix='.bed', delete=False)
                 total_tmp.close()
-                merge_annotation_bed(annot_file, total_tmp.name, group_column=None)
+                merge_annotation_bed(annot_file, total_tmp.name)
                 total_annot_files.append(total_tmp.name)
+                temp_files.append(total_tmp.name)
             else:
+                # Ungrouped annotation: merge overlapping intervals
+                merged_tmp = tempfile.NamedTemporaryFile(suffix='.bed', delete=False)
+                merged_tmp.close()
+                merge_annotation_bed(annot_file, merged_tmp.name)
+                merged_annot_files.append(merged_tmp.name)
                 total_annot_files.append(None)
+                temp_files.append(merged_tmp.name)
 
         for i, annot_file in enumerate(merged_annot_files):
             sys.stderr.write(f"  Per-segment intersect: {annot_names[i]}...\n")
@@ -761,9 +691,9 @@ def main(command_line=None):
                                   source_total_results, ref_total_results,
                                   annot_names, annot_group_columns, per_seg_output)
 
-        # Clean up merged temp files
-        for f in merged_annot_files + total_annot_files:
-            if f is not None and os.path.exists(f):
+        # Clean up temp files (not original annotation files used for grouped annotations)
+        for f in temp_files:
+            if os.path.exists(f):
                 os.remove(f)
 
     # Aggregate mode (only when not in per-segment mode, which uses BED4)
