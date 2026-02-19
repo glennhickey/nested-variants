@@ -385,19 +385,21 @@ def sort_bed(input_bed, output_bed=None):
     return output_bed
 
 
-def merge_annotation_bed(annot_bed, output_bed):
+def merge_annotation_bed(annot_bed, output_bed, presorted=False):
     """
     Merge overlapping intervals in an annotation BED to prevent double-counting.
-
-    Uses bedtools sort | bedtools merge for a class-agnostic merge
-    (streaming, constant memory).  For grouped annotations (repeats, PCLAI),
-    per-class merging is done at download time by download-hprc-annotations.py.
 
     Args:
         annot_bed: Input annotation BED file path
         output_bed: Output merged BED file path
+        presorted: If True, skip bedtools sort (file already sorted by chrom,start).
+                   Use for grouped annotations whose per-class merge at download
+                   time already produced globally sorted output.
     """
-    cmd = f"bedtools sort -i '{annot_bed}' | bedtools merge"
+    if presorted:
+        cmd = f"cut -f1-3 '{annot_bed}' | bedtools merge"
+    else:
+        cmd = f"bedtools sort -i '{annot_bed}' | bedtools merge"
     with open(output_bed, 'w') as out:
         result = subprocess.run(cmd, shell=True, stdout=out, stderr=subprocess.PIPE, text=True)
     if result.returncode != 0:
@@ -656,10 +658,12 @@ def main(command_line=None):
                 # Grouped annotation: per-class merge done at download time,
                 # use annotation file directly for per-class intersection.
                 # Create class-agnostic merge for _total rows only.
+                # File is already globally sorted from download-time merge,
+                # so skip re-sorting (avoids sorting the full 160GB RM file).
                 merged_annot_files.append(annot_file)
                 total_tmp = tempfile.NamedTemporaryFile(suffix='.bed', delete=False)
                 total_tmp.close()
-                merge_annotation_bed(annot_file, total_tmp.name)
+                merge_annotation_bed(annot_file, total_tmp.name, presorted=True)
                 total_annot_files.append(total_tmp.name)
                 temp_files.append(total_tmp.name)
             else:
