@@ -361,9 +361,18 @@ if (has_repeat_classes) {
   class_order <- c(top_classes[top_classes %in% stack_dt$display_class], "Other")
   stack_dt[, display_class := factor(display_class, levels = rev(class_order))]
 
+  # Build a color palette with enough colors for all classes (Set2 only has 8)
+  n_classes <- length(class_order)
+  if (n_classes <= 8) {
+    class_colors <- RColorBrewer::brewer.pal(max(3, n_classes), "Set2")[seq_len(n_classes)]
+  } else {
+    class_colors <- colorRampPalette(RColorBrewer::brewer.pal(8, "Set2"))(n_classes)
+  }
+  names(class_colors) <- class_order
+
   p3 <- ggplot(stack_dt, aes(x = coord_type, y = overlap_frac, fill = display_class)) +
     geom_col(width = 0.6) +
-    scale_fill_brewer(palette = "Set2", name = "Repeat Class") +
+    scale_fill_manual(values = class_colors, name = "Repeat Class") +
     scale_y_continuous(labels = percent, expand = expansion(mult = c(0, 0.05))) +
     labs(title = title, subtitle = "Repeat Class Breakdown (fraction of segment bp)",
          x = NULL, y = "Overlap Fraction") +
