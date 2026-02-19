@@ -9,6 +9,7 @@ to calculate overlap statistics for downstream visualization.
 
 import os
 import sys
+import shutil
 import subprocess
 import argparse
 import tempfile
@@ -384,6 +385,105 @@ def sort_bed(input_bed, output_bed=None):
     return output_bed
 
 
+def merge_annotation_bed(annot_bed, output_bed, group_column=None):
+    """
+    Merge overlapping intervals in an annotation BED to prevent double-counting.
+
+    For ungrouped annotations, runs a simple bedtools merge.
+    For grouped annotations, sorts by class+chrom+start and streams through,
+    merging overlapping intervals within each class separately.
+
+    Args:
+        annot_bed: Input annotation BED file path
+        output_bed: Output merged BED file path
+        group_column: 1-indexed column for class labels (merge within each class)
+    """
+    if group_column is None:
+        # Simple merge via bedtools (streaming, constant memory)
+        cmd = f"bedtools sort -i '{annot_bed}' | bedtools merge"
+        with open(output_bed, 'w') as out:
+            result = subprocess.run(cmd, shell=True, stdout=out, stderr=subprocess.PIPE, text=True)
+        if result.returncode != 0:
+            sys.stderr.write(f"Warning: bedtools merge failed: {result.stderr}\n")
+            sys.stderr.write(f"Falling back to unmerged annotation.\n")
+            shutil.copy(annot_bed, output_bed)
+        return
+
+    # Per-class streaming merge (handles large files with constant memory per class transition)
+    col_idx = group_column - 1
+    sorted_path = None
+    merged_path = None
+
+    try:
+        # Step 1: Sort by class, then chrom, then start (external sort for large files)
+        sorted_tmp = tempfile.NamedTemporaryFile(suffix='.bed', delete=False)
+        sorted_path = sorted_tmp.name
+        sorted_tmp.close()
+        cmd = f"sort -t'\t' -k{group_column},{group_column} -k1,1 -k2,2n '{annot_bed}' -o '{sorted_path}'"
+        result = subprocess.run(cmd, shell=True, stderr=subprocess.PIPE, text=True)
+        if result.returncode != 0:
+            sys.stderr.write(f"Warning: sort failed for per-class merge: {result.stderr}\n")
+            shutil.copy(annot_bed, output_bed)
+            return
+
+        # Step 2: Stream through sorted file, merge overlapping intervals within each class
+        merged_tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.bed', delete=False)
+        merged_path = merged_tmp.name
+        n_before = 0
+        n_after = 0
+        # Padding columns between end (col 3) and class column
+        padding = '\t'.join(['.'] * (col_idx - 3)) if col_idx > 3 else ''
+
+        prev_cls = None
+        prev_chrom = None
+        prev_start = 0
+        prev_end = 0
+
+        def flush_interval():
+            nonlocal n_after
+            if prev_cls is not None:
+                if padding:
+                    merged_tmp.write(f"{prev_chrom}\t{prev_start}\t{prev_end}\t{padding}\t{prev_cls}\n")
+                else:
+                    merged_tmp.write(f"{prev_chrom}\t{prev_start}\t{prev_end}\t{prev_cls}\n")
+                n_after += 1
+
+        with open(sorted_path) as f:
+            for line in f:
+                n_before += 1
+                fields = line.rstrip('\n').split('\t')
+                if len(fields) <= col_idx:
+                    continue
+
+                cls = fields[col_idx]
+                chrom = fields[0]
+                start = int(fields[1])
+                end = int(fields[2])
+
+                if cls == prev_cls and chrom == prev_chrom and start <= prev_end:
+                    # Overlapping or adjacent within same class+chrom — extend
+                    prev_end = max(prev_end, end)
+                else:
+                    flush_interval()
+                    prev_cls = cls
+                    prev_chrom = chrom
+                    prev_start = start
+                    prev_end = end
+
+        flush_interval()
+        merged_tmp.close()
+
+        # Step 3: Re-sort by chrom, start for bedtools -sorted
+        sort_bed(merged_path, output_bed)
+
+        sys.stderr.write(f"    {os.path.basename(annot_bed)}: {n_before:,} -> {n_after:,} intervals "
+                         f"({n_before - n_after:,} within-class overlaps removed)\n")
+    finally:
+        for path in (sorted_path, merged_path):
+            if path is not None and os.path.exists(path):
+                os.remove(path)
+
+
 def calculate_per_segment_coverage(coords_bed, annot_bed, group_column=None):
     """
     Calculate per-segment overlap with an annotation BED using bedtools intersect -wao.
@@ -434,7 +534,31 @@ def calculate_per_segment_coverage(coords_bed, annot_bed, group_column=None):
     return dict(coverage)
 
 
-def write_per_segment_summary(segments, source_results, ref_results, annot_names, annot_group_columns, output_file):
+# Sentinel annotation_class for class-agnostic total overlap of grouped annotations
+TOTAL_CLASS = '_total'
+
+_frac_warnings = 0
+
+def _overlap_frac(overlap_bp, seg_len, augref_path='', annot='', coord=''):
+    """Compute overlap fraction with a defensive clamp and warning."""
+    global _frac_warnings
+    if seg_len <= 0:
+        return 0.0
+    frac = overlap_bp / seg_len
+    if frac > 1.0:
+        if _frac_warnings < 5:
+            sys.stderr.write(f"Warning: overlap fraction {frac:.3f} > 1.0 for "
+                             f"{augref_path} {annot} ({coord}); clamping to 1.0\n")
+            _frac_warnings += 1
+            if _frac_warnings == 5:
+                sys.stderr.write("(further fraction warnings suppressed)\n")
+        return 1.0
+    return frac
+
+
+def write_per_segment_summary(segments, source_results, ref_results,
+                              source_total_results, ref_total_results,
+                              annot_names, annot_group_columns, output_file):
     """
     Write per-segment annotation overlap summary TSV.
 
@@ -442,6 +566,8 @@ def write_per_segment_summary(segments, source_results, ref_results, annot_names
         segments: list of (augref_path, source_len, ref_len) tuples
         source_results: list of dicts (one per annotation), each: augref_path -> {class -> overlap_bp}
         ref_results: list of dicts (one per annotation), each: augref_path -> {class -> overlap_bp}
+        source_total_results: list of dicts or None; class-agnostic totals for grouped annotations
+        ref_total_results: list of dicts or None; class-agnostic totals for grouped annotations
         annot_names: list of annotation display names
         annot_group_columns: list of group_column values (None or int) per annotation
         output_file: output TSV path
@@ -461,24 +587,33 @@ def write_per_segment_summary(segments, source_results, ref_results, annot_names
                     all_classes = set(src_cov.keys()) | set(ref_cov.keys())
                     if not all_classes:
                         # No overlap at all — single zero row
-                        src_frac = 0.0
-                        ref_frac = 0.0
                         out.write(f'{augref_path}\t{source_len}\t{ref_len}\t{annot_name}\t{annot_name}\t'
-                                  f'0\t{src_frac:.4f}\t0\t{ref_frac:.4f}\n')
+                                  f'0\t0.0000\t0\t0.0000\n')
                     else:
                         for cls in sorted(all_classes):
                             src_bp = src_cov.get(cls, 0)
                             ref_bp = ref_cov.get(cls, 0)
-                            src_frac = min(src_bp / source_len, 1.0) if source_len > 0 else 0.0
-                            ref_frac = min(ref_bp / ref_len, 1.0) if ref_len > 0 else 0.0
+                            src_frac = _overlap_frac(src_bp, source_len, augref_path, annot_name, 'source')
+                            ref_frac = _overlap_frac(ref_bp, ref_len, augref_path, annot_name, 'ref')
                             out.write(f'{augref_path}\t{source_len}\t{ref_len}\t{annot_name}\t{cls}\t'
                                       f'{src_bp}\t{src_frac:.4f}\t{ref_bp}\t{ref_frac:.4f}\n')
+
+                    # _total row from class-agnostic merged intersection
+                    if source_total_results[i] is not None:
+                        src_total = source_total_results[i].get(augref_path, {})
+                        ref_total = ref_total_results[i].get(augref_path, {})
+                        src_bp = sum(src_total.values())
+                        ref_bp = sum(ref_total.values())
+                        src_frac = _overlap_frac(src_bp, source_len, augref_path, annot_name, 'source')
+                        ref_frac = _overlap_frac(ref_bp, ref_len, augref_path, annot_name, 'ref')
+                        out.write(f'{augref_path}\t{source_len}\t{ref_len}\t{annot_name}\t{TOTAL_CLASS}\t'
+                                  f'{src_bp}\t{src_frac:.4f}\t{ref_bp}\t{ref_frac:.4f}\n')
                 else:
                     # Ungrouped annotation: single row, annotation_class = annotation name
                     src_bp = sum(src_cov.values())
                     ref_bp = sum(ref_cov.values())
-                    src_frac = min(src_bp / source_len, 1.0) if source_len > 0 else 0.0
-                    ref_frac = min(ref_bp / ref_len, 1.0) if ref_len > 0 else 0.0
+                    src_frac = _overlap_frac(src_bp, source_len, augref_path, annot_name, 'source')
+                    ref_frac = _overlap_frac(ref_bp, ref_len, augref_path, annot_name, 'ref')
                     out.write(f'{augref_path}\t{source_len}\t{ref_len}\t{annot_name}\t{annot_name}\t'
                               f'{src_bp}\t{src_frac:.4f}\t{ref_bp}\t{ref_frac:.4f}\n')
 
@@ -582,14 +717,54 @@ def main(command_line=None):
 
         source_results = []
         ref_results = []
+        source_total_results = []  # class-agnostic totals for grouped annotations
+        ref_total_results = []
+        merged_annot_files = []
+        total_annot_files = []
 
+        # Merge annotation BEDs to remove overlapping intervals before intersection
+        sys.stderr.write("Merging annotation BEDs to remove overlapping intervals...\n")
         for i, annot_file in enumerate(options.annotation_files):
+            gc = annot_group_columns[i]
+            merged_tmp = tempfile.NamedTemporaryFile(suffix='.bed', delete=False)
+            merged_tmp.close()
+            merge_annotation_bed(annot_file, merged_tmp.name, group_column=gc)
+            merged_annot_files.append(merged_tmp.name)
+
+            if gc is not None:
+                # Grouped annotation: also create a fully merged BED (ignoring classes)
+                # for accurate total overlap in the summary plot
+                total_tmp = tempfile.NamedTemporaryFile(suffix='.bed', delete=False)
+                total_tmp.close()
+                merge_annotation_bed(annot_file, total_tmp.name, group_column=None)
+                total_annot_files.append(total_tmp.name)
+            else:
+                total_annot_files.append(None)
+
+        for i, annot_file in enumerate(merged_annot_files):
             sys.stderr.write(f"  Per-segment intersect: {annot_names[i]}...\n")
             gc = annot_group_columns[i]
             source_results.append(calculate_per_segment_coverage(offref_bed, annot_file, group_column=gc))
             ref_results.append(calculate_per_segment_coverage(onref_bed, annot_file, group_column=gc))
 
-        write_per_segment_summary(segments, source_results, ref_results, annot_names, annot_group_columns, per_seg_output)
+            if total_annot_files[i] is not None:
+                sys.stderr.write(f"    (class-agnostic total for {annot_names[i]}...)\n")
+                source_total_results.append(
+                    calculate_per_segment_coverage(offref_bed, total_annot_files[i], group_column=None))
+                ref_total_results.append(
+                    calculate_per_segment_coverage(onref_bed, total_annot_files[i], group_column=None))
+            else:
+                source_total_results.append(None)
+                ref_total_results.append(None)
+
+        write_per_segment_summary(segments, source_results, ref_results,
+                                  source_total_results, ref_total_results,
+                                  annot_names, annot_group_columns, per_seg_output)
+
+        # Clean up merged temp files
+        for f in merged_annot_files + total_annot_files:
+            if f is not None and os.path.exists(f):
+                os.remove(f)
 
     # Aggregate mode (only when not in per-segment mode, which uses BED4)
     offref_stats = {}

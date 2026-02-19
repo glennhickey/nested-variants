@@ -100,17 +100,26 @@ save_png <- function(plot, file, width = 8, height = 6) {
   cat("Saved:", file, "\n")
 }
 
+# ---------------------------------------------------------------------------
+# Aggregated view: _total rows for grouped annotations, regular for ungrouped.
+# Used by summary, scatter, co-occurrence, stats, and VCF-mode plots.
+# ---------------------------------------------------------------------------
+total_anns <- unique(dt[annotation_class == "_total"]$annotation)
+dt_agg <- rbind(
+  dt[annotation %in% total_anns & annotation_class == "_total"],
+  dt[!annotation %in% total_anns]
+)
+
 if (vcf_mode) {
   # =========================================================================
   # VCF mode: SNP count and Ts/Tv heatmaps by annotation co-occurrence
   # =========================================================================
 
-  # Aggregate per segment/annotation (same as base co-occurrence logic)
-  seg_ann <- dt[, .(source_overlap_bp = sum(source_overlap_bp),
-                    ref_overlap_bp = sum(ref_overlap_bp),
-                    source_overlap_frac = sum(source_overlap_frac),
-                    ref_overlap_frac = sum(ref_overlap_frac)),
-                by = .(augref_path, annotation)]
+  seg_ann <- dt_agg[, .(source_overlap_bp = sum(source_overlap_bp),
+                        ref_overlap_bp = sum(ref_overlap_bp),
+                        source_overlap_frac = sum(source_overlap_frac),
+                        ref_overlap_frac = sum(ref_overlap_frac)),
+                    by = .(augref_path, annotation)]
 
   # Read biallelic SNP VCF
   cmd <- sprintf("bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT\\n' '%s'", vcf_file)
@@ -230,33 +239,17 @@ if (vcf_mode) {
 # Plot 1: Summary bar chart — fraction of alt bp overlapping each annotation
 # ---------------------------------------------------------------------------
 
-# Aggregate per annotation: total overlap bp / total segment length
-summary_source <- dt[, .(overlap_bp = as.numeric(sum(source_overlap_bp)),
-                         total_bp = as.numeric(sum(source_len))),
-                     by = .(annotation)]
+summary_source <- dt_agg[, .(overlap_bp = as.numeric(sum(source_overlap_bp)),
+                              total_bp = as.numeric(sum(source_len))),
+                          by = .(annotation)]
 summary_source[, frac := overlap_bp / total_bp]
 summary_source[, coord_type := "Off-reference"]
 
-summary_ref <- dt[, .(overlap_bp = as.numeric(sum(ref_overlap_bp)),
-                      total_bp = as.numeric(sum(ref_len))),
-                  by = .(annotation)]
+summary_ref <- dt_agg[, .(overlap_bp = as.numeric(sum(ref_overlap_bp)),
+                           total_bp = as.numeric(sum(ref_len))),
+                       by = .(annotation)]
 summary_ref[, frac := overlap_bp / total_bp]
 summary_ref[, coord_type := "On-reference"]
-
-# For grouped annotations (repeats), avoid double-counting segments:
-# the total_bp is summed across all classes per segment, so we need unique segments
-for (ann in unique(dt$annotation)) {
-  sub <- dt[annotation == ann]
-  has_classes <- any(sub$annotation_class != sub$annotation)
-  if (has_classes) {
-    # Unique segments for this annotation
-    seg_dt <- unique(sub[, .(augref_path, source_len, ref_len)])
-    summary_source[annotation == ann, total_bp := sum(seg_dt$source_len)]
-    summary_ref[annotation == ann, total_bp := sum(seg_dt$ref_len)]
-    summary_source[annotation == ann, frac := overlap_bp / total_bp]
-    summary_ref[annotation == ann, frac := overlap_bp / total_bp]
-  }
-}
 
 bar_dt <- rbind(summary_source[, .(annotation, frac, overlap_bp, coord_type)],
                 summary_ref[, .(annotation, frac, overlap_bp, coord_type)])
@@ -294,11 +287,11 @@ save_png(p1, paste0(prefix, ".annot-summary.png"))
 # Plot 2: Length vs overlap scatter, faceted by annotation
 # ---------------------------------------------------------------------------
 
-# For grouped annotations, aggregate all classes per segment before plotting
-scatter_dt <- dt[, .(source_overlap_bp = sum(source_overlap_bp),
-                     source_len = source_len[1],
-                     ref_len = ref_len[1]),
-                 by = .(augref_path, annotation)]
+# Use _total rows for grouped annotations (accurate class-agnostic overlap)
+scatter_dt <- dt_agg[, .(source_overlap_bp = sum(source_overlap_bp),
+                         source_len = source_len[1],
+                         ref_len = ref_len[1]),
+                     by = .(augref_path, annotation)]
 scatter_dt[, source_overlap_frac := pmin(source_overlap_bp / source_len, 1.0)]
 scatter_dt[source_len == 0, source_overlap_frac := 0]
 
@@ -327,10 +320,10 @@ save_png(p2, paste0(prefix, ".annot-scatter.png"))
 # Plot 3: Repeat class breakdown (only when repeat class data present)
 # ---------------------------------------------------------------------------
 
-has_repeat_classes <- any(dt$annotation == "repeats" & dt$annotation_class != dt$annotation)
+has_repeat_classes <- any(dt$annotation == "repeats" & !dt$annotation_class %in% c("repeats", "_total"))
 
 if (has_repeat_classes) {
-  repeat_dt <- dt[annotation == "repeats" & annotation_class != annotation]
+  repeat_dt <- dt[annotation == "repeats" & !annotation_class %in% c("repeats", "_total")]
 
   # Total bp per coord type (unique segments to avoid double-counting across classes)
   seg_dt <- unique(repeat_dt[, .(augref_path, source_len, ref_len)])
@@ -356,26 +349,19 @@ if (has_repeat_classes) {
                        by = .(display_class)]
   ref_bar[, coord_type := "On-reference"]
 
-  stack_dt <- rbind(src_bar, ref_bar)
-  # Order classes: top classes first, Other last
-  class_order <- c(top_classes[top_classes %in% stack_dt$display_class], "Other")
-  stack_dt[, display_class := factor(display_class, levels = rev(class_order))]
+  repeat_bar_dt <- rbind(src_bar, ref_bar)
+  # Order classes by total fraction (off + on), Other last
+  class_order <- c(top_classes[top_classes %in% repeat_bar_dt$display_class], "Other")
+  repeat_bar_dt[, display_class := factor(display_class, levels = rev(class_order))]
 
-  # Build a color palette with enough colors for all classes (Set2 only has 8)
-  n_classes <- length(class_order)
-  if (n_classes <= 8) {
-    class_colors <- RColorBrewer::brewer.pal(max(3, n_classes), "Set2")[seq_len(n_classes)]
-  } else {
-    class_colors <- colorRampPalette(RColorBrewer::brewer.pal(8, "Set2"))(n_classes)
-  }
-  names(class_colors) <- class_order
-
-  p3 <- ggplot(stack_dt, aes(x = coord_type, y = overlap_frac, fill = display_class)) +
-    geom_col(width = 0.6) +
-    scale_fill_manual(values = class_colors, name = "Repeat Class") +
-    scale_y_continuous(labels = percent, expand = expansion(mult = c(0, 0.05))) +
+  p3 <- ggplot(repeat_bar_dt, aes(x = display_class, y = overlap_frac, fill = coord_type)) +
+    geom_col(position = "dodge", width = 0.7) +
+    scale_fill_manual(values = c("Off-reference" = "coral", "On-reference" = "steelblue"),
+                      name = NULL) +
+    scale_y_continuous(labels = percent, expand = expansion(mult = c(0, 0.1))) +
     labs(title = title, subtitle = "Repeat Class Breakdown (fraction of segment bp)",
          x = NULL, y = "Overlap Fraction") +
+    coord_flip() +
     theme_minimal() +
     theme(
       plot.title = element_text(hjust = 0.5, face = "bold"),
@@ -394,12 +380,12 @@ if (has_repeat_classes) {
 # ---------------------------------------------------------------------------
 
 # For each segment, determine which annotations it overlaps in off-ref and on-ref
-# Aggregate across annotation classes (e.g., multiple repeat classes → single "repeats")
-seg_ann <- dt[, .(source_overlap_bp = sum(source_overlap_bp),
-                  ref_overlap_bp = sum(ref_overlap_bp),
-                  source_overlap_frac = sum(source_overlap_frac),
-                  ref_overlap_frac = sum(ref_overlap_frac)),
-              by = .(augref_path, annotation)]
+# Use _total rows for grouped annotations to avoid cross-class double-counting
+seg_ann <- dt_agg[, .(source_overlap_bp = sum(source_overlap_bp),
+                      ref_overlap_bp = sum(ref_overlap_bp),
+                      source_overlap_frac = sum(source_overlap_frac),
+                      ref_overlap_frac = sum(ref_overlap_frac)),
+                  by = .(augref_path, annotation)]
 
 annotations <- sort(unique(seg_ann$annotation))
 all_segs <- unique(seg_ann$augref_path)
@@ -455,7 +441,7 @@ save_png(p4, paste0(prefix, ".annot-cooccur.png"))
 # Plot 5: PCLAI ancestry co-occurrence heatmap
 # ---------------------------------------------------------------------------
 
-pclai_dt <- dt[annotation == "pclai"]
+pclai_dt <- dt[annotation == "pclai" & annotation_class != "_total"]
 if (nrow(pclai_dt) > 0) {
   # Each row has annotation_class = super-population, with source/ref overlap bp
   # For each segment, determine dominant ancestry in each coord type
@@ -521,10 +507,10 @@ if (nrow(pclai_dt) > 0) {
 # Output TSV: per-annotation summary
 # ---------------------------------------------------------------------------
 
-# Unique segments per annotation (avoid double-counting from classes)
+# Use _total rows for grouped annotations to avoid cross-class double-counting
 stats_list <- list()
-for (ann in unique(dt$annotation)) {
-  sub <- dt[annotation == ann]
+for (ann in unique(dt_agg$annotation)) {
+  sub <- dt_agg[annotation == ann]
   seg_dt <- unique(sub[, .(augref_path, source_len, ref_len)])
 
   total_source_bp <- sum(seg_dt$source_len)
