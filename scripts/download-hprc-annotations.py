@@ -10,6 +10,7 @@ use --skip-grch38 or --skip-chm13 to disable.
 import os
 import sys
 import re
+import shlex
 import subprocess
 import argparse
 
@@ -129,15 +130,27 @@ def _merge_bed_classes_stream(fin, fout, class_col):
     Core per-class merge: read sorted BED lines from fin, write merged to fout.
 
     Input must be sorted by chrom, start. Within each class, overlapping or
-    adjacent intervals are merged (keeps fields from the first interval).
-    Output within each chromosome has classes interleaved; pipe through
-    ``sort -k1,1 -k2,2n`` if downstream needs globally sorted BED.
+    adjacent intervals are merged.  When intervals merge, the BED fields
+    (name, score, etc.) from the first interval in the group are kept; only
+    positions 1 and 2 (start, end) in the ``fields`` list are mutated to
+    reflect the merged coordinates.
+
+    Output within each chromosome has classes interleaved in arbitrary order
+    (dict iteration order); callers must pipe through ``sort -k1,1 -k2,2n``
+    if downstream needs globally sorted BED.
     """
     col_idx = class_col - 1
-    active = {}  # class -> [chrom, start, end, fields]
+    # Track the current (open) interval per class.  Values are mutable lists:
+    #   [chrom, start_int, end_int, fields_list]
+    # where fields_list is the original split line (from the first interval
+    # in the merge group).  start/end are tracked as ints separately from
+    # fields to avoid repeated str↔int conversions during merging; fields[1]
+    # and fields[2] are written back only at flush time.
+    active = {}
     prev_chrom = None
 
     def flush():
+        """Write all pending intervals for prev_chrom.  Order is arbitrary."""
         for cls, (chrom, start, end, fields) in active.items():
             fields[1] = str(start)
             fields[2] = str(end)
@@ -186,10 +199,13 @@ def merge_bed_classes_file(input_bed, output_bed, class_col):
     Output is re-sorted by chrom, start (the merge interleaves classes).
     """
     tmp = output_bed + '.unsorted'
-    with open(input_bed) as fin, open(tmp, 'w') as fout:
-        _merge_bed_classes_stream(fin, fout, class_col)
-    run(f"sort -k1,1 -k2,2n '{tmp}' -o '{output_bed}'", shell=True)
-    os.remove(tmp)
+    try:
+        with open(input_bed) as fin, open(tmp, 'w') as fout:
+            _merge_bed_classes_stream(fin, fout, class_col)
+        run(f"LC_ALL=C sort -k1,1 -k2,2n '{tmp}' -o '{output_bed}'", shell=True)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
 
 
 def check_dependencies(need_bigbed=False):
@@ -405,11 +421,11 @@ def download_from_table(table_url, column, threads, out_annot_path, out_dir, gff
             gff_cmd = ' | cut -f1,4,5 | bedtools sort | bedtools merge' if gff else ''
             reformat = f' | {reformat_cmd}' if reformat_cmd and not gff else ''
             cut_cmd = f' | cut -f1-{max_col}' if max_col and not gff else ''
-            sort_cmd = '' if gff else ' | sort -k1,1 -k2,2n'
+            sort_cmd = '' if gff else ' | LC_ALL=C sort -k1,1 -k2,2n'
             if merge_class_col and not gff:
-                merge_cmd = (f' | {sys.executable} {_SCRIPT_PATH}'
+                merge_cmd = (f' | {shlex.quote(sys.executable)} {shlex.quote(_SCRIPT_PATH)}'
                              f' --merge-bed-classes {merge_class_col}'
-                             f' | sort -k1,1 -k2,2n')
+                             f' | LC_ALL=C sort -k1,1 -k2,2n')
             else:
                 merge_cmd = ''
 
@@ -510,6 +526,8 @@ def main(command_line=None):
             raw = download_ucsc_file(UCSC_HG38_RMSK, options.output_dir)
             hg38['rm'] = convert_ucsc_rmsk_to_bed(
                 raw, os.path.join(options.output_dir, 'grch38-rm.bed'))
+            merge_bed_classes_file(hg38['rm'], hg38['rm'] + '.merged', class_col=6)
+            os.rename(hg38['rm'] + '.merged', hg38['rm'])
             intermediates += [raw, hg38['rm']]
         if not options.skip_sd:
             raw = download_ucsc_file(UCSC_HG38_SEGDUPS, options.output_dir)
@@ -533,6 +551,8 @@ def main(command_line=None):
             raw = download_ucsc_file(UCSC_HS1_RMSK, options.output_dir)
             chm13['rm'] = convert_rm_out_to_bed(
                 raw, os.path.join(options.output_dir, 'chm13-rm.bed'))
+            merge_bed_classes_file(chm13['rm'], chm13['rm'] + '.merged', class_col=6)
+            os.rename(chm13['rm'] + '.merged', chm13['rm'])
             intermediates += [raw, chm13['rm']]
         if not options.skip_sd:
             raw = download_ucsc_file(UCSC_HS1_SEGDUPS, options.output_dir)
@@ -678,6 +698,8 @@ if __name__ == '__main__':
     # Pipe mode: merge per-class overlapping intervals (used internally by parallel download)
     if '--merge-bed-classes' in sys.argv:
         idx = sys.argv.index('--merge-bed-classes')
+        if idx + 1 >= len(sys.argv):
+            sys.exit('Error: --merge-bed-classes requires a column number argument')
         merge_bed_classes_stdin(int(sys.argv[idx + 1]))
         sys.exit(0)
     main()
