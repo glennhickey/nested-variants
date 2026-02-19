@@ -47,6 +47,86 @@ Notable Observations
 Detailed Segment Analysis
 =========================
 
+chr12_4667_alt — PIWIL1/RIMBP2 intergenic SV hotspot (chr12q24.33)
+--------------------------------------------------------------------
+Source haplotype: NA18971#2#CM087286.1:130,612,791-130,613,338
+CHM13 ref coords: chr12:130,429,420-130,430,635 (1,215 bp on ref, 547 bp off ref)
+Segment stats: 33 polymorphic variants, 23 SNPs, Ts/Tv=2.29, AF=0.38
+VCF stats: 16 called biallelic SNPs across 7 samples, mean AF=0.38
+Annotations: 0% genic (source), 100% genic (ref), 0% repeat, 0% segdup, 0% censat
+
+Gene context (CHM13 ncbiRefSeq):
+  PIWIL1:  130,374,991-130,463,542 (+ strand)  nearest exon at 130,449,918
+  RIMBP2:  130,433,406-130,754,746 (- strand)  last exon starts at 130,433,406
+  The ref anchor (130,429,420-130,430,635) sits in the ~3 kb intergenic gap
+  between PIWIL1's last exon and RIMBP2's 3'-most exon.
+
+Structural variant hotspot:
+  36 alt segments from 18 different haplotypes map to this exact 1,215 bp
+  ref anchor (out of 457 total haplotypes in the pangenome = 3.9%). Segment
+  sizes range from 52 bp to 3,869 bp, indicating frequent structural
+  rearrangement at this locus:
+
+    chr12_4666_alt  HG00140#2   3,869 bp  (3x expansion)
+    chr12_4668_alt  HG06807#1   1,877 bp  (1.5x expansion)
+    chr12_4667_alt  NA18971#2     547 bp  (0.45x contraction) ← this segment
+    chr12_4685_alt  HG00099#1     361 bp  (0.30x contraction)
+    + 32 more fragments from 14 additional haplotypes (52-349 bp)
+
+  The immediately adjacent ref position (130,430,640-130,430,676) has a
+  further segment, chr12_2438_alt (HG00099#1, 852 bp, 9 VCF SNPs),
+  making the combined hotspot ~1.26 kb.
+
+VCF genotype pattern (7 samples: HG001-HG007):
+  16 biallelic SNPs with a distinctive two-tier pattern:
+  - 8 singletons (AF=0.07): only HG001 is heterozygous, all others 0/0
+  - 4 common variants (AF=0.57-1.00): shared across most samples
+    - 2 fixed (AF=1.00): all 7 samples homozygous alt → these positions
+      differ from the NA18971 haplotype used as the segment reference
+    - 2 near-fixed (AF=0.86-0.93): 6-7 samples carry alt
+    - 2 intermediate (AF=0.57-0.64): 4-5 samples carry alt
+  - HG007 is homozygous reference (0/0) at all non-fixed sites
+
+  Interpretation: HG001 carries a divergent haplotype relative to the
+  NA18971-derived segment, contributing 8 private variants. The fixed
+  (AF=1.0) variants indicate positions where the NA18971 allele is
+  itself the rare allele. HG007 appears to carry the NA18971-like
+  haplotype throughout.
+
+  Only chr12_4667_alt has called biallelic SNPs — none of the other 35
+  segments at this ref anchor have any. This means the 7 call samples
+  have reads mapping preferentially to the NA18971 segment sequence.
+
+Connection to RIMBP2 insertion cluster:
+  ~254 kb downstream (within the RIMBP2 gene body), three independent
+  haplotypes have large insertions at another hotspot (chr12:130,684,042):
+    chr12_2442_alt  NA18971#2  13,063 bp  1,958 poly  Ts/Tv=0.33
+    chr12_2441_alt  HG00438#1   8,747 bp  1,418 poly  Ts/Tv=0.85
+    chr12_2440_alt  HG02602#2   6,172 bp    991 poly  Ts/Tv=1.02
+  Of these, only chr12_2440_alt has VCF calls (4 SNPs). Notably,
+  NA18971 contributes to both clusters: the 547 bp contraction at the
+  5' end and the 13 kb insertion within the gene body.
+
+Gene biology:
+  PIWIL1 (Piwi-Like RNA-Mediated Gene Silencing 1):
+    - PIWI-clade Argonaute protein, essential for piRNA biogenesis
+    - Silences transposable elements in the germline
+    - Expressed primarily in spermatocytes; required for male fertility
+    - Associated with azoospermia and male infertility (OMIM: 605571)
+
+  RIMBP2 (RIMS Binding Protein 2):
+    - Presynaptic active zone protein; scaffolds Ca2+ channels to
+      synaptic vesicle release sites
+    - Essential for Ca2+-triggered neurotransmitter release
+    - Associated with autosomal dominant deafness DFNA41 (OMIM: 611222)
+    - Associated with centronuclear myopathy type 6
+
+  Both genes are large (PIWIL1 ~89 kb, RIMBP2 ~321 kb) and the
+  structural variant hotspot sits in the regulatory/intergenic space
+  between them. Structural variation in this region could affect
+  regulation of either or both genes.
+
+
 chr19_9986_alt — PSG (Pregnancy-Specific Glycoprotein) Gene Cluster
 --------------------------------------------------------------------
 Source haplotype: HG01261#1#JBHDVG010000010.1:44,969,708-45,116,660
@@ -168,12 +248,89 @@ Stats: 446 poly, 286 SNPs, Ts/Tv=70.5, AF=0.31
 Maps to an enormous 11.4 Mb ref span — likely a misalignment or complex
 rearrangement. The extreme Ts/Tv may be artifactual.
 
+chr4_10698_alt — FRG1-DT (REJECTED: tandem repeat)
+---------------------------------------------------
+Despite 0% repeat/segdup annotation, manual inspection of the segment
+sequence reveals it is entirely composed of a ~75 bp tandem repeat
+(AGCACATCACCACTGCACTAGTACACACACCATCACC...). The extreme Ts/Tv (20.1)
+is an artifact of the repeat base composition. The repeat annotation
+BED did not capture this element.
+
+This segment sits within FRG1-DT (lncRNA) at chr4q35.2, 378 kb from
+the telomere, proximal to the D4Z4 repeat array. The D4Z4 region
+starts ~190 kb distal (chr4_8_alt: 100% censat, 100% segdup).
+CHM13 ncbiRefSeq confirms: FRG1-DT (193,125-193,306 kb) → FRG1
+(193,306-193,328 kb) → DUX4L9/FRG2/DBET → D4Z4 array (DUX4L
+pseudogenes) → DUX4 → telomere.
+
+Lesson: always check segment sequence for simple/tandem repeats even
+when repeat annotation says 0%.
+
+
+Segments with Called Biallelic SNPs (merged.call VCF)
+=====================================================
+Shifted focus to segments present in merged.call.biallelic-snps.pass.vcf.gz
+(7 samples: HG001-HG007). This filters to segments with actual genotyped
+variants, not just graph polymorphisms.
+
+Filters: genes >50% (source), segdups=0 (source), repeats <30% (source),
+>=500bp. Ranked by geometric mean of (vcf_snps x vcf_snps_per_kb).
+226 segments pass filters.
+
+segment                  len    vcf_snp  poly   ref_context         gene          notes
+chr7_36862_alt         1,118       41      40   PTPRN2              PTPRN2        ref 100% segdup!
+chr3_2283_alt        112,726      360     491   intergenic (PYDC2)  near PYDC2    113kb ins at 42bp ref
+chr2_21727_alt         6,466       73     286   chr2:241.5M         SNED1 region
+chr10_6021_alt           715       21      64   43 Mb ref span!     misalignment  SKIP
+chr9_3141_alt          2,195       33      61   EXD3                EXD3          ref 100% segdup!
+chr15_42665_alt        4,923       48     164   PRKXP1              near CERS3    clean (0% segdup both)
+chr20_49495_alt        1,566       24      42   ZNF512B             ZNF512B       clean, high AF (0.74)
+chr5_38897_alt         3,567       32     335   intergenic          near N4BP3    clean
+
+Annotation detail (source / reference):
+  chr7_36862_alt:  genes 100/100%, rep 0/0%, segdup 0/100% ← ref is segdup
+  chr3_2283_alt:   genes 76/0%, rep 48/0%, segdup 0/0%
+  chr9_3141_alt:   genes 100/100%, rep 0/0%, segdup 0/100% ← ref is segdup
+  chr15_42665_alt: genes 100/100%, rep 0/0%, segdup 0/0% ← clean
+  chr20_49495_alt: genes 100/100%, rep 0/0%, segdup 0/0% ← clean
+
+chr15_42665_alt — near CERS3/LINS1 (clean candidate)
+------------------------------------------------------
+Source: HG04187#1#JBJUVO010000008.1:90,170,505-90,175,428
+CHM13 ref: chr15:98,312,770-98,312,941 (171 bp on ref, 4.9 kb off ref)
+VCF: 48 biallelic SNPs, mean AF=0.27
+Poly: 164 polymorphic variants, 294 SNPs, Ts/Tv=2.8
+Annotations: 100% genic, 0% repeat, 0% segdup (both coords)
+Ref anchor overlaps PRKXP1 (pseudogene). Nearby genes: CERS3 (ceramide
+synthase 3, skin barrier), LINS1, ASB7.
+
+chr20_49495_alt — ZNF512B (clean, high AF)
+--------------------------------------------
+Source: HG01167#2#CM094551.1:67,232,489-67,234,055
+CHM13 ref: chr20:65,785,769-65,785,848 (79 bp on ref, 1.6 kb off ref)
+VCF: 24 biallelic SNPs, mean AF=0.74 (very common variant!)
+Poly: 42 polymorphic variants, 66 SNPs, Ts/Tv=10.0
+Annotations: 100% genic, 0% repeat, 0% segdup (both coords)
+ZNF512B: zinc finger protein, associated with amyotrophic lateral
+sclerosis susceptibility (PMID: 21994948). High AF means most of the
+7 samples carry the alt alleles — the insertion may be the common state.
+
+chr3_2283_alt — near PYDC2 (large insertion, partially repetitive)
+-------------------------------------------------------------------
+Source: HG03654#2#JBHDTO010000005.1:100,776,741-100,889,467
+CHM13 ref: chr3:194,314,954-194,314,996 (42 bp on ref, 113 kb off ref)
+VCF: 360 biallelic SNPs, mean AF=0.37
+Poly: 491 polymorphic variants, 1,387 SNPs, Ts/Tv=1.9
+Annotations: 76% genic, 48% repeat (source), 0% segdup (both coords)
+Massive 113 kb insertion at a 42 bp ref anchor. Near PYDC2 (pyrin domain
+containing 2, innate immunity/inflammasome). 48% repeat on source side
+so partially repetitive but passes the 30% filter only because that
+checked source repeat annotation aggregated differently in the
+polymorphism table.
+
 TODO
 ----
-- Download CAT annotation for NA18508 to check FRG1-DT region
-- Download CAT for NA18971/HG00438/HG02602 to check RIMBP2 insertions
-- Investigate chr7_14892 and chr2_21982 extreme Ts/Tv values
-- Check if high Ts/Tv segments overlap CpG islands
-- Check if high Ts/Tv segments overlap CpG islands
-- Investigate chr12 cluster in more detail
-- Compare on-ref vs off-ref coordinates for top segments
+- Check segment sequences for top VCF-called candidates (avoid repeat trap)
+- Look up CERS3 and ZNF512B regions in more detail
+- Investigate chr3_2283_alt source haplotype annotation
+- Consider relaxing segdup filter to allow ref-side segdup only

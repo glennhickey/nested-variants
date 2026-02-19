@@ -211,6 +211,7 @@ snakemake --profile profiles/slurm graph_only genotype_all \
     annot_repeats=$ANNOT/hprc-v2-rm-grch38-chm13.bed \
     annot_segdups=$ANNOT/hprc-v2-sd-grch38-chm13.bed \
     annot_censat=$ANNOT/hprc-v2-censat-grch38-chm13.bed \
+    annot_pclai=$ANNOT/hprc-v2-pclai-grch38-chm13.bed \
     "samples={HG001: $GIAB/HG001.novaseq.pcr-free.gs.paths, HG002: $GIAB/HG002.novaseq.pcr-free.gs.paths, HG003: $GIAB/HG003.novaseq.pcr-free.gs.paths, HG004: $GIAB/HG004.novaseq.pcr-free.gs.paths, HG005: $GIAB/HG005.novaseq.pcr-free.gs.paths, HG006: $GIAB/HG006.novaseq.pcr-free.gs.paths, HG007: $GIAB/HG007.novaseq.pcr-free.gs.paths}"
 ```
 
@@ -234,6 +235,7 @@ snakemake --profile profiles/slurm all \
     annot_repeats=$ANNOT/hprc-v2-rm-grch38-chm13.bed \
     annot_segdups=$ANNOT/hprc-v2-sd-grch38-chm13.bed \
     annot_censat=$ANNOT/hprc-v2-censat-grch38-chm13.bed \
+    annot_pclai=$ANNOT/hprc-v2-pclai-grch38-chm13.bed \
     "samples={HG001: $GIAB/HG001.novaseq.pcr-free.gs.paths, HG002: $GIAB/HG002.novaseq.pcr-free.gs.paths, HG003: $GIAB/HG003.novaseq.pcr-free.gs.paths, HG004: $GIAB/HG004.novaseq.pcr-free.gs.paths, HG005: $GIAB/HG005.novaseq.pcr-free.gs.paths, HG006: $GIAB/HG006.novaseq.pcr-free.gs.paths, HG007: $GIAB/HG007.novaseq.pcr-free.gs.paths}"
 ```
 
@@ -255,6 +257,7 @@ snakemake --profile profiles/slurm all \
     annot_repeats=$ANNOT/hprc-v2-rm-grch38-chm13.bed \
     annot_segdups=$ANNOT/hprc-v2-sd-grch38-chm13.bed \
     annot_censat=$ANNOT/hprc-v2-censat-grch38-chm13.bed \
+    annot_pclai=$ANNOT/hprc-v2-pclai-grch38-chm13.bed \
     'samples={HG002: data/HG002.reads.idx}'
 ```
 
