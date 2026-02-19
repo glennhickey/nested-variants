@@ -604,6 +604,12 @@ def main(command_line=None):
                 add_local(ref_beds['rm'], current, out, prefix=prefix, max_col=6)
                 current = out
 
+        # Pre-compute class-agnostic merged BED for fast _total intersection
+        total_path = os.path.splitext(current)[0] + '.total.bed'
+        if not os.path.isfile(total_path):
+            sys.stderr.write(f'  Pre-computing class-agnostic merged RM BED: {total_path}\n')
+            run(f"cut -f1-3 '{current}' | bedtools merge > '{total_path}'", shell=True)
+
     # Segmental duplications
     if not options.skip_sd:
         sd_path = download_from_table(
@@ -684,6 +690,12 @@ def main(command_line=None):
                 out = os.path.join(options.output_dir, f'hprc-v2-pclai{suffix}.bed')
                 add_local(ref_beds['pclai'], current, out, prefix=prefix, max_col=6)
                 current = out
+
+        # Pre-compute class-agnostic merged BED for fast _total intersection
+        total_path = os.path.splitext(current)[0] + '.total.bed'
+        if not os.path.isfile(total_path):
+            sys.stderr.write(f'  Pre-computing class-agnostic merged PCLAI BED: {total_path}\n')
+            run(f"cut -f1-3 '{current}' | bedtools merge > '{total_path}'", shell=True)
 
     # Clean up intermediate files
     for path in intermediates:

@@ -139,6 +139,7 @@ if (vcf_mode) {
     for (suf in c("counts", "tstv")) {
       out_file <- paste0(prefix, "-", suf, ".", filt, ".png")
       grDevices::png(out_file, width = 100, height = 100)
+      par(mar = c(0, 0, 0, 0))
       plot.new()
       dev.off()
       cat("Saved placeholder:", out_file, "\n")
@@ -242,6 +243,7 @@ if (vcf_mode) {
     for (suf in c("counts", "tstv")) {
       out_file <- paste0(pclai_prefix, "-", suf, ".", filt, ".png")
       grDevices::png(out_file, width = 100, height = 100)
+      par(mar = c(0, 0, 0, 0))
       plot.new()
       dev.off()
       cat("Saved placeholder:", out_file, "\n")

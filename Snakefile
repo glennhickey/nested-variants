@@ -39,7 +39,8 @@ if config.get("samples_tsv"):
 # ambiguity between deconstruct ({OUT_NAME}.vcf.gz) and call ({sample}.vcf.gz)
 wildcard_constraints:
     sample="|".join(SAMPLES) if SAMPLES else "$^",
-    filt="all|pass"
+    filt="all|pass",
+    mode="sites|variants"
 
 # Per-rule resource helpers: look up rule-specific config, fall back to global default
 def rule_cpus(rule_name, default):
@@ -438,7 +439,7 @@ rule segment_density:
         "Rscript scripts/chrom-density-tsv.R"
         " {input} {output}"
         " '{REF} Off-Reference Segment Density'"
-        " {config[min_augref_len]} {config[refgaps_bed]} {config[scale_type]}"
+        " {config[min_augref_len]} '{config[refgaps_bed]}' {config[scale_type]}"
         " --ref {REF}"
 
 rule plots:
@@ -455,7 +456,7 @@ rule plots:
         "Rscript scripts/chrom-density-segs.R"
         " {input.vcf} {input.segs} {output}"
         " '{REF} Off-Reference Variant Density'"
-        " 0 {config[refgaps_bed]} {config[scale_type]}"
+        " 0 '{config[refgaps_bed]}' {config[scale_type]}"
         " --ref {REF} --offref"
 
 ############################################################################
@@ -496,10 +497,23 @@ rule annotation_plots:
         "Rscript scripts/annotation-plots.R {input} {OUT_DIR}/{OUT_NAME}"
         " --min-overlap 0.3 --title '{REF} Annotation Overlap'"
 
-rule biallelic_snps:
-    """VCF → biallelic SNP VCF (split multi-allelic, filter to true SNPs)"""
+rule norm_vcf:
+    """VCF → multi-allelic split VCF via bcftools norm (shared intermediate)"""
     input:
         "{prefix}.vcf.gz",
+    output:
+        "{prefix}.normed.vcf.gz",
+    resources:
+        mem_mb=32000,
+        runtime=2880,
+    shell:
+        "bcftools norm -m- '{input}' -Oz -o {output} 2>/dev/null"
+        " && tabix -p vcf {output}"
+
+rule biallelic_snps:
+    """Normed VCF → biallelic SNP VCF (filter to true SNPs)"""
+    input:
+        "{prefix}.normed.vcf.gz",
     output:
         "{prefix}.biallelic-snps.{filt}.vcf.gz",
     resources:
@@ -508,7 +522,7 @@ rule biallelic_snps:
     params:
         filt_cmd=lambda wc: "bcftools view -f PASS 2>/dev/null |" if wc.filt == "pass" else "",
     shell:
-        "bcftools norm -m- '{input}' 2>/dev/null"
+        "bcftools view '{input}' 2>/dev/null"
         " | {params.filt_cmd} bcftools view -v snps -c1"
         " -i 'STRLEN(REF)==1 && STRLEN(ALT)==1' -Oz -o {output} 2>/dev/null"
         " && tabix -p vcf {output}"
@@ -670,7 +684,7 @@ rule call_plots:
         "Rscript scripts/chrom-density-segs.R"
         " {input.vcf} {input.segs} {output}"
         " '{REF} Call Off-Reference Density ({wildcards.sample})'"
-        " 0 {config[refgaps_bed]} {config[scale_type]}"
+        " 0 '{config[refgaps_bed]}' {config[scale_type]}"
         " --ref {REF} --offref"
 
 rule dv_plots:
@@ -687,7 +701,7 @@ rule dv_plots:
         "Rscript scripts/chrom-density-segs.R"
         " {input.vcf} {input.segs} {output}"
         " '{REF} DeepVariant Off-Reference Density ({wildcards.sample})'"
-        " 0 {config[refgaps_bed]} {config[scale_type]}"
+        " 0 '{config[refgaps_bed]}' {config[scale_type]}"
         " --ref {REF} --offref"
 
 ############################################################################
@@ -736,7 +750,7 @@ rule merged_call_plots:
         "Rscript scripts/chrom-density-segs.R"
         " {input.vcf} {input.segs} {output}"
         " '{REF} Merged Call Off-Reference Density'"
-        " 0 {config[refgaps_bed]} {config[scale_type]}"
+        " 0 '{config[refgaps_bed]}' {config[scale_type]}"
         " --ref {REF} --offref"
 
 rule merged_dv_plots:
@@ -753,15 +767,15 @@ rule merged_dv_plots:
         "Rscript scripts/chrom-density-segs.R"
         " {input.vcf} {input.segs} {output}"
         " '{REF} Merged DeepVariant Off-Reference Density'"
-        " 0 {config[refgaps_bed]} {config[scale_type]}"
+        " 0 '{config[refgaps_bed]}' {config[scale_type]}"
         " --ref {REF} --offref"
 
 ############################################################################
 # VCF statistics rules
 ############################################################################
 
-rule deconstruct_stats:
-    """Deconstruct VCF → variant stats + plots (includes AF spectrum)"""
+rule deconstruct_sites_stats:
+    """Deconstruct VCF → site-level stats + plots (includes AF spectrum)"""
     input:
         f"{OUT_DIR}/{OUT_NAME}.vcf.gz",
     output:
@@ -770,6 +784,18 @@ rule deconstruct_stats:
         f"{OUT_DIR}/{OUT_NAME}.sites.size-dist.png",
         f"{OUT_DIR}/{OUT_NAME}.sites.size-dist-log.png",
         f"{OUT_DIR}/{OUT_NAME}.sites.af-spectrum.png",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
+    shell:
+        "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{OUT_NAME}.sites"
+        " --mode sites --af-step 0.05 --title '{REF} Deconstruct'"
+
+rule deconstruct_variants_stats:
+    """Deconstruct VCF → variant-level stats + plots (uses pre-normed VCF)"""
+    input:
+        f"{OUT_DIR}/{OUT_NAME}.normed.vcf.gz",
+    output:
         f"{OUT_DIR}/{OUT_NAME}.variants.vcf-stats.tsv",
         f"{OUT_DIR}/{OUT_NAME}.variants.variant-types.png",
         f"{OUT_DIR}/{OUT_NAME}.variants.size-dist.png",
@@ -779,151 +805,71 @@ rule deconstruct_stats:
         mem_mb=256000,
         runtime=2880,
     shell:
-        "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{OUT_NAME}.sites"
+        "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{OUT_NAME}.variants"
         " --mode sites --af-step 0.05 --title '{REF} Deconstruct'"
-        " && Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{OUT_NAME}.variants"
-        " --mode variants --af-step 0.05 --title '{REF} Deconstruct'"
 
 rule call_stats:
-    """Per-sample call VCF → variant stats + plots"""
+    """Per-sample call VCF → variant stats + plots (one mode/filter combo)"""
     input:
-        f"{OUT_DIR}/{{sample}}.vcf.gz",
+        lambda wc: f"{OUT_DIR}/{wc.sample}.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/{wc.sample}.vcf.gz",
     output:
-        f"{OUT_DIR}/{{sample}}.call.sites.all.vcf-stats.tsv",
-        f"{OUT_DIR}/{{sample}}.call.sites.all.variant-types.png",
-        f"{OUT_DIR}/{{sample}}.call.sites.all.size-dist.png",
-        f"{OUT_DIR}/{{sample}}.call.sites.all.size-dist-log.png",
-        f"{OUT_DIR}/{{sample}}.call.sites.pass.vcf-stats.tsv",
-        f"{OUT_DIR}/{{sample}}.call.sites.pass.variant-types.png",
-        f"{OUT_DIR}/{{sample}}.call.sites.pass.size-dist.png",
-        f"{OUT_DIR}/{{sample}}.call.sites.pass.size-dist-log.png",
-        f"{OUT_DIR}/{{sample}}.call.variants.all.vcf-stats.tsv",
-        f"{OUT_DIR}/{{sample}}.call.variants.all.variant-types.png",
-        f"{OUT_DIR}/{{sample}}.call.variants.all.size-dist.png",
-        f"{OUT_DIR}/{{sample}}.call.variants.all.size-dist-log.png",
-        f"{OUT_DIR}/{{sample}}.call.variants.pass.vcf-stats.tsv",
-        f"{OUT_DIR}/{{sample}}.call.variants.pass.variant-types.png",
-        f"{OUT_DIR}/{{sample}}.call.variants.pass.size-dist.png",
-        f"{OUT_DIR}/{{sample}}.call.variants.pass.size-dist-log.png",
+        f"{OUT_DIR}/{{sample}}.call.{{mode}}.{{filt}}.vcf-stats.tsv",
+        f"{OUT_DIR}/{{sample}}.call.{{mode}}.{{filt}}.variant-types.png",
+        f"{OUT_DIR}/{{sample}}.call.{{mode}}.{{filt}}.size-dist.png",
+        f"{OUT_DIR}/{{sample}}.call.{{mode}}.{{filt}}.size-dist-log.png",
     resources:
         mem_mb=256000,
         runtime=2880,
     shell:
-        "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{wildcards.sample}.call.sites.all"
-        " --mode sites --filter all --title '{REF} Call ({wildcards.sample})'"
-        " && Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{wildcards.sample}.call.sites.pass"
-        " --mode sites --filter pass --title '{REF} Call ({wildcards.sample})'"
-        " && Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{wildcards.sample}.call.variants.all"
-        " --mode variants --filter all --title '{REF} Call ({wildcards.sample})'"
-        " && Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{wildcards.sample}.call.variants.pass"
-        " --mode variants --filter pass --title '{REF} Call ({wildcards.sample})'"
+        "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{wildcards.sample}.call.{wildcards.mode}.{wildcards.filt}"
+        " --mode sites --filter {wildcards.filt} --title '{REF} Call ({wildcards.sample})'"
 
 rule dv_stats:
-    """Per-sample DeepVariant VCF → variant stats + plots"""
+    """Per-sample DeepVariant VCF → variant stats + plots (one mode/filter combo)"""
     input:
-        f"{OUT_DIR}/{{sample}}.deepvariant.vcf.gz",
+        lambda wc: f"{OUT_DIR}/{wc.sample}.deepvariant.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/{wc.sample}.deepvariant.vcf.gz",
     output:
-        f"{OUT_DIR}/{{sample}}.dv.sites.all.vcf-stats.tsv",
-        f"{OUT_DIR}/{{sample}}.dv.sites.all.variant-types.png",
-        f"{OUT_DIR}/{{sample}}.dv.sites.all.size-dist.png",
-        f"{OUT_DIR}/{{sample}}.dv.sites.all.size-dist-log.png",
-        f"{OUT_DIR}/{{sample}}.dv.sites.pass.vcf-stats.tsv",
-        f"{OUT_DIR}/{{sample}}.dv.sites.pass.variant-types.png",
-        f"{OUT_DIR}/{{sample}}.dv.sites.pass.size-dist.png",
-        f"{OUT_DIR}/{{sample}}.dv.sites.pass.size-dist-log.png",
-        f"{OUT_DIR}/{{sample}}.dv.variants.all.vcf-stats.tsv",
-        f"{OUT_DIR}/{{sample}}.dv.variants.all.variant-types.png",
-        f"{OUT_DIR}/{{sample}}.dv.variants.all.size-dist.png",
-        f"{OUT_DIR}/{{sample}}.dv.variants.all.size-dist-log.png",
-        f"{OUT_DIR}/{{sample}}.dv.variants.pass.vcf-stats.tsv",
-        f"{OUT_DIR}/{{sample}}.dv.variants.pass.variant-types.png",
-        f"{OUT_DIR}/{{sample}}.dv.variants.pass.size-dist.png",
-        f"{OUT_DIR}/{{sample}}.dv.variants.pass.size-dist-log.png",
+        f"{OUT_DIR}/{{sample}}.dv.{{mode}}.{{filt}}.vcf-stats.tsv",
+        f"{OUT_DIR}/{{sample}}.dv.{{mode}}.{{filt}}.variant-types.png",
+        f"{OUT_DIR}/{{sample}}.dv.{{mode}}.{{filt}}.size-dist.png",
+        f"{OUT_DIR}/{{sample}}.dv.{{mode}}.{{filt}}.size-dist-log.png",
     resources:
         mem_mb=256000,
         runtime=2880,
     shell:
-        "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{wildcards.sample}.dv.sites.all"
-        " --mode sites --filter all --title '{REF} DeepVariant ({wildcards.sample})'"
-        " && Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{wildcards.sample}.dv.sites.pass"
-        " --mode sites --filter pass --title '{REF} DeepVariant ({wildcards.sample})'"
-        " && Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{wildcards.sample}.dv.variants.all"
-        " --mode variants --filter all --title '{REF} DeepVariant ({wildcards.sample})'"
-        " && Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{wildcards.sample}.dv.variants.pass"
-        " --mode variants --filter pass --title '{REF} DeepVariant ({wildcards.sample})'"
+        "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{wildcards.sample}.dv.{wildcards.mode}.{wildcards.filt}"
+        " --mode sites --filter {wildcards.filt} --title '{REF} DeepVariant ({wildcards.sample})'"
 
 rule merged_call_stats:
-    """Merged call VCF → variant stats + plots (includes AF spectrum)"""
+    """Merged call VCF → variant stats + plots (one mode/filter combo, includes AF spectrum)"""
     input:
-        f"{OUT_DIR}/merged.call.vcf.gz",
+        lambda wc: f"{OUT_DIR}/merged.call.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.call.vcf.gz",
     output:
-        f"{OUT_DIR}/merged.call.sites.all.vcf-stats.tsv",
-        f"{OUT_DIR}/merged.call.sites.all.variant-types.png",
-        f"{OUT_DIR}/merged.call.sites.all.size-dist.png",
-        f"{OUT_DIR}/merged.call.sites.all.size-dist-log.png",
-        f"{OUT_DIR}/merged.call.sites.all.af-spectrum.png",
-        f"{OUT_DIR}/merged.call.sites.pass.vcf-stats.tsv",
-        f"{OUT_DIR}/merged.call.sites.pass.variant-types.png",
-        f"{OUT_DIR}/merged.call.sites.pass.size-dist.png",
-        f"{OUT_DIR}/merged.call.sites.pass.size-dist-log.png",
-        f"{OUT_DIR}/merged.call.sites.pass.af-spectrum.png",
-        f"{OUT_DIR}/merged.call.variants.all.vcf-stats.tsv",
-        f"{OUT_DIR}/merged.call.variants.all.variant-types.png",
-        f"{OUT_DIR}/merged.call.variants.all.size-dist.png",
-        f"{OUT_DIR}/merged.call.variants.all.size-dist-log.png",
-        f"{OUT_DIR}/merged.call.variants.all.af-spectrum.png",
-        f"{OUT_DIR}/merged.call.variants.pass.vcf-stats.tsv",
-        f"{OUT_DIR}/merged.call.variants.pass.variant-types.png",
-        f"{OUT_DIR}/merged.call.variants.pass.size-dist.png",
-        f"{OUT_DIR}/merged.call.variants.pass.size-dist-log.png",
-        f"{OUT_DIR}/merged.call.variants.pass.af-spectrum.png",
+        f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.vcf-stats.tsv",
+        f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.variant-types.png",
+        f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.size-dist.png",
+        f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.size-dist-log.png",
+        f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.af-spectrum.png",
     resources:
         mem_mb=256000,
         runtime=2880,
     shell:
-        "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/merged.call.sites.all"
-        " --mode sites --filter all --title '{REF} Merged Call'"
-        " && Rscript scripts/vcf-stats.R {input} {OUT_DIR}/merged.call.sites.pass"
-        " --mode sites --filter pass --title '{REF} Merged Call'"
-        " && Rscript scripts/vcf-stats.R {input} {OUT_DIR}/merged.call.variants.all"
-        " --mode variants --filter all --title '{REF} Merged Call'"
-        " && Rscript scripts/vcf-stats.R {input} {OUT_DIR}/merged.call.variants.pass"
-        " --mode variants --filter pass --title '{REF} Merged Call'"
+        "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/merged.call.{wildcards.mode}.{wildcards.filt}"
+        " --mode sites --filter {wildcards.filt} --title '{REF} Merged Call'"
 
 rule merged_dv_stats:
-    """Merged DeepVariant VCF → variant stats + plots (includes AF spectrum)"""
+    """Merged DeepVariant VCF → variant stats + plots (one mode/filter combo, includes AF spectrum)"""
     input:
-        f"{OUT_DIR}/merged.deepvariant.vcf.gz",
+        lambda wc: f"{OUT_DIR}/merged.deepvariant.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.deepvariant.vcf.gz",
     output:
-        f"{OUT_DIR}/merged.dv.sites.all.vcf-stats.tsv",
-        f"{OUT_DIR}/merged.dv.sites.all.variant-types.png",
-        f"{OUT_DIR}/merged.dv.sites.all.size-dist.png",
-        f"{OUT_DIR}/merged.dv.sites.all.size-dist-log.png",
-        f"{OUT_DIR}/merged.dv.sites.all.af-spectrum.png",
-        f"{OUT_DIR}/merged.dv.sites.pass.vcf-stats.tsv",
-        f"{OUT_DIR}/merged.dv.sites.pass.variant-types.png",
-        f"{OUT_DIR}/merged.dv.sites.pass.size-dist.png",
-        f"{OUT_DIR}/merged.dv.sites.pass.size-dist-log.png",
-        f"{OUT_DIR}/merged.dv.sites.pass.af-spectrum.png",
-        f"{OUT_DIR}/merged.dv.variants.all.vcf-stats.tsv",
-        f"{OUT_DIR}/merged.dv.variants.all.variant-types.png",
-        f"{OUT_DIR}/merged.dv.variants.all.size-dist.png",
-        f"{OUT_DIR}/merged.dv.variants.all.size-dist-log.png",
-        f"{OUT_DIR}/merged.dv.variants.all.af-spectrum.png",
-        f"{OUT_DIR}/merged.dv.variants.pass.vcf-stats.tsv",
-        f"{OUT_DIR}/merged.dv.variants.pass.variant-types.png",
-        f"{OUT_DIR}/merged.dv.variants.pass.size-dist.png",
-        f"{OUT_DIR}/merged.dv.variants.pass.size-dist-log.png",
-        f"{OUT_DIR}/merged.dv.variants.pass.af-spectrum.png",
+        f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.vcf-stats.tsv",
+        f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.variant-types.png",
+        f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.size-dist.png",
+        f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.size-dist-log.png",
+        f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.af-spectrum.png",
     resources:
         mem_mb=256000,
         runtime=2880,
     shell:
-        "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/merged.dv.sites.all"
-        " --mode sites --filter all --title '{REF} Merged DeepVariant'"
-        " && Rscript scripts/vcf-stats.R {input} {OUT_DIR}/merged.dv.sites.pass"
-        " --mode sites --filter pass --title '{REF} Merged DeepVariant'"
-        " && Rscript scripts/vcf-stats.R {input} {OUT_DIR}/merged.dv.variants.all"
-        " --mode variants --filter all --title '{REF} Merged DeepVariant'"
-        " && Rscript scripts/vcf-stats.R {input} {OUT_DIR}/merged.dv.variants.pass"
-        " --mode variants --filter pass --title '{REF} Merged DeepVariant'"
+        "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/merged.dv.{wildcards.mode}.{wildcards.filt}"
+        " --mode sites --filter {wildcards.filt} --title '{REF} Merged DeepVariant'"

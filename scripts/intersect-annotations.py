@@ -657,15 +657,23 @@ def main(command_line=None):
             if gc is not None:
                 # Grouped annotation: per-class merge done at download time,
                 # use annotation file directly for per-class intersection.
-                # Create class-agnostic merge for _total rows only.
-                # File is already globally sorted from download-time merge,
-                # so skip re-sorting (avoids sorting the full 160GB RM file).
+                # Need class-agnostic merge for _total rows.
                 merged_annot_files.append(annot_file)
-                total_tmp = tempfile.NamedTemporaryFile(suffix='.bed', delete=False)
-                total_tmp.close()
-                merge_annotation_bed(annot_file, total_tmp.name, presorted=True)
-                total_annot_files.append(total_tmp.name)
-                temp_files.append(total_tmp.name)
+                # Check for pre-computed class-agnostic merged BED (avoids
+                # re-reading the full annotation file at runtime).
+                precomputed = os.path.splitext(annot_file)[0] + '.total.bed'
+                if os.path.isfile(precomputed):
+                    sys.stderr.write(f"  Using pre-computed merged BED: {precomputed}\n")
+                    total_annot_files.append(precomputed)
+                else:
+                    # Fall back to runtime merge (slow for large files like RM).
+                    # File is already globally sorted from download-time merge,
+                    # so skip re-sorting.
+                    total_tmp = tempfile.NamedTemporaryFile(suffix='.bed', delete=False)
+                    total_tmp.close()
+                    merge_annotation_bed(annot_file, total_tmp.name, presorted=True)
+                    total_annot_files.append(total_tmp.name)
+                    temp_files.append(total_tmp.name)
             else:
                 # Ungrouped annotation: merge overlapping intervals
                 merged_tmp = tempfile.NamedTemporaryFile(suffix='.bed', delete=False)
