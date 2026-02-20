@@ -4,7 +4,9 @@
 #
 # Usage: Rscript scripts/vcf-stats.R <input.vcf.gz> <output_prefix>
 #          [--title TITLE] [--mode sites|variants] [--filter all|pass]
-#          [--af-step SIZE]  (AF rounding step for spectrum plot; default 0.1)
+#          [--af-step SIZE]       (AF rounding step for spectrum plot; default 0.1)
+#          [--annot-beds F1,F2]   (comma-separated augref-space annotation BED paths)
+#          [--annot-names N1,N2]  (comma-separated display names, same order)
 #
 # Modes:
 #   sites    — (default) read VCF as-is; multi-allelic sites classified by largest allele
@@ -13,9 +15,11 @@
 # Outputs:
 #   {prefix}.vcf-stats.tsv      — summary table
 #   {prefix}.variant-types.png  — grouped bar chart of variant types
-#   {prefix}.size-dist.png      — indel/SV size distribution (two-panel: indels + SVs)
+#   {prefix}.size-dist.png      — indel/SV size distribution (two-panel)
 #   {prefix}.size-dist-log.png  — same as above with log y-axis
 #   {prefix}.af-spectrum.png    — allele frequency histogram (only when AF present)
+#   {prefix}.variant-types-by-annot.png — variant types faceted by annotation (when --annot-beds)
+#   {prefix}.vcf-stats-by-annot.tsv     — annotation × variant type counts (when --annot-beds)
 
 suppressPackageStartupMessages({
   library(data.table)
@@ -38,6 +42,8 @@ title   <- NULL
 mode    <- "sites"
 filter  <- "all"
 af_step <- 0.1
+annot_beds     <- NULL
+annot_names_arg <- NULL
 
 i <- 3
 while (i <= length(args)) {
@@ -52,6 +58,12 @@ while (i <= length(args)) {
     i <- i + 2
   } else if (args[i] == "--af-step" && i + 1 <= length(args)) {
     af_step <- as.numeric(args[i + 1])
+    i <- i + 2
+  } else if (args[i] == "--annot-beds" && i + 1 <= length(args)) {
+    annot_beds <- args[i + 1]
+    i <- i + 2
+  } else if (args[i] == "--annot-names" && i + 1 <= length(args)) {
+    annot_names_arg <- args[i + 1]
     i <- i + 2
   } else {
     i <- i + 1
@@ -127,18 +139,35 @@ if (nrow(dt) == 0) {
 # ---------------------------------------------------------------------------
 dt[, ref_len := nchar(REF)]
 
-# Compute max size across comma-separated ALT alleles
-dt[, size := sapply(seq_len(.N), function(i) {
-  alts <- unlist(strsplit(ALT[i], ","))
-  max(abs(nchar(alts) - ref_len[i]))
-})]
+# Compute max size and direction across comma-separated ALT alleles.
+# Fast path: biallelic (no comma in ALT) — the vast majority of rows.
+is_multi <- grepl(",", dt$ALT, fixed = TRUE)
+dt[, size_signed := 0L]
+dt[(!is_multi), size_signed := nchar(ALT) - ref_len]
+dt[, size := abs(size_signed)]
+
+# Slow path: multi-allelic only (typically <5% of rows)
+multi_idx <- which(is_multi)
+if (length(multi_idx) > 0) {
+  dt[multi_idx, c("size", "size_signed") := {
+    res <- sapply(seq_len(.N), function(i) {
+      alts <- unlist(strsplit(ALT[i], ","))
+      diffs <- nchar(alts) - ref_len[i]
+      idx <- which.max(abs(diffs))
+      c(abs(diffs[idx]), diffs[idx])
+    })
+    list(res[1,], res[2,])
+  }]
+}
 
 # NA size can arise from unusual ALT fields (e.g., '*' spanning deletions)
 dt[, variant_type := fifelse(
   is.na(size), "Other",
   fifelse(size == 0L & ref_len == 1L, "SNP",
   fifelse(size == 0L, "MNP",
-  fifelse(size < 50L, "Indel", "SV")))
+  fifelse(size < 50L & size_signed > 0L, "Insertion",
+  fifelse(size < 50L, "Deletion",
+  fifelse(size_signed > 0L, "SV Insertion", "SV Deletion")))))
 )]
 
 # On-ref vs off-ref
@@ -158,10 +187,19 @@ dt[variant_type == "SNP" & !grepl(",", ALT), tstv := {
 if (has_af) {
   # Ensure AF_str is character (fread may auto-detect as numeric after norm -m-)
   if (!is.character(dt$AF_str)) dt[, AF_str := as.character(AF_str)]
-  dt[, nonref_af := sapply(AF_str, function(x) {
-    vals <- as.numeric(unlist(strsplit(x, ",")))
-    min(sum(vals, na.rm = TRUE), 1.0)
-  })]
+  # Fast path: single AF value (biallelic, no comma) — vast majority
+  # Pre-filter "." to avoid millions of as.numeric() warnings
+  is_multi_af <- grepl(",", dt$AF_str, fixed = TRUE)
+  is_valid_af <- !is_multi_af & dt$AF_str != "."
+  dt[, nonref_af := NA_real_]
+  dt[(is_valid_af), nonref_af := pmin(as.numeric(AF_str), 1.0)]
+  # Slow path: multi-allelic AF (sum comma-separated values)
+  if (any(is_multi_af)) {
+    dt[is_multi_af, nonref_af := sapply(AF_str, function(x) {
+      vals <- as.numeric(unlist(strsplit(x, ",")))
+      min(sum(vals, na.rm = TRUE), 1.0)
+    })]
+  }
   dt[, AF_str := NULL]
 }
 
@@ -235,7 +273,8 @@ if (nrow(tstv_dt) > 0) {
 }
 
 # Order variant types (drop empty levels)
-plot_dt[, variant_type := factor(variant_type, levels = intersect(c("SNP", "MNP", "Indel", "SV", "Other"), unique(variant_type)))]
+type_levels <- c("SNP", "MNP", "Insertion", "Deletion", "SV Insertion", "SV Deletion", "Other")
+plot_dt[, variant_type := factor(variant_type, levels = intersect(type_levels, unique(variant_type)))]
 
 p1 <- ggplot(plot_dt, aes(x = variant_type, y = count, fill = ref_context)) +
   geom_col(position = "dodge", width = 0.7) +
@@ -258,20 +297,23 @@ p1 <- ggplot(plot_dt, aes(x = variant_type, y = count, fill = ref_context)) +
 save_png(p1, paste0(prefix, ".variant-types.png"))
 
 # ---------------------------------------------------------------------------
-# Plot 2: Size distribution — two-panel (Indels 1-49 bp / SVs 50-1000 bp)
+# Plot 2: Size distribution — two-panel (Small 1-49 bp / Structural 50-1000 bp)
 # ---------------------------------------------------------------------------
-size_dt <- dt[variant_type %in% c("Indel", "SV") & size > 0]
+size_dt <- dt[variant_type %in% c("Insertion", "Deletion", "SV Insertion", "SV Deletion") & size > 0]
 
 if (nrow(size_dt) > 0) {
-  size_dt[, panel := fifelse(size < 50L, "Indels (1-49 bp)", "SVs (50-1000 bp)")]
-  size_dt[, panel := factor(panel, levels = c("Indels (1-49 bp)", "SVs (50-1000 bp)"))]
-  size_counts <- size_dt[size <= 1000, .(count = .N), by = .(size, ref_context, panel)]
+  size_dt[, direction := fifelse(size_signed > 0L, "Insertion", "Deletion")]
+  size_dt[, panel := fifelse(size < 50L, "Small (1-49 bp)", "Structural (50-1000 bp)")]
+  size_dt[, panel := factor(panel, levels = c("Small (1-49 bp)", "Structural (50-1000 bp)"))]
+  size_counts <- size_dt[size <= 1000, .(count = .N), by = .(size, direction, ref_context, panel)]
 
-  p2 <- ggplot(size_counts, aes(x = size, y = count, color = ref_context)) +
+  p2 <- ggplot(size_counts, aes(x = size, y = count, color = direction, linetype = ref_context)) +
     geom_line(linewidth = 0.6) +
     facet_wrap(~panel, scales = "free") +
-    scale_color_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
-                       name = NULL) +
+    scale_color_manual(values = c("Insertion" = "coral", "Deletion" = "steelblue"),
+                       name = "Direction") +
+    scale_linetype_manual(values = c("On-reference" = "solid", "Off-reference" = "dashed"),
+                          name = "Context") +
     scale_y_continuous(labels = scales::comma, expand = expansion(mult = c(0, 0.1))) +
     labs(title = title, subtitle = paste0("Indel / SV Size Distribution ", mode_label, filter_label),
          x = "Size (bp)", y = "Count") +
@@ -346,6 +388,97 @@ if (has_af) {
   cat("No AF field; skipping allele frequency spectrum plot.\n")
   # Create empty file so Snakemake sees the output
   file.create(paste0(prefix, ".af-spectrum.png"))
+}
+
+# ---------------------------------------------------------------------------
+# Plot 4: Annotation-stratified variant type counts (when --annot provided)
+# ---------------------------------------------------------------------------
+if (!is.null(annot_beds)) {
+  bed_files <- strsplit(annot_beds, ",")[[1]]
+  anames   <- strsplit(annot_names_arg, ",")[[1]]
+
+  cat("Annotating variants from", length(bed_files), "augref BED files (bedtools)\n")
+
+  # Check bedtools is available
+  if (system("bedtools --version >/dev/null 2>&1") != 0) {
+    stop("bedtools is required for --annot-beds but is not found in PATH")
+  }
+
+  # Write variant positions as sorted BED for bedtools intersect -sorted.
+  # This avoids loading annotation BEDs into R memory entirely.
+  tmp_unsorted <- tempfile(fileext = ".bed")
+  fwrite(dt[, .(CHROM, POS - 1L, POS - 1L + ref_len)],
+         tmp_unsorted, sep = "\t", col.names = FALSE)
+  tmp_bed <- tempfile(fileext = ".sorted.bed")
+  system(sprintf("LC_ALL=C sort -k1,1 -k2,2n '%s' > '%s'", tmp_unsorted, tmp_bed))
+  unlink(tmp_unsorted)
+
+  # For each annotation: bedtools intersect → hit positions → flag in dt
+  dt[, bed_start := POS - 1L]
+  setkey(dt, CHROM, bed_start)
+  for (k in seq_along(bed_files)) {
+    cat("  bedtools intersect:", anames[k], "\n")
+    hit_col <- paste0(anames[k], "_hit")
+    cmd <- sprintf(
+      "bedtools intersect -a '%s' -b '%s' -u -sorted 2>/dev/null",
+      tmp_bed, bed_files[k]
+    )
+    hits <- tryCatch(
+      fread(cmd = cmd, select = 1:2, col.names = c("CHROM", "bed_start"), header = FALSE),
+      error = function(e) data.table(CHROM = character(0), bed_start = integer(0)),
+      warning = function(w) data.table(CHROM = character(0), bed_start = integer(0))
+    )
+    set(dt, j = hit_col, value = FALSE)
+    if (nrow(hits) > 0) {
+      hits <- unique(hits)
+      dt[hits, (hit_col) := TRUE, on = .(CHROM, bed_start)]
+    }
+  }
+  dt[, bed_start := NULL]
+  unlink(tmp_bed)
+
+  # Accumulate annotation counts per annotation (avoids melt on full table)
+  ann_counts_list <- vector("list", length(anames))
+  for (k in seq_along(anames)) {
+    col <- paste0(anames[k], "_hit")
+    sub_counts <- dt[get(col) == TRUE, .(count = .N), by = .(variant_type, ref_context)]
+    if (nrow(sub_counts) > 0) sub_counts[, annotation := anames[k]]
+    ann_counts_list[[k]] <- sub_counts
+  }
+  ann_counts <- rbindlist(ann_counts_list, use.names = TRUE, fill = TRUE)
+
+  if (nrow(ann_counts) > 0) {
+    ann_counts[, variant_type := factor(variant_type, levels = type_levels)]
+
+    p_annot <- ggplot(ann_counts, aes(x = variant_type, y = count, fill = ref_context)) +
+      geom_col(position = "dodge", width = 0.7) +
+      facet_wrap(~annotation, scales = "free_y") +
+      scale_fill_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
+                        name = NULL) +
+      scale_y_continuous(labels = scales::comma) +
+      labs(title = title, subtitle = "Variant Types by Annotation Region") +
+      theme_minimal() +
+      theme(
+        plot.title = element_text(hjust = 0.5, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5),
+        panel.background = element_rect(fill = "white", color = NA),
+        plot.background  = element_rect(fill = "white", color = NA)
+      ) +
+      coord_flip()
+
+    save_png(p_annot, paste0(prefix, ".variant-types-by-annot.png"), width = 12, height = 8)
+
+    # Write annotation-stratified summary TSV
+    setorder(ann_counts, annotation, ref_context, variant_type)
+    fwrite(ann_counts, paste0(prefix, ".vcf-stats-by-annot.tsv"), sep = "\t")
+    cat("Wrote annotation-stratified stats:", paste0(prefix, ".vcf-stats-by-annot.tsv"), "\n")
+  } else {
+    cat("No variants in annotated regions; creating empty annotation plot.\n")
+    file.create(paste0(prefix, ".variant-types-by-annot.png"))
+    fwrite(data.table(annotation = character(), ref_context = character(),
+                      variant_type = character(), count = integer()),
+           paste0(prefix, ".vcf-stats-by-annot.tsv"), sep = "\t")
+  }
 }
 
 cat("Done.\n")

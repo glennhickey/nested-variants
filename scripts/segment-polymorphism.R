@@ -63,16 +63,14 @@ cat(sprintf("  %d alt segments in header\n", nrow(contigs)))
 
 # ---------------------------------------------------------------------------
 # 2. Read off-ref variants from VCF (streaming via bcftools query)
+#    Filter to off-ref contigs (*_NNN_alt) in the bcftools pipe so only
+#    matching rows enter R — avoids loading the full VCF into memory.
 # ---------------------------------------------------------------------------
-cat("Reading variants from VCF...\n")
+cat("Reading off-ref variants from VCF...\n")
 cmd <- sprintf(
-  "bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT\\t%%INFO/AF\\t%%INFO/NS\\t%%INFO/AN\\n' '%s'",
+  "bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT\\t%%INFO/AF\\t%%INFO/NS\\t%%INFO/AN\\n' '%s' | awk -F'\\t' '$1 ~ /_[0-9]+_alt$/'",
   vcf_file)
 dt <- fread(cmd = cmd, col.names = c("CHROM", "POS", "REF", "ALT", "AF_str", "NS", "AN"))
-cat(sprintf("  %d total variants\n", nrow(dt)))
-
-# Keep only off-ref (alt segment) variants
-dt <- dt[grepl("_[0-9]+_alt$", CHROM)]
 dt[, short_name := sub(paste0("^", augref_prefix), "", CHROM)]
 cat(sprintf("  %d off-ref variants\n", nrow(dt)))
 
@@ -87,9 +85,15 @@ dt[, af := as.numeric(sub(",.*", "", AF_str))]
 # Polymorphic = AF >= 5% and AF <= 95% (present in some but not all haplotypes)
 dt[, polymorphic := af >= 0.05 & af <= 0.95]
 
-# Variant type
-dt[, var_type := fifelse(nchar(REF) == 1 & nchar(ALT) == 1, "SNP",
-                  fifelse(abs(nchar(ALT) - nchar(REF)) < 50, "Indel", "SV"))]
+# Variant type — use first ALT allele to avoid counting commas in multi-allelic ALTs
+dt[, first_alt := sub(",.*", "", ALT)]
+dt[, var_size := nchar(first_alt) - nchar(REF)]
+dt[, var_type := fifelse(nchar(REF) == 1 & nchar(first_alt) == 1, "SNP",
+                  fifelse(var_size == 0L, "MNP",
+                  fifelse(abs(var_size) < 50 & var_size > 0, "Insertion",
+                  fifelse(abs(var_size) < 50, "Deletion",
+                  fifelse(var_size > 0, "SV_Insertion", "SV_Deletion")))))]
+dt[, first_alt := NULL]
 
 # Ts/Tv for SNPs
 transitions <- c("AG", "GA", "CT", "TC")
@@ -103,8 +107,11 @@ seg_stats <- dt[, .(
   total_variants       = .N,
   polymorphic_variants = sum(polymorphic),
   snp_count            = sum(var_type == "SNP"),
-  indel_count          = sum(var_type == "Indel"),
-  sv_count             = sum(var_type == "SV"),
+  mnp_count            = sum(var_type == "MNP"),
+  ins_count            = sum(var_type == "Insertion"),
+  del_count            = sum(var_type == "Deletion"),
+  sv_ins_count         = sum(var_type == "SV_Insertion"),
+  sv_del_count         = sum(var_type == "SV_Deletion"),
   mean_af              = round(mean(af, na.rm = TRUE), 4),
   mean_ns              = round(mean(NS, na.rm = TRUE), 1),
   snp_ts               = sum(tstv == "Ts", na.rm = TRUE),
@@ -121,7 +128,8 @@ master <- merge(contigs, seg_stats, by = "short_name", all.x = TRUE)
 
 # Zero-fill segments with no variants
 count_cols <- c("total_variants", "polymorphic_variants", "snp_count",
-                "indel_count", "sv_count", "snp_ts", "snp_tv")
+                "mnp_count", "ins_count", "del_count", "sv_ins_count",
+                "sv_del_count", "snp_ts", "snp_tv")
 for (col in count_cols) master[is.na(get(col)), (col) := 0]
 
 master[, variant_density_per_kb := round(total_variants / (segment_length / 1000), 2)]

@@ -40,6 +40,11 @@ UCSC_HS1_CENSAT = 'https://hgdownload.soe.ucsc.edu/gbdb/hs1/censat/censat.bb'
 PCLAI_ASM_IDX_URL = 'https://raw.githubusercontent.com/human-pangenomics/hprc_intermediate_assembly/refs/heads/main/data_tables/annotation/pclai/pclai_v0.1_asm_coord_local_hprc_r2_v1.0.index.csv'
 PCLAI_CHM13_IDX_URL = 'https://raw.githubusercontent.com/human-pangenomics/hprc_intermediate_assembly/refs/heads/main/data_tables/annotation/pclai/pclai_v0.1_chm13_coord_local_hprc_r2_v1.0.index.csv'
 
+# GIAB genome stratification BED URLs (difficult regions)
+GIAB_STRAT_BASE = 'https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/genome-stratifications/v3.6'
+GIAB_HG38_DIFFICULT = f'{GIAB_STRAT_BASE}/GRCh38@all/Union/GRCh38_alldifficultregions.bed.gz'
+GIAB_CHM13_DIFFICULT = f'{GIAB_STRAT_BASE}/CHM13@all/Union/CHM13_alldifficultregions.bed.gz'
+
 # Super-population centroids in PCLAI PCA space (from ai-sandbox/hprc-pclai reference metadata)
 SUPERPOP_CENTROIDS = {
     'AFR': (-1.7428, 0.2066),
@@ -497,6 +502,8 @@ def main(command_line=None):
                         help='Skip downloading CenSat (centromeric satellite) annotations')
     parser.add_argument('--skip-pclai', action='store_true',
                         help='Skip downloading PCLAI (local ancestry) annotations')
+    parser.add_argument('--skip-giab', action='store_true',
+                        help='Skip downloading GIAB difficult regions stratification')
     parser.add_argument('--test', action='store_true',
                         help='Test mode: download only one HPRC sample (both haplotypes)')
 
@@ -700,6 +707,38 @@ def main(command_line=None):
             tmp_total = total_path + '.tmp'
             run(f"cut -f1-3 '{current}' | bedtools merge > '{tmp_total}'", shell=True)
             os.rename(tmp_total, total_path)
+
+    # GIAB difficult regions (reference-only, no HPRC assembly-level data)
+    if not options.skip_giab:
+        sys.stderr.write('\nDownloading GIAB stratification BEDs...\n')
+        giab_path = os.path.join(options.output_dir, 'hprc-v2-giab-difficult.bed')
+        if not os.path.isfile(giab_path):
+            giab_parts = []
+            # Download GRCh38 (respects --skip-grch38)
+            if not options.skip_grch38:
+                hg38_raw = download_ucsc_file(GIAB_HG38_DIFFICULT, options.output_dir)
+                hg38_giab = os.path.join(options.output_dir, 'grch38-giab-difficult.bed')
+                run(f"zcat '{hg38_raw}' | cut -f1-3 | bedtools sort | bedtools merge > '{hg38_giab}'", shell=True)
+                giab_parts.append(('GRCh38#0#', hg38_giab))
+                intermediates += [hg38_raw, hg38_giab]
+            # Download CHM13 (respects --skip-chm13)
+            if not options.skip_chm13:
+                chm13_raw = download_ucsc_file(GIAB_CHM13_DIFFICULT, options.output_dir)
+                chm13_giab = os.path.join(options.output_dir, 'chm13-giab-difficult.bed')
+                run(f"zcat '{chm13_raw}' | cut -f1-3 | bedtools sort | bedtools merge > '{chm13_giab}'", shell=True)
+                giab_parts.append(('CHM13#0#', chm13_giab))
+                intermediates += [chm13_raw, chm13_giab]
+            # Prefix and concatenate
+            first = True
+            for prefix, bed in giab_parts:
+                redirect = '>' if first else '>>'
+                run(f"awk -v p='{prefix}' 'BEGIN{{OFS=\"\\t\"}} {{$1=p$1; print}}' '{bed}'"
+                    f" {redirect} '{giab_path}'", shell=True)
+                first = False
+            if not giab_parts:
+                # Both references skipped — create empty file
+                open(giab_path, 'w').close()
+        sys.stderr.write(f'  GIAB difficult regions: {giab_path}\n')
 
     # Clean up intermediate files
     for path in intermediates:

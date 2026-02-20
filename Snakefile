@@ -66,12 +66,12 @@ def decon_opts():
 # Annotation helpers
 def annotation_inputs():
     """Return list of configured annotation BED files."""
-    return [config[k] for k in ["annot_genes", "annot_repeats", "annot_segdups", "annot_censat", "annot_pclai"] if config.get(k, "")]
+    return [config[k] for k in ["annot_genes", "annot_repeats", "annot_segdups", "annot_censat", "annot_pclai", "annot_giab"] if config.get(k, "")]
 
 def annotation_names():
     """Return clean display names for configured annotations."""
     names = []
-    for k, name in [("annot_genes", "genes"), ("annot_repeats", "repeats"), ("annot_segdups", "segdups"), ("annot_censat", "censat"), ("annot_pclai", "pclai")]:
+    for k, name in [("annot_genes", "genes"), ("annot_repeats", "repeats"), ("annot_segdups", "segdups"), ("annot_censat", "censat"), ("annot_pclai", "pclai"), ("annot_giab", "giab")]:
         if config.get(k, ""):
             names.append(name)
     return names
@@ -132,6 +132,43 @@ def annotation_snp_outputs(callers=None):
                     outputs.append(f"{OUT_DIR}/merged.deepvariant.{plot}.{filt}.png")
     return outputs
 
+def annotation_stats_outputs(callers=None):
+    """Return annotation-stratified VCF stats outputs when annotations are configured.
+
+    callers: list of caller types to include, e.g. ["deconstruct"], ["call"],
+             ["deepvariant"], or None for all.
+    """
+    if not annotation_inputs():
+        return []
+    if callers is None:
+        callers = ["deconstruct", "call", "deepvariant"]
+    outputs = []
+    for suffix in ["variant-types-by-annot.png", "vcf-stats-by-annot.tsv"]:
+        if "deconstruct" in callers:
+            outputs.append(f"{OUT_DIR}/{OUT_NAME}.sites.{suffix}")
+            outputs.append(f"{OUT_DIR}/{OUT_NAME}.variants.{suffix}")
+        if "call" in callers:
+            for filt in ["all", "pass"]:
+                for s in SAMPLES:
+                    outputs.append(f"{OUT_DIR}/{s}.call.sites.{filt}.{suffix}")
+                    outputs.append(f"{OUT_DIR}/{s}.call.variants.{filt}.{suffix}")
+                outputs.append(f"{OUT_DIR}/merged.call.sites.{filt}.{suffix}")
+                outputs.append(f"{OUT_DIR}/merged.call.variants.{filt}.{suffix}")
+        if "deepvariant" in callers:
+            for filt in ["all", "pass"]:
+                for s in SAMPLES:
+                    outputs.append(f"{OUT_DIR}/{s}.dv.sites.{filt}.{suffix}")
+                    outputs.append(f"{OUT_DIR}/{s}.dv.variants.{filt}.{suffix}")
+                outputs.append(f"{OUT_DIR}/merged.dv.sites.{filt}.{suffix}")
+                outputs.append(f"{OUT_DIR}/merged.dv.variants.{filt}.{suffix}")
+    return outputs
+
+def augref_annot_beds():
+    """Return augref-space annotation BED files for configured annotations."""
+    if not annotation_inputs():
+        return []
+    return [f"{OUT_DIR}/{OUT_NAME}.augref-annot-{n}.bed" for n in annotation_names()]
+
 def polymorphism_outputs():
     """Return segment polymorphism table output."""
     return [f"{OUT_DIR}/{OUT_NAME}.segment-polymorphism.tsv"]
@@ -159,6 +196,7 @@ rule all:
         f"{OUT_DIR}/{OUT_NAME}.variants.af-spectrum.png",
         *annotation_outputs(),
         *annotation_snp_outputs(),
+        *annotation_stats_outputs(),
         *polymorphism_outputs(),
         # per-sample genotyping outputs
         expand("{out}/{s}.vcf.gz", out=OUT_DIR, s=SAMPLES),
@@ -246,6 +284,7 @@ rule graph_only:
         f"{OUT_DIR}/{OUT_NAME}.variants.af-spectrum.png",
         *annotation_outputs(),
         *annotation_snp_outputs(["deconstruct"]),
+        *annotation_stats_outputs(["deconstruct"]),
         *polymorphism_outputs(),
 
 rule genotype_all:
@@ -285,6 +324,7 @@ rule genotype_all:
         f"{OUT_DIR}/merged.call.variants.pass.size-dist-log.png",
         f"{OUT_DIR}/merged.call.variants.pass.af-spectrum.png",
         *annotation_snp_outputs(["call"]),
+        *annotation_stats_outputs(["call"]),
 
 rule deepvariant_all:
     """Run DeepVariant on all samples"""
@@ -300,6 +340,7 @@ rule deepvariant_all:
         expand("{out}/{s}.dv.variants.{filt}.size-dist.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.dv.variants.{filt}.size-dist-log.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         *annotation_snp_outputs(["deepvariant"]),
+        *annotation_stats_outputs(["deepvariant"]),
 
 # Resolve wildcard ambiguities:
 # - {OUT_NAME}.vcf.gz matches both deconstruct and call (sample={OUT_NAME})
@@ -483,6 +524,27 @@ rule annotation_intersect:
         " --output-dir {OUT_DIR}"
         " --annotation-names {params.names}"
         " {params.group_arg}"
+
+rule annotation_augref_beds:
+    """Per-segment annotation TSV + annotation BEDs → augref-space BEDs"""
+    input:
+        seg_annot=f"{OUT_DIR}/{OUT_NAME}.annot-per-segment.tsv",
+        annots=annotation_inputs(),
+    output:
+        augref_annot_beds(),
+    resources:
+        mem_mb=32000,
+        runtime=120,
+    params:
+        beds=lambda wc, input: ",".join(input.annots),
+        names=",".join(annotation_names()),
+    shell:
+        "python scripts/make-augref-annotation-beds.py"
+        " --per-segment-tsv {input.seg_annot}"
+        " --annotation-beds {params.beds}"
+        " --annotation-names {params.names}"
+        " --ref {REF} --min-overlap 0.5"
+        " --output-dir {OUT_DIR} --output-prefix {OUT_NAME}"
 
 rule annotation_plots:
     """Per-segment annotation TSV → overlap plots + stats"""
@@ -777,99 +839,153 @@ rule merged_dv_plots:
 rule deconstruct_sites_stats:
     """Deconstruct VCF → site-level stats + plots (includes AF spectrum)"""
     input:
-        f"{OUT_DIR}/{OUT_NAME}.vcf.gz",
+        vcf=f"{OUT_DIR}/{OUT_NAME}.vcf.gz",
+        annot_beds=augref_annot_beds(),
     output:
         f"{OUT_DIR}/{OUT_NAME}.sites.vcf-stats.tsv",
         f"{OUT_DIR}/{OUT_NAME}.sites.variant-types.png",
         f"{OUT_DIR}/{OUT_NAME}.sites.size-dist.png",
         f"{OUT_DIR}/{OUT_NAME}.sites.size-dist-log.png",
         f"{OUT_DIR}/{OUT_NAME}.sites.af-spectrum.png",
+        *([ f"{OUT_DIR}/{OUT_NAME}.sites.variant-types-by-annot.png",
+            f"{OUT_DIR}/{OUT_NAME}.sites.vcf-stats-by-annot.tsv"]
+          if annotation_inputs() else []),
     resources:
         mem_mb=256000,
         runtime=2880,
+    params:
+        annot_arg=lambda wc, input: (
+            f"--annot-beds {','.join(input.annot_beds)} --annot-names {','.join(annotation_names())}"
+            if annotation_inputs() else ""),
     shell:
-        "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{OUT_NAME}.sites"
+        "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{OUT_NAME}.sites"
         " --mode sites --af-step 0.05 --title '{REF} Deconstruct'"
+        " {params.annot_arg}"
 
 rule deconstruct_variants_stats:
     """Deconstruct VCF → variant-level stats + plots (uses pre-normed VCF)"""
     input:
-        f"{OUT_DIR}/{OUT_NAME}.normed.vcf.gz",
+        vcf=f"{OUT_DIR}/{OUT_NAME}.normed.vcf.gz",
+        annot_beds=augref_annot_beds(),
     output:
         f"{OUT_DIR}/{OUT_NAME}.variants.vcf-stats.tsv",
         f"{OUT_DIR}/{OUT_NAME}.variants.variant-types.png",
         f"{OUT_DIR}/{OUT_NAME}.variants.size-dist.png",
         f"{OUT_DIR}/{OUT_NAME}.variants.size-dist-log.png",
         f"{OUT_DIR}/{OUT_NAME}.variants.af-spectrum.png",
+        *([ f"{OUT_DIR}/{OUT_NAME}.variants.variant-types-by-annot.png",
+            f"{OUT_DIR}/{OUT_NAME}.variants.vcf-stats-by-annot.tsv"]
+          if annotation_inputs() else []),
     resources:
         mem_mb=256000,
         runtime=2880,
+    params:
+        annot_arg=lambda wc, input: (
+            f"--annot-beds {','.join(input.annot_beds)} --annot-names {','.join(annotation_names())}"
+            if annotation_inputs() else ""),
     shell:
-        "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{OUT_NAME}.variants"
+        "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{OUT_NAME}.variants"
         " --mode variants --af-step 0.05 --title '{REF} Deconstruct'"
+        " {params.annot_arg}"
 
 rule call_stats:
     """Per-sample call VCF → variant stats + plots (one mode/filter combo)"""
     input:
-        lambda wc: f"{OUT_DIR}/{wc.sample}.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/{wc.sample}.vcf.gz",
+        vcf=lambda wc: f"{OUT_DIR}/{wc.sample}.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/{wc.sample}.vcf.gz",
+        annot_beds=augref_annot_beds(),
     output:
         f"{OUT_DIR}/{{sample}}.call.{{mode}}.{{filt}}.vcf-stats.tsv",
         f"{OUT_DIR}/{{sample}}.call.{{mode}}.{{filt}}.variant-types.png",
         f"{OUT_DIR}/{{sample}}.call.{{mode}}.{{filt}}.size-dist.png",
         f"{OUT_DIR}/{{sample}}.call.{{mode}}.{{filt}}.size-dist-log.png",
+        *([ f"{OUT_DIR}/{{sample}}.call.{{mode}}.{{filt}}.variant-types-by-annot.png",
+            f"{OUT_DIR}/{{sample}}.call.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv"]
+          if annotation_inputs() else []),
     resources:
         mem_mb=256000,
         runtime=2880,
+    params:
+        annot_arg=lambda wc, input: (
+            f"--annot-beds {','.join(input.annot_beds)} --annot-names {','.join(annotation_names())}"
+            if annotation_inputs() else ""),
     shell:
-        "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{wildcards.sample}.call.{wildcards.mode}.{wildcards.filt}"
+        "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{wildcards.sample}.call.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Call ({wildcards.sample})'"
+        " {params.annot_arg}"
 
 rule dv_stats:
     """Per-sample DeepVariant VCF → variant stats + plots (one mode/filter combo)"""
     input:
-        lambda wc: f"{OUT_DIR}/{wc.sample}.deepvariant.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/{wc.sample}.deepvariant.vcf.gz",
+        vcf=lambda wc: f"{OUT_DIR}/{wc.sample}.deepvariant.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/{wc.sample}.deepvariant.vcf.gz",
+        annot_beds=augref_annot_beds(),
     output:
         f"{OUT_DIR}/{{sample}}.dv.{{mode}}.{{filt}}.vcf-stats.tsv",
         f"{OUT_DIR}/{{sample}}.dv.{{mode}}.{{filt}}.variant-types.png",
         f"{OUT_DIR}/{{sample}}.dv.{{mode}}.{{filt}}.size-dist.png",
         f"{OUT_DIR}/{{sample}}.dv.{{mode}}.{{filt}}.size-dist-log.png",
+        *([ f"{OUT_DIR}/{{sample}}.dv.{{mode}}.{{filt}}.variant-types-by-annot.png",
+            f"{OUT_DIR}/{{sample}}.dv.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv"]
+          if annotation_inputs() else []),
     resources:
         mem_mb=256000,
         runtime=2880,
+    params:
+        annot_arg=lambda wc, input: (
+            f"--annot-beds {','.join(input.annot_beds)} --annot-names {','.join(annotation_names())}"
+            if annotation_inputs() else ""),
     shell:
-        "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{wildcards.sample}.dv.{wildcards.mode}.{wildcards.filt}"
+        "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{wildcards.sample}.dv.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} DeepVariant ({wildcards.sample})'"
+        " {params.annot_arg}"
 
 rule merged_call_stats:
     """Merged call VCF → variant stats + plots (one mode/filter combo, includes AF spectrum)"""
     input:
-        lambda wc: f"{OUT_DIR}/merged.call.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.call.vcf.gz",
+        vcf=lambda wc: f"{OUT_DIR}/merged.call.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.call.vcf.gz",
+        annot_beds=augref_annot_beds(),
     output:
         f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.vcf-stats.tsv",
         f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.variant-types.png",
         f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.size-dist.png",
         f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.size-dist-log.png",
         f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.af-spectrum.png",
+        *([ f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.variant-types-by-annot.png",
+            f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv"]
+          if annotation_inputs() else []),
     resources:
         mem_mb=256000,
         runtime=2880,
+    params:
+        annot_arg=lambda wc, input: (
+            f"--annot-beds {','.join(input.annot_beds)} --annot-names {','.join(annotation_names())}"
+            if annotation_inputs() else ""),
     shell:
-        "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/merged.call.{wildcards.mode}.{wildcards.filt}"
+        "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.call.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged Call'"
+        " {params.annot_arg}"
 
 rule merged_dv_stats:
     """Merged DeepVariant VCF → variant stats + plots (one mode/filter combo, includes AF spectrum)"""
     input:
-        lambda wc: f"{OUT_DIR}/merged.deepvariant.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.deepvariant.vcf.gz",
+        vcf=lambda wc: f"{OUT_DIR}/merged.deepvariant.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.deepvariant.vcf.gz",
+        annot_beds=augref_annot_beds(),
     output:
         f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.vcf-stats.tsv",
         f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.variant-types.png",
         f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.size-dist.png",
         f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.size-dist-log.png",
         f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.af-spectrum.png",
+        *([ f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.variant-types-by-annot.png",
+            f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv"]
+          if annotation_inputs() else []),
     resources:
         mem_mb=256000,
         runtime=2880,
+    params:
+        annot_arg=lambda wc, input: (
+            f"--annot-beds {','.join(input.annot_beds)} --annot-names {','.join(annotation_names())}"
+            if annotation_inputs() else ""),
     shell:
-        "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/merged.dv.{wildcards.mode}.{wildcards.filt}"
+        "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.dv.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged DeepVariant'"
+        " {params.annot_arg}"
