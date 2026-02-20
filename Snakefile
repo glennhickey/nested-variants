@@ -806,7 +806,7 @@ rule deconstruct_variants_stats:
         runtime=2880,
     shell:
         "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{OUT_NAME}.variants"
-        " --mode sites --af-step 0.05 --title '{REF} Deconstruct'"
+        " --mode variants --af-step 0.05 --title '{REF} Deconstruct'"
 
 rule call_stats:
     """Per-sample call VCF → variant stats + plots (one mode/filter combo)"""
@@ -822,7 +822,7 @@ rule call_stats:
         runtime=2880,
     shell:
         "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{wildcards.sample}.call.{wildcards.mode}.{wildcards.filt}"
-        " --mode sites --filter {wildcards.filt} --title '{REF} Call ({wildcards.sample})'"
+        " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Call ({wildcards.sample})'"
 
 rule dv_stats:
     """Per-sample DeepVariant VCF → variant stats + plots (one mode/filter combo)"""
@@ -838,7 +838,7 @@ rule dv_stats:
         runtime=2880,
     shell:
         "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{wildcards.sample}.dv.{wildcards.mode}.{wildcards.filt}"
-        " --mode sites --filter {wildcards.filt} --title '{REF} DeepVariant ({wildcards.sample})'"
+        " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} DeepVariant ({wildcards.sample})'"
 
 rule merged_call_stats:
     """Merged call VCF → variant stats + plots (one mode/filter combo, includes AF spectrum)"""
@@ -855,7 +855,7 @@ rule merged_call_stats:
         runtime=2880,
     shell:
         "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/merged.call.{wildcards.mode}.{wildcards.filt}"
-        " --mode sites --filter {wildcards.filt} --title '{REF} Merged Call'"
+        " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged Call'"
 
 rule merged_dv_stats:
     """Merged DeepVariant VCF → variant stats + plots (one mode/filter combo, includes AF spectrum)"""
@@ -872,4 +872,4 @@ rule merged_dv_stats:
         runtime=2880,
     shell:
         "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/merged.dv.{wildcards.mode}.{wildcards.filt}"
-        " --mode sites --filter {wildcards.filt} --title '{REF} Merged DeepVariant'"
+        " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged DeepVariant'"
