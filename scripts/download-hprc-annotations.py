@@ -608,7 +608,9 @@ def main(command_line=None):
         total_path = os.path.splitext(current)[0] + '.total.bed'
         if not os.path.isfile(total_path):
             sys.stderr.write(f'  Pre-computing class-agnostic merged RM BED: {total_path}\n')
-            run(f"cut -f1-3 '{current}' | bedtools merge > '{total_path}'", shell=True)
+            tmp_total = total_path + '.tmp'
+            run(f"cut -f1-3 '{current}' | bedtools merge > '{tmp_total}'", shell=True)
+            os.rename(tmp_total, total_path)
 
     # Segmental duplications
     if not options.skip_sd:
@@ -695,7 +697,9 @@ def main(command_line=None):
         total_path = os.path.splitext(current)[0] + '.total.bed'
         if not os.path.isfile(total_path):
             sys.stderr.write(f'  Pre-computing class-agnostic merged PCLAI BED: {total_path}\n')
-            run(f"cut -f1-3 '{current}' | bedtools merge > '{total_path}'", shell=True)
+            tmp_total = total_path + '.tmp'
+            run(f"cut -f1-3 '{current}' | bedtools merge > '{tmp_total}'", shell=True)
+            os.rename(tmp_total, total_path)
 
     # Clean up intermediate files
     for path in intermediates:
