@@ -52,7 +52,7 @@ samples: {}
 # Priority: {rule}_cpus > cpus > built-in default
 # cpus: 8               # global CPU override for all rules
 # mem_gb: 200           # global memory (GB) override for all rules
-runtime_min: 960        # 16 hours
+runtime_min: 2880       # 48 hours
 partition: long
 
 # Per-rule resource overrides (uncomment to customize)

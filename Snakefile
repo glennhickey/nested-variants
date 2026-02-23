@@ -49,7 +49,7 @@ def rule_cpus(rule_name, default):
 def rule_mem_gb(rule_name, default):
     return config.get(f"{rule_name}_mem_gb", config.get("mem_gb", default))
 
-def rule_runtime(rule_name, default=960):
+def rule_runtime(rule_name, default=2880):
     return config.get(f"{rule_name}_runtime_min", config.get("runtime_min", default))
 
 # Build deconstruct-specific option flags
@@ -565,11 +565,12 @@ rule norm_vcf:
         "{prefix}.vcf.gz",
     output:
         "{prefix}.normed.vcf.gz",
+    threads: 4
     resources:
-        mem_mb=32000,
+        mem_mb=128000,
         runtime=2880,
     shell:
-        "bcftools norm -m- '{input}' -Oz -o {output} 2>/dev/null"
+        "bcftools norm -m- --threads {threads} '{input}' -Oz -o {output} 2>/dev/null"
         " && tabix -p vcf {output}"
 
 rule biallelic_snps:
