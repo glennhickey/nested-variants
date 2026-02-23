@@ -44,6 +44,10 @@ PCLAI_CHM13_IDX_URL = 'https://raw.githubusercontent.com/human-pangenomics/hprc_
 GIAB_STRAT_BASE = 'https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/genome-stratifications/v3.6'
 GIAB_HG38_DIFFICULT = f'{GIAB_STRAT_BASE}/GRCh38@all/Union/GRCh38_alldifficultregions.bed.gz'
 GIAB_CHM13_DIFFICULT = f'{GIAB_STRAT_BASE}/CHM13@all/Union/CHM13_alldifficultregions.bed.gz'
+GIAB_HG38_NOTDIFFICULT  = f'{GIAB_STRAT_BASE}/GRCh38@all/Union/GRCh38_notinalldifficultregions.bed.gz'
+GIAB_CHM13_NOTDIFFICULT = f'{GIAB_STRAT_BASE}/CHM13@all/Union/CHM13_notinalldifficultregions.bed.gz'
+GIAB_HG38_LOWMAP_SEGDUP  = f'{GIAB_STRAT_BASE}/GRCh38@all/Union/GRCh38_alllowmapandsegdupregions.bed.gz'
+GIAB_CHM13_LOWMAP_SEGDUP = f'{GIAB_STRAT_BASE}/CHM13@all/Union/CHM13_alllowmapandsegdupregions.bed.gz'
 
 # Super-population centroids in PCLAI PCA space (from ai-sandbox/hprc-pclai reference metadata)
 SUPERPOP_CENTROIDS = {
@@ -708,37 +712,86 @@ def main(command_line=None):
             run(f"cut -f1-3 '{current}' | bedtools merge > '{tmp_total}'", shell=True)
             os.rename(tmp_total, total_path)
 
-    # GIAB difficult regions (reference-only, no HPRC assembly-level data)
+    # GIAB genome stratification (reference-only, no HPRC assembly-level data)
+    # Produces 4 output files:
+    #   hprc-v2-giab-difficult.bed      (all difficult regions — backward compat)
+    #   hprc-v2-giab-easy.bed           (not in all difficult regions)
+    #   hprc-v2-giab-segdup.bed         (low-map + segmental duplications)
+    #   hprc-v2-giab-otherdifficult.bed (difficult minus lowmap/segdup)
     if not options.skip_giab:
         sys.stderr.write('\nDownloading GIAB stratification BEDs...\n')
-        giab_path = os.path.join(options.output_dir, 'hprc-v2-giab-difficult.bed')
-        if not os.path.isfile(giab_path):
-            giab_parts = []
-            # Download GRCh38 (respects --skip-grch38)
-            if not options.skip_grch38:
-                hg38_raw = download_ucsc_file(GIAB_HG38_DIFFICULT, options.output_dir)
-                hg38_giab = os.path.join(options.output_dir, 'grch38-giab-difficult.bed')
-                run(f"zcat '{hg38_raw}' | cut -f1-3 | bedtools sort | bedtools merge > '{hg38_giab}'", shell=True)
-                giab_parts.append(('GRCh38#0#', hg38_giab))
-                intermediates += [hg38_raw, hg38_giab]
-            # Download CHM13 (respects --skip-chm13)
-            if not options.skip_chm13:
-                chm13_raw = download_ucsc_file(GIAB_CHM13_DIFFICULT, options.output_dir)
-                chm13_giab = os.path.join(options.output_dir, 'chm13-giab-difficult.bed')
-                run(f"zcat '{chm13_raw}' | cut -f1-3 | bedtools sort | bedtools merge > '{chm13_giab}'", shell=True)
-                giab_parts.append(('CHM13#0#', chm13_giab))
-                intermediates += [chm13_raw, chm13_giab]
-            # Prefix and concatenate
-            first = True
-            for prefix, bed in giab_parts:
-                redirect = '>' if first else '>>'
-                run(f"awk -v p='{prefix}' 'BEGIN{{OFS=\"\\t\"}} {{$1=p$1; print}}' '{bed}'"
-                    f" {redirect} '{giab_path}'", shell=True)
-                first = False
-            if not giab_parts:
-                # Both references skipped — create empty file
-                open(giab_path, 'w').close()
-        sys.stderr.write(f'  GIAB difficult regions: {giab_path}\n')
+        giab_difficult_path = os.path.join(options.output_dir, 'hprc-v2-giab-difficult.bed')
+        giab_easy_path = os.path.join(options.output_dir, 'hprc-v2-giab-easy.bed')
+        giab_segdup_path = os.path.join(options.output_dir, 'hprc-v2-giab-segdup.bed')
+        giab_otherdifficult_path = os.path.join(options.output_dir, 'hprc-v2-giab-otherdifficult.bed')
+        giab_outputs = [giab_difficult_path, giab_easy_path, giab_segdup_path, giab_otherdifficult_path]
+
+        if all(os.path.isfile(p) for p in giab_outputs):
+            sys.stderr.write('  All GIAB partition BEDs exist, skipping\n')
+        else:
+            # Collect per-reference prefixed BED parts
+            difficult_parts = []
+            easy_parts = []
+            segdup_parts = []
+
+            for skip_flag, prefix, urls in [
+                (options.skip_grch38, 'GRCh38#0#',
+                 (GIAB_HG38_DIFFICULT, GIAB_HG38_NOTDIFFICULT, GIAB_HG38_LOWMAP_SEGDUP)),
+                (options.skip_chm13, 'CHM13#0#',
+                 (GIAB_CHM13_DIFFICULT, GIAB_CHM13_NOTDIFFICULT, GIAB_CHM13_LOWMAP_SEGDUP)),
+            ]:
+                if skip_flag:
+                    continue
+                url_diff, url_easy, url_segdup = urls
+                ref_label = prefix.replace('#0#', '')
+
+                # Download source BEDs
+                raw_diff = download_ucsc_file(url_diff, options.output_dir)
+                raw_easy = download_ucsc_file(url_easy, options.output_dir)
+                raw_segdup = download_ucsc_file(url_segdup, options.output_dir)
+
+                # Process each: zcat | cut -f1-3 | bedtools sort | bedtools merge
+                ref_diff = os.path.join(options.output_dir, f'{ref_label.lower()}-giab-difficult.bed')
+                ref_easy = os.path.join(options.output_dir, f'{ref_label.lower()}-giab-easy.bed')
+                ref_segdup = os.path.join(options.output_dir, f'{ref_label.lower()}-giab-segdup.bed')
+
+                for raw, out in [(raw_diff, ref_diff), (raw_easy, ref_easy), (raw_segdup, ref_segdup)]:
+                    run(f"zcat '{raw}' | cut -f1-3 | bedtools sort | bedtools merge > '{out}'", shell=True)
+
+                difficult_parts.append((prefix, ref_diff))
+                easy_parts.append((prefix, ref_easy))
+                segdup_parts.append((prefix, ref_segdup))
+                intermediates += [raw_diff, raw_easy, raw_segdup, ref_diff, ref_easy, ref_segdup]
+
+            # Helper: prefix contigs and concatenate parts into output file
+            def concat_prefixed(parts, out_path):
+                first = True
+                for pfx, bed in parts:
+                    redirect = '>' if first else '>>'
+                    run(f"awk -v p='{pfx}' 'BEGIN{{OFS=\"\\t\"}} {{$1=p$1; print}}' '{bed}'"
+                        f" {redirect} '{out_path}'", shell=True)
+                    first = False
+                if not parts:
+                    open(out_path, 'w').close()
+
+            concat_prefixed(difficult_parts, giab_difficult_path)
+            concat_prefixed(easy_parts, giab_easy_path)
+            concat_prefixed(segdup_parts, giab_segdup_path)
+
+            # Other difficult = difficult minus lowmap/segdup (per reference, then concatenate)
+            otherdifficult_parts = []
+            for (pfx_d, bed_d), (pfx_s, bed_s) in zip(difficult_parts, segdup_parts):
+                ref_label = pfx_d.replace('#0#', '').lower()
+                ref_other = os.path.join(options.output_dir, f'{ref_label}-giab-otherdifficult.bed')
+                run(f"bedtools subtract -a '{bed_d}' -b '{bed_s}' > '{ref_other}'", shell=True)
+                otherdifficult_parts.append((pfx_d, ref_other))
+                intermediates.append(ref_other)
+            concat_prefixed(otherdifficult_parts, giab_otherdifficult_path)
+
+        sys.stderr.write(f'  GIAB difficult regions: {giab_difficult_path}\n')
+        sys.stderr.write(f'  GIAB easy regions: {giab_easy_path}\n')
+        sys.stderr.write(f'  GIAB segdup regions: {giab_segdup_path}\n')
+        sys.stderr.write(f'  GIAB other difficult regions: {giab_otherdifficult_path}\n')
 
     # Clean up intermediate files
     for path in intermediates:

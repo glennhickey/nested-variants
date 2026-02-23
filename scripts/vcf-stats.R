@@ -44,6 +44,8 @@ filter  <- "all"
 af_step <- 0.1
 annot_beds     <- NULL
 annot_names_arg <- NULL
+giab_strat_beds_arg  <- NULL
+giab_strat_names_arg <- NULL
 
 i <- 3
 while (i <= length(args)) {
@@ -64,6 +66,12 @@ while (i <= length(args)) {
     i <- i + 2
   } else if (args[i] == "--annot-names" && i + 1 <= length(args)) {
     annot_names_arg <- args[i + 1]
+    i <- i + 2
+  } else if (args[i] == "--giab-strat-beds" && i + 1 <= length(args)) {
+    giab_strat_beds_arg <- args[i + 1]
+    i <- i + 2
+  } else if (args[i] == "--giab-strat-names" && i + 1 <= length(args)) {
+    giab_strat_names_arg <- args[i + 1]
     i <- i + 2
   } else {
     i <- i + 1
@@ -479,6 +487,90 @@ if (!is.null(annot_beds)) {
                       variant_type = character(), count = integer()),
            paste0(prefix, ".vcf-stats-by-annot.tsv"), sep = "\t")
   }
+}
+
+# ---------------------------------------------------------------------------
+# Plot 5: GIAB genome stratification (standalone, when --giab-strat-beds)
+# ---------------------------------------------------------------------------
+if (!is.null(giab_strat_beds_arg)) {
+  strat_files  <- strsplit(giab_strat_beds_arg, ",")[[1]]
+  strat_names  <- gsub("_", " ", strsplit(giab_strat_names_arg, ",")[[1]])
+
+  cat("GIAB stratification from", length(strat_files), "BEDs\n")
+
+  # Write variant BED
+  tmp_bed <- tempfile(fileext = ".sorted.bed")
+  tmp_unsorted_giab <- tempfile(fileext = ".bed")
+  fwrite(dt[, .(CHROM, POS - 1L, POS - 1L + ref_len)],
+         tmp_unsorted_giab, sep = "\t", col.names = FALSE)
+  system(sprintf("LC_ALL=C sort -k1,1 -k2,2n '%s' > '%s'", tmp_unsorted_giab, tmp_bed))
+  unlink(tmp_unsorted_giab)
+
+  # bedtools intersect each partition
+  dt[, giab_bed_start := POS - 1L]
+  setkey(dt, CHROM, giab_bed_start)
+  for (k in seq_along(strat_files)) {
+    col <- paste0("giab_", k)
+    cmd <- sprintf("bedtools intersect -a '%s' -b '%s' -u -sorted 2>/dev/null",
+                   tmp_bed, strat_files[k])
+    hits <- tryCatch(
+      fread(cmd = cmd, select = 1:2, col.names = c("CHROM", "giab_bed_start"), header = FALSE),
+      error = function(e) data.table(CHROM = character(0), giab_bed_start = integer(0)),
+      warning = function(w) data.table(CHROM = character(0), giab_bed_start = integer(0))
+    )
+    set(dt, j = col, value = FALSE)
+    if (nrow(hits) > 0) {
+      hits <- unique(hits)
+      dt[hits, (col) := TRUE, on = .(CHROM, giab_bed_start)]
+    }
+  }
+  dt[, giab_bed_start := NULL]
+  unlink(tmp_bed)
+
+  # Classify each variant into exactly one category (priority: first hit wins)
+  # Off-ref variants get "Off-reference" since GIAB BEDs are reference-only
+  dt[, giab_region := "Unclassified"]
+  dt[ref_context == "Off-reference", giab_region := "Off-reference"]
+  for (k in rev(seq_along(strat_names))) {
+    col <- paste0("giab_", k)
+    dt[get(col) == TRUE, giab_region := strat_names[k]]
+  }
+
+  # Summary table
+  giab_counts <- dt[, .(count = .N), by = .(variant_type, giab_region)]
+  giab_counts[, variant_type := factor(variant_type, levels = type_levels)]
+  region_levels <- c(strat_names, "Off-reference")
+  giab_counts[, giab_region := factor(giab_region, levels = region_levels)]
+
+  # Standalone grouped bar chart
+  region_colors <- c("Easy" = "forestgreen", "Segdup" = "firebrick",
+                     "Other Difficult" = "darkorange", "Off-reference" = "steelblue")
+  p_giab <- ggplot(giab_counts[giab_region != "Unclassified"],
+                   aes(x = variant_type, y = count, fill = giab_region)) +
+    geom_col(position = "dodge", width = 0.7) +
+    scale_fill_manual(values = region_colors, name = "GIAB Region") +
+    scale_y_continuous(labels = scales::comma) +
+    labs(title = title,
+         subtitle = paste0("GIAB Genome Stratification ", mode_label, filter_label),
+         x = "Variant Type", y = "Count") +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(hjust = 0.5, face = "bold"),
+      plot.subtitle = element_text(hjust = 0.5),
+      panel.background = element_rect(fill = "white", color = NA),
+      plot.background  = element_rect(fill = "white", color = NA)
+    )
+
+  save_png(p_giab, paste0(prefix, ".giab-strat.png"), width = 10, height = 6)
+
+  # Write TSV
+  setorder(giab_counts, giab_region, variant_type)
+  fwrite(giab_counts, paste0(prefix, ".giab-strat.tsv"), sep = "\t")
+  cat("Wrote GIAB strat:", paste0(prefix, ".giab-strat.tsv"), "\n")
+
+  # Clean up columns
+  for (k in seq_along(strat_names)) set(dt, j = paste0("giab_", k), value = NULL)
+  dt[, giab_region := NULL]
 }
 
 cat("Done.\n")

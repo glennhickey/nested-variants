@@ -66,12 +66,12 @@ def decon_opts():
 # Annotation helpers
 def annotation_inputs():
     """Return list of configured annotation BED files."""
-    return [config[k] for k in ["annot_genes", "annot_repeats", "annot_segdups", "annot_censat", "annot_pclai", "annot_giab"] if config.get(k, "")]
+    return [config[k] for k in ["annot_genes", "annot_repeats", "annot_segdups", "annot_censat", "annot_pclai"] if config.get(k, "")]
 
 def annotation_names():
     """Return clean display names for configured annotations."""
     names = []
-    for k, name in [("annot_genes", "genes"), ("annot_repeats", "repeats"), ("annot_segdups", "segdups"), ("annot_censat", "censat"), ("annot_pclai", "pclai"), ("annot_giab", "giab")]:
+    for k, name in [("annot_genes", "genes"), ("annot_repeats", "repeats"), ("annot_segdups", "segdups"), ("annot_censat", "censat"), ("annot_pclai", "pclai")]:
         if config.get(k, ""):
             names.append(name)
     return names
@@ -173,6 +173,53 @@ def polymorphism_outputs():
     """Return segment polymorphism table output."""
     return [f"{OUT_DIR}/{OUT_NAME}.segment-polymorphism.tsv"]
 
+# GIAB genome stratification helpers
+GIAB_STRAT_NAMES = ["easy", "segdup", "otherdifficult"]
+GIAB_STRAT_DISPLAY = ["Easy", "Segdup", "Other_Difficult"]
+
+def giab_strat_configured():
+    return bool(config.get("giab_strat", ""))
+
+def giab_strat_beds():
+    """Return the 3 source GIAB partition BED paths from config prefix."""
+    prefix = config.get("giab_strat", "")
+    if not prefix:
+        return []
+    return [f"{prefix}-{n}.bed" for n in GIAB_STRAT_NAMES]
+
+def augref_giab_strat_beds():
+    """Return 3 augref-space GIAB partition BED paths (output of giab_strat_augref rule)."""
+    if not giab_strat_configured():
+        return []
+    return [f"{OUT_DIR}/{OUT_NAME}.augref-giab-{n}.bed" for n in GIAB_STRAT_NAMES]
+
+def giab_strat_stats_outputs(callers=None):
+    """Return GIAB strat plot/TSV outputs for each stats rule when configured."""
+    if not giab_strat_configured():
+        return []
+    if callers is None:
+        callers = ["deconstruct", "call", "deepvariant"]
+    outputs = []
+    for suffix in ["giab-strat.png", "giab-strat.tsv"]:
+        if "deconstruct" in callers:
+            outputs.append(f"{OUT_DIR}/{OUT_NAME}.sites.{suffix}")
+            outputs.append(f"{OUT_DIR}/{OUT_NAME}.variants.{suffix}")
+        if "call" in callers:
+            for filt in ["all", "pass"]:
+                for s in SAMPLES:
+                    outputs.append(f"{OUT_DIR}/{s}.call.sites.{filt}.{suffix}")
+                    outputs.append(f"{OUT_DIR}/{s}.call.variants.{filt}.{suffix}")
+                outputs.append(f"{OUT_DIR}/merged.call.sites.{filt}.{suffix}")
+                outputs.append(f"{OUT_DIR}/merged.call.variants.{filt}.{suffix}")
+        if "deepvariant" in callers:
+            for filt in ["all", "pass"]:
+                for s in SAMPLES:
+                    outputs.append(f"{OUT_DIR}/{s}.dv.sites.{filt}.{suffix}")
+                    outputs.append(f"{OUT_DIR}/{s}.dv.variants.{filt}.{suffix}")
+                outputs.append(f"{OUT_DIR}/merged.dv.sites.{filt}.{suffix}")
+                outputs.append(f"{OUT_DIR}/merged.dv.variants.{filt}.{suffix}")
+    return outputs
+
 ############################################################################
 # Target rules
 ############################################################################
@@ -197,6 +244,7 @@ rule all:
         *annotation_outputs(),
         *annotation_snp_outputs(),
         *annotation_stats_outputs(),
+        *giab_strat_stats_outputs(),
         *polymorphism_outputs(),
         # per-sample genotyping outputs
         expand("{out}/{s}.vcf.gz", out=OUT_DIR, s=SAMPLES),
@@ -285,6 +333,7 @@ rule graph_only:
         *annotation_outputs(),
         *annotation_snp_outputs(["deconstruct"]),
         *annotation_stats_outputs(["deconstruct"]),
+        *giab_strat_stats_outputs(["deconstruct"]),
         *polymorphism_outputs(),
 
 rule genotype_all:
@@ -325,6 +374,7 @@ rule genotype_all:
         f"{OUT_DIR}/merged.call.variants.pass.af-spectrum.png",
         *annotation_snp_outputs(["call"]),
         *annotation_stats_outputs(["call"]),
+        *giab_strat_stats_outputs(["call"]),
 
 rule deepvariant_all:
     """Run DeepVariant on all samples"""
@@ -341,6 +391,7 @@ rule deepvariant_all:
         expand("{out}/{s}.dv.variants.{filt}.size-dist-log.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         *annotation_snp_outputs(["deepvariant"]),
         *annotation_stats_outputs(["deepvariant"]),
+        *giab_strat_stats_outputs(["deepvariant"]),
 
 # Resolve wildcard ambiguities:
 # - {OUT_NAME}.vcf.gz matches both deconstruct and call (sample={OUT_NAME})
@@ -545,6 +596,25 @@ rule annotation_augref_beds:
         " --annotation-names {params.names}"
         " --ref {REF} --min-overlap 0.5"
         " --output-dir {OUT_DIR} --output-prefix {OUT_NAME}"
+
+rule giab_strat_augref:
+    """GIAB partition BEDs → augref-space BEDs (reference-only, add augref_ prefix)"""
+    input:
+        beds=giab_strat_beds(),
+    output:
+        augref_giab_strat_beds(),
+    params:
+        in_str=lambda wc, input: " ".join(input.beds),
+        out_str=lambda wc, output: " ".join(output),
+    shell:
+        r"""
+        IN=({params.in_str})
+        OUT=({params.out_str})
+        for i in "${{!IN[@]}}"; do
+            awk 'BEGIN{{OFS="\t"}} {{$1="augref_"$1; print}}' "${{IN[$i]}}" \
+              | LC_ALL=C sort -k1,1 -k2,2n > "${{OUT[$i]}}"
+        done
+        """
 
 rule annotation_plots:
     """Per-segment annotation TSV → overlap plots + stats"""
@@ -842,6 +912,7 @@ rule deconstruct_sites_stats:
     input:
         vcf=f"{OUT_DIR}/{OUT_NAME}.vcf.gz",
         annot_beds=augref_annot_beds(),
+        giab_beds=augref_giab_strat_beds(),
     output:
         f"{OUT_DIR}/{OUT_NAME}.sites.vcf-stats.tsv",
         f"{OUT_DIR}/{OUT_NAME}.sites.variant-types.png",
@@ -851,6 +922,9 @@ rule deconstruct_sites_stats:
         *([ f"{OUT_DIR}/{OUT_NAME}.sites.variant-types-by-annot.png",
             f"{OUT_DIR}/{OUT_NAME}.sites.vcf-stats-by-annot.tsv"]
           if annotation_inputs() else []),
+        *([ f"{OUT_DIR}/{OUT_NAME}.sites.giab-strat.png",
+            f"{OUT_DIR}/{OUT_NAME}.sites.giab-strat.tsv"]
+          if giab_strat_configured() else []),
     resources:
         mem_mb=256000,
         runtime=2880,
@@ -858,16 +932,21 @@ rule deconstruct_sites_stats:
         annot_arg=lambda wc, input: (
             f"--annot-beds {','.join(input.annot_beds)} --annot-names {','.join(annotation_names())}"
             if annotation_inputs() else ""),
+        giab_arg=lambda wc, input: (
+            f"--giab-strat-beds {','.join(input.giab_beds)}"
+            f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
+            if giab_strat_configured() else ""),
     shell:
         "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{OUT_NAME}.sites"
         " --mode sites --af-step 0.05 --title '{REF} Deconstruct'"
-        " {params.annot_arg}"
+        " {params.annot_arg} {params.giab_arg}"
 
 rule deconstruct_variants_stats:
     """Deconstruct VCF → variant-level stats + plots (uses pre-normed VCF)"""
     input:
         vcf=f"{OUT_DIR}/{OUT_NAME}.normed.vcf.gz",
         annot_beds=augref_annot_beds(),
+        giab_beds=augref_giab_strat_beds(),
     output:
         f"{OUT_DIR}/{OUT_NAME}.variants.vcf-stats.tsv",
         f"{OUT_DIR}/{OUT_NAME}.variants.variant-types.png",
@@ -877,6 +956,9 @@ rule deconstruct_variants_stats:
         *([ f"{OUT_DIR}/{OUT_NAME}.variants.variant-types-by-annot.png",
             f"{OUT_DIR}/{OUT_NAME}.variants.vcf-stats-by-annot.tsv"]
           if annotation_inputs() else []),
+        *([ f"{OUT_DIR}/{OUT_NAME}.variants.giab-strat.png",
+            f"{OUT_DIR}/{OUT_NAME}.variants.giab-strat.tsv"]
+          if giab_strat_configured() else []),
     resources:
         mem_mb=256000,
         runtime=2880,
@@ -884,16 +966,21 @@ rule deconstruct_variants_stats:
         annot_arg=lambda wc, input: (
             f"--annot-beds {','.join(input.annot_beds)} --annot-names {','.join(annotation_names())}"
             if annotation_inputs() else ""),
+        giab_arg=lambda wc, input: (
+            f"--giab-strat-beds {','.join(input.giab_beds)}"
+            f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
+            if giab_strat_configured() else ""),
     shell:
         "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{OUT_NAME}.variants"
         " --mode variants --af-step 0.05 --title '{REF} Deconstruct'"
-        " {params.annot_arg}"
+        " {params.annot_arg} {params.giab_arg}"
 
 rule call_stats:
     """Per-sample call VCF → variant stats + plots (one mode/filter combo)"""
     input:
         vcf=lambda wc: f"{OUT_DIR}/{wc.sample}.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/{wc.sample}.vcf.gz",
         annot_beds=augref_annot_beds(),
+        giab_beds=augref_giab_strat_beds(),
     output:
         f"{OUT_DIR}/{{sample}}.call.{{mode}}.{{filt}}.vcf-stats.tsv",
         f"{OUT_DIR}/{{sample}}.call.{{mode}}.{{filt}}.variant-types.png",
@@ -902,6 +989,9 @@ rule call_stats:
         *([ f"{OUT_DIR}/{{sample}}.call.{{mode}}.{{filt}}.variant-types-by-annot.png",
             f"{OUT_DIR}/{{sample}}.call.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv"]
           if annotation_inputs() else []),
+        *([ f"{OUT_DIR}/{{sample}}.call.{{mode}}.{{filt}}.giab-strat.png",
+            f"{OUT_DIR}/{{sample}}.call.{{mode}}.{{filt}}.giab-strat.tsv"]
+          if giab_strat_configured() else []),
     resources:
         mem_mb=256000,
         runtime=2880,
@@ -909,16 +999,21 @@ rule call_stats:
         annot_arg=lambda wc, input: (
             f"--annot-beds {','.join(input.annot_beds)} --annot-names {','.join(annotation_names())}"
             if annotation_inputs() else ""),
+        giab_arg=lambda wc, input: (
+            f"--giab-strat-beds {','.join(input.giab_beds)}"
+            f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
+            if giab_strat_configured() else ""),
     shell:
         "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{wildcards.sample}.call.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Call ({wildcards.sample})'"
-        " {params.annot_arg}"
+        " {params.annot_arg} {params.giab_arg}"
 
 rule dv_stats:
     """Per-sample DeepVariant VCF → variant stats + plots (one mode/filter combo)"""
     input:
         vcf=lambda wc: f"{OUT_DIR}/{wc.sample}.deepvariant.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/{wc.sample}.deepvariant.vcf.gz",
         annot_beds=augref_annot_beds(),
+        giab_beds=augref_giab_strat_beds(),
     output:
         f"{OUT_DIR}/{{sample}}.dv.{{mode}}.{{filt}}.vcf-stats.tsv",
         f"{OUT_DIR}/{{sample}}.dv.{{mode}}.{{filt}}.variant-types.png",
@@ -927,6 +1022,9 @@ rule dv_stats:
         *([ f"{OUT_DIR}/{{sample}}.dv.{{mode}}.{{filt}}.variant-types-by-annot.png",
             f"{OUT_DIR}/{{sample}}.dv.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv"]
           if annotation_inputs() else []),
+        *([ f"{OUT_DIR}/{{sample}}.dv.{{mode}}.{{filt}}.giab-strat.png",
+            f"{OUT_DIR}/{{sample}}.dv.{{mode}}.{{filt}}.giab-strat.tsv"]
+          if giab_strat_configured() else []),
     resources:
         mem_mb=256000,
         runtime=2880,
@@ -934,16 +1032,21 @@ rule dv_stats:
         annot_arg=lambda wc, input: (
             f"--annot-beds {','.join(input.annot_beds)} --annot-names {','.join(annotation_names())}"
             if annotation_inputs() else ""),
+        giab_arg=lambda wc, input: (
+            f"--giab-strat-beds {','.join(input.giab_beds)}"
+            f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
+            if giab_strat_configured() else ""),
     shell:
         "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{wildcards.sample}.dv.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} DeepVariant ({wildcards.sample})'"
-        " {params.annot_arg}"
+        " {params.annot_arg} {params.giab_arg}"
 
 rule merged_call_stats:
     """Merged call VCF → variant stats + plots (one mode/filter combo, includes AF spectrum)"""
     input:
         vcf=lambda wc: f"{OUT_DIR}/merged.call.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.call.vcf.gz",
         annot_beds=augref_annot_beds(),
+        giab_beds=augref_giab_strat_beds(),
     output:
         f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.vcf-stats.tsv",
         f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.variant-types.png",
@@ -953,6 +1056,9 @@ rule merged_call_stats:
         *([ f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.variant-types-by-annot.png",
             f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv"]
           if annotation_inputs() else []),
+        *([ f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.giab-strat.png",
+            f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.giab-strat.tsv"]
+          if giab_strat_configured() else []),
     resources:
         mem_mb=256000,
         runtime=2880,
@@ -960,16 +1066,21 @@ rule merged_call_stats:
         annot_arg=lambda wc, input: (
             f"--annot-beds {','.join(input.annot_beds)} --annot-names {','.join(annotation_names())}"
             if annotation_inputs() else ""),
+        giab_arg=lambda wc, input: (
+            f"--giab-strat-beds {','.join(input.giab_beds)}"
+            f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
+            if giab_strat_configured() else ""),
     shell:
         "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.call.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged Call'"
-        " {params.annot_arg}"
+        " {params.annot_arg} {params.giab_arg}"
 
 rule merged_dv_stats:
     """Merged DeepVariant VCF → variant stats + plots (one mode/filter combo, includes AF spectrum)"""
     input:
         vcf=lambda wc: f"{OUT_DIR}/merged.deepvariant.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.deepvariant.vcf.gz",
         annot_beds=augref_annot_beds(),
+        giab_beds=augref_giab_strat_beds(),
     output:
         f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.vcf-stats.tsv",
         f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.variant-types.png",
@@ -979,6 +1090,9 @@ rule merged_dv_stats:
         *([ f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.variant-types-by-annot.png",
             f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv"]
           if annotation_inputs() else []),
+        *([ f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.giab-strat.png",
+            f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.giab-strat.tsv"]
+          if giab_strat_configured() else []),
     resources:
         mem_mb=256000,
         runtime=2880,
@@ -986,7 +1100,11 @@ rule merged_dv_stats:
         annot_arg=lambda wc, input: (
             f"--annot-beds {','.join(input.annot_beds)} --annot-names {','.join(annotation_names())}"
             if annotation_inputs() else ""),
+        giab_arg=lambda wc, input: (
+            f"--giab-strat-beds {','.join(input.giab_beds)}"
+            f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
+            if giab_strat_configured() else ""),
     shell:
         "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.dv.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged DeepVariant'"
-        " {params.annot_arg}"
+        " {params.annot_arg} {params.giab_arg}"

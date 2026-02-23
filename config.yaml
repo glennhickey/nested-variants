@@ -29,7 +29,7 @@ annot_repeats: ""
 annot_segdups: ""
 annot_censat: ""
 annot_pclai: ""
-annot_giab: ""
+giab_strat: ""   # prefix for GIAB partition BEDs ({prefix}-easy.bed, -segdup.bed, -otherdifficult.bed)
 
 # Scale type for density plots: log1p, sqrt, log, identity
 scale_type: log1p
