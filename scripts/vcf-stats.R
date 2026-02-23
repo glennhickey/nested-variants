@@ -46,6 +46,8 @@ annot_beds     <- NULL
 annot_names_arg <- NULL
 giab_strat_beds_arg  <- NULL
 giab_strat_names_arg <- NULL
+per_sample <- FALSE
+ref_sample <- NULL
 
 i <- 3
 while (i <= length(args)) {
@@ -72,6 +74,12 @@ while (i <= length(args)) {
     i <- i + 2
   } else if (args[i] == "--giab-strat-names" && i + 1 <= length(args)) {
     giab_strat_names_arg <- args[i + 1]
+    i <- i + 2
+  } else if (args[i] == "--per-sample") {
+    per_sample <- TRUE
+    i <- i + 1
+  } else if (args[i] == "--ref-sample" && i + 1 <= length(args)) {
+    ref_sample <- args[i + 1]
     i <- i + 2
   } else {
     i <- i + 1
@@ -571,6 +579,335 @@ if (!is.null(giab_strat_beds_arg)) {
   # Clean up columns
   for (k in seq_along(strat_names)) set(dt, j = paste0("giab_", k), value = NULL)
   dt[, giab_region := NULL]
+}
+
+# ---------------------------------------------------------------------------
+# Per-sample variant stats (when --per-sample)
+# ---------------------------------------------------------------------------
+if (per_sample) {
+  cat("Per-sample mode enabled\n")
+
+  # 1. Read sample names
+  sample_cmd <- sprintf("bcftools query -l '%s' 2>/dev/null", vcf)
+  all_sample_names <- system(sample_cmd, intern = TRUE)
+  n_all_samples <- length(all_sample_names)
+  # Exclude reference sample from per-sample analysis (it always has 0 variants)
+  if (!is.null(ref_sample) && ref_sample %in% all_sample_names) {
+    sample_names <- setdiff(all_sample_names, ref_sample)
+    cat("Found", n_all_samples, "samples, excluding reference sample:", ref_sample, "\n")
+  } else {
+    sample_names <- all_sample_names
+  }
+  n_samples <- length(sample_names)
+  cat("Per-sample analysis on", n_samples, "samples:", paste(sample_names, collapse = ", "), "\n")
+
+  if (n_samples == 0) {
+    cat("No samples found in VCF; skipping per-sample stats.\n")
+    file.create(paste0(prefix, ".per-sample-types.png"))
+    fwrite(data.table(sample = character(), variant_type = character(),
+                      ref_context = character(), count = integer()),
+           paste0(prefix, ".per-sample-types.tsv"), sep = "\t")
+    if (!is.null(giab_strat_beds_arg)) {
+      file.create(paste0(prefix, ".per-sample-giab-strat.png"))
+      fwrite(data.table(sample = character(), variant_type = character(),
+                        ps_giab_region = character(), count = integer()),
+             paste0(prefix, ".per-sample-giab-strat.tsv"), sep = "\t")
+    }
+  } else {
+    # 2. Read per-sample GTs through same pipeline as site-level
+    #    (bcftools outputs all samples; we filter to non-ref samples after melting)
+    gt_cmd <- sprintf(
+      "%s | bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT[\\t%%GT]\\n' 2>/dev/null",
+      pipe_prefix
+    )
+    gt_cols <- c("CHROM", "POS", "REF", "ALT", paste0("GT_", seq_len(n_all_samples)))
+    gt_dt <- fread(cmd = gt_cmd, col.names = gt_cols)
+    cat("Read", nrow(gt_dt), "variant records with GTs\n")
+
+    if (nrow(gt_dt) > 0) {
+      # 3. Classify variants (same logic as site-level)
+      gt_dt[, ref_len := nchar(REF)]
+      is_multi_gt <- grepl(",", gt_dt$ALT, fixed = TRUE)
+      gt_dt[, size_signed := 0L]
+      gt_dt[(!is_multi_gt), size_signed := nchar(ALT) - ref_len]
+      gt_dt[, size := abs(size_signed)]
+      multi_idx_gt <- which(is_multi_gt)
+      if (length(multi_idx_gt) > 0) {
+        gt_dt[multi_idx_gt, c("size", "size_signed") := {
+          res <- sapply(seq_len(.N), function(i) {
+            alts <- unlist(strsplit(ALT[i], ","))
+            diffs <- nchar(alts) - ref_len[i]
+            idx <- which.max(abs(diffs))
+            c(abs(diffs[idx]), diffs[idx])
+          })
+          list(res[1,], res[2,])
+        }]
+      }
+      gt_dt[, variant_type := fifelse(
+        is.na(size), "Other",
+        fifelse(size == 0L & ref_len == 1L, "SNP",
+        fifelse(size == 0L, "MNP",
+        fifelse(size < 50L & size_signed > 0L, "Insertion",
+        fifelse(size < 50L, "Deletion",
+        fifelse(size_signed > 0L, "SV Insertion", "SV Deletion")))))
+      )]
+      gt_dt[, ref_context := fifelse(
+        grepl("_[0-9]+_alt$", CHROM), "Off-reference", "On-reference"
+      )]
+
+      # 4. Melt to long format: one row per (variant, sample)
+      gt_sample_cols <- paste0("GT_", seq_len(n_all_samples))
+      gt_long <- melt(gt_dt, id.vars = c("CHROM", "POS", "REF", "ALT", "variant_type", "ref_context"),
+                       measure.vars = gt_sample_cols,
+                       variable.name = "sample_idx", value.name = "GT")
+      # Map sample index to sample name (using all_sample_names for positional lookup)
+      gt_long[, sample := all_sample_names[as.integer(sub("GT_", "", sample_idx))]]
+      # Filter to non-ref samples and keep only carriers (any non-zero allele)
+      gt_long <- gt_long[sample %in% sample_names & grepl("[1-9]", GT)]
+      cat("Carrier genotype rows:", nrow(gt_long), "\n")
+
+      # 5. Per-sample counts
+      ps_counts <- gt_long[, .(count = .N), by = .(sample, variant_type, ref_context)]
+
+      # Ensure all sample × type × context combinations exist (fill with 0)
+      all_combos <- CJ(sample = sample_names,
+                        variant_type = unique(ps_counts$variant_type),
+                        ref_context = unique(ps_counts$ref_context))
+      ps_counts <- merge(all_combos, ps_counts,
+                          by = c("sample", "variant_type", "ref_context"), all.x = TRUE)
+      ps_counts[is.na(count), count := 0L]
+
+      # Summary stats across samples
+      ps_summary <- ps_counts[, .(mean_count = mean(count),
+                                   min_count = min(count),
+                                   max_count = max(count),
+                                   sd_count = sd(count)),
+                               by = .(variant_type, ref_context)]
+
+      # Write per-sample TSV
+      setorder(ps_counts, sample, ref_context, variant_type)
+      fwrite(ps_counts, paste0(prefix, ".per-sample-types.tsv"), sep = "\t")
+      cat("Wrote per-sample stats:", paste0(prefix, ".per-sample-types.tsv"), "\n")
+
+      # 6. Plot
+      ps_counts[, variant_type := factor(variant_type,
+        levels = intersect(type_levels, unique(variant_type)))]
+      ps_summary[, variant_type := factor(variant_type,
+        levels = intersect(type_levels, unique(variant_type)))]
+
+      if (n_samples <= 20) {
+        # Bar at mean + jittered dots + min/max error bars
+        p_ps <- ggplot() +
+          geom_col(data = ps_summary,
+                   aes(x = variant_type, y = mean_count, fill = ref_context),
+                   position = position_dodge(width = 0.7), width = 0.7, alpha = 0.6) +
+          geom_errorbar(data = ps_summary,
+                        aes(x = variant_type, ymin = min_count, ymax = max_count,
+                            group = ref_context),
+                        position = position_dodge(width = 0.7), width = 0.3) +
+          geom_point(data = ps_counts,
+                     aes(x = variant_type, y = count, color = ref_context),
+                     position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.7),
+                     size = 1.5, alpha = 0.8) +
+          scale_fill_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
+                            name = NULL) +
+          scale_color_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
+                             name = NULL) +
+          scale_y_continuous(labels = scales::comma) +
+          labs(title = title,
+               subtitle = paste0("Per-Sample Variant Counts ", mode_label, filter_label,
+                                 " (N=", n_samples, " samples, bars=mean)"),
+               x = "Variant Type", y = "Count") +
+          theme_minimal() +
+          theme(
+            plot.title = element_text(hjust = 0.5, face = "bold"),
+            plot.subtitle = element_text(hjust = 0.5),
+            panel.background = element_rect(fill = "white", color = NA),
+            plot.background  = element_rect(fill = "white", color = NA)
+          )
+      } else {
+        # Boxplot for large sample counts
+        p_ps <- ggplot(ps_counts,
+                       aes(x = variant_type, y = count, fill = ref_context)) +
+          geom_boxplot(position = position_dodge(width = 0.7), width = 0.6,
+                       outlier.size = 1) +
+          scale_fill_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
+                            name = NULL) +
+          scale_y_continuous(labels = scales::comma) +
+          labs(title = title,
+               subtitle = paste0("Per-Sample Variant Counts ", mode_label, filter_label,
+                                 " (N=", n_samples, " samples)"),
+               x = "Variant Type", y = "Count") +
+          theme_minimal() +
+          theme(
+            plot.title = element_text(hjust = 0.5, face = "bold"),
+            plot.subtitle = element_text(hjust = 0.5),
+            panel.background = element_rect(fill = "white", color = NA),
+            plot.background  = element_rect(fill = "white", color = NA)
+          )
+      }
+
+      save_png(p_ps, paste0(prefix, ".per-sample-types.png"))
+
+      # -----------------------------------------------------------------------
+      # Per-sample GIAB stratification (when --giab-strat-beds + --per-sample)
+      # -----------------------------------------------------------------------
+      if (!is.null(giab_strat_beds_arg)) {
+        strat_files_ps  <- strsplit(giab_strat_beds_arg, ",")[[1]]
+        strat_names_ps  <- gsub("_", " ", strsplit(giab_strat_names_arg, ",")[[1]])
+
+        cat("Per-sample GIAB stratification from", length(strat_files_ps), "BEDs\n")
+
+        # Write variant BED from gt_dt
+        tmp_bed_ps <- tempfile(fileext = ".sorted.bed")
+        tmp_unsorted_ps <- tempfile(fileext = ".bed")
+        fwrite(gt_dt[, .(CHROM, POS - 1L, POS - 1L + ref_len)],
+               tmp_unsorted_ps, sep = "\t", col.names = FALSE)
+        system(sprintf("LC_ALL=C sort -k1,1 -k2,2n '%s' > '%s'", tmp_unsorted_ps, tmp_bed_ps))
+        unlink(tmp_unsorted_ps)
+
+        # bedtools intersect each partition
+        gt_dt[, ps_bed_start := POS - 1L]
+        setkey(gt_dt, CHROM, ps_bed_start)
+        for (k in seq_along(strat_files_ps)) {
+          col <- paste0("ps_giab_", k)
+          cmd <- sprintf("bedtools intersect -a '%s' -b '%s' -u -sorted 2>/dev/null",
+                         tmp_bed_ps, strat_files_ps[k])
+          hits <- tryCatch(
+            fread(cmd = cmd, select = 1:2, col.names = c("CHROM", "ps_bed_start"), header = FALSE),
+            error = function(e) data.table(CHROM = character(0), ps_bed_start = integer(0)),
+            warning = function(w) data.table(CHROM = character(0), ps_bed_start = integer(0))
+          )
+          set(gt_dt, j = col, value = FALSE)
+          if (nrow(hits) > 0) {
+            hits <- unique(hits)
+            gt_dt[hits, (col) := TRUE, on = .(CHROM, ps_bed_start)]
+          }
+        }
+        gt_dt[, ps_bed_start := NULL]
+        unlink(tmp_bed_ps)
+
+        # Classify each variant into one GIAB region
+        gt_dt[, ps_giab_region := "Unclassified"]
+        gt_dt[ref_context == "Off-reference", ps_giab_region := "Off-reference"]
+        for (k in rev(seq_along(strat_names_ps))) {
+          col <- paste0("ps_giab_", k)
+          gt_dt[get(col) == TRUE, ps_giab_region := strat_names_ps[k]]
+        }
+
+        # Re-melt with giab_region for per-sample counting
+        gt_long_giab <- melt(gt_dt,
+          id.vars = c("CHROM", "POS", "REF", "ALT", "variant_type", "ref_context", "ps_giab_region"),
+          measure.vars = gt_sample_cols,
+          variable.name = "sample_idx", value.name = "GT")
+        gt_long_giab[, sample := all_sample_names[as.integer(sub("GT_", "", sample_idx))]]
+        gt_long_giab <- gt_long_giab[sample %in% sample_names & grepl("[1-9]", GT)]
+
+        # Count per sample × variant_type × giab_region
+        ps_giab_counts <- gt_long_giab[, .(count = .N),
+                                        by = .(sample, variant_type, ps_giab_region)]
+
+        # Ensure all combos exist
+        region_levels_ps <- c(strat_names_ps, "Off-reference")
+        all_giab_combos <- CJ(sample = sample_names,
+                               variant_type = unique(ps_giab_counts$variant_type),
+                               ps_giab_region = region_levels_ps)
+        ps_giab_counts <- merge(all_giab_combos, ps_giab_counts,
+                                 by = c("sample", "variant_type", "ps_giab_region"), all.x = TRUE)
+        ps_giab_counts[is.na(count), count := 0L]
+
+        # Write TSV
+        setorder(ps_giab_counts, sample, ps_giab_region, variant_type)
+        fwrite(ps_giab_counts, paste0(prefix, ".per-sample-giab-strat.tsv"), sep = "\t")
+        cat("Wrote per-sample GIAB strat:", paste0(prefix, ".per-sample-giab-strat.tsv"), "\n")
+
+        # Summary for plotting
+        ps_giab_summary <- ps_giab_counts[, .(mean_count = mean(count),
+                                               min_count = min(count),
+                                               max_count = max(count)),
+                                           by = .(variant_type, ps_giab_region)]
+
+        ps_giab_counts[, variant_type := factor(variant_type,
+          levels = intersect(type_levels, unique(variant_type)))]
+        ps_giab_summary[, variant_type := factor(variant_type,
+          levels = intersect(type_levels, unique(variant_type)))]
+        ps_giab_counts[, ps_giab_region := factor(ps_giab_region, levels = region_levels_ps)]
+        ps_giab_summary[, ps_giab_region := factor(ps_giab_region, levels = region_levels_ps)]
+
+        # Filter out Unclassified
+        ps_giab_counts_plot <- ps_giab_counts[ps_giab_region != "Unclassified"]
+        ps_giab_summary_plot <- ps_giab_summary[ps_giab_region != "Unclassified"]
+
+        region_colors_ps <- c("Easy" = "forestgreen", "Segdup" = "firebrick",
+                               "Other Difficult" = "darkorange", "Off-reference" = "steelblue")
+
+        if (n_samples <= 20) {
+          p_ps_giab <- ggplot() +
+            geom_col(data = ps_giab_summary_plot,
+                     aes(x = variant_type, y = mean_count, fill = ps_giab_region),
+                     position = position_dodge(width = 0.7), width = 0.7, alpha = 0.6) +
+            geom_errorbar(data = ps_giab_summary_plot,
+                          aes(x = variant_type, ymin = min_count, ymax = max_count,
+                              group = ps_giab_region),
+                          position = position_dodge(width = 0.7), width = 0.3) +
+            geom_point(data = ps_giab_counts_plot,
+                       aes(x = variant_type, y = count, color = ps_giab_region),
+                       position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.7),
+                       size = 1.5, alpha = 0.8) +
+            scale_fill_manual(values = region_colors_ps, name = "GIAB Region") +
+            scale_color_manual(values = region_colors_ps, name = "GIAB Region") +
+            scale_y_continuous(labels = scales::comma) +
+            labs(title = title,
+                 subtitle = paste0("Per-Sample GIAB Stratification ", mode_label, filter_label,
+                                   " (N=", n_samples, " samples, bars=mean)"),
+                 x = "Variant Type", y = "Count") +
+            theme_minimal() +
+            theme(
+              plot.title = element_text(hjust = 0.5, face = "bold"),
+              plot.subtitle = element_text(hjust = 0.5),
+              panel.background = element_rect(fill = "white", color = NA),
+              plot.background  = element_rect(fill = "white", color = NA)
+            )
+        } else {
+          p_ps_giab <- ggplot(ps_giab_counts_plot,
+                              aes(x = variant_type, y = count, fill = ps_giab_region)) +
+            geom_boxplot(position = position_dodge(width = 0.7), width = 0.6,
+                         outlier.size = 1) +
+            scale_fill_manual(values = region_colors_ps, name = "GIAB Region") +
+            scale_y_continuous(labels = scales::comma) +
+            labs(title = title,
+                 subtitle = paste0("Per-Sample GIAB Stratification ", mode_label, filter_label,
+                                   " (N=", n_samples, " samples)"),
+                 x = "Variant Type", y = "Count") +
+            theme_minimal() +
+            theme(
+              plot.title = element_text(hjust = 0.5, face = "bold"),
+              plot.subtitle = element_text(hjust = 0.5),
+              panel.background = element_rect(fill = "white", color = NA),
+              plot.background  = element_rect(fill = "white", color = NA)
+            )
+        }
+
+        save_png(p_ps_giab, paste0(prefix, ".per-sample-giab-strat.png"), width = 10)
+
+        # Clean up
+        for (k in seq_along(strat_names_ps)) set(gt_dt, j = paste0("ps_giab_", k), value = NULL)
+        gt_dt[, ps_giab_region := NULL]
+      }
+    } else {
+      cat("No variant records; creating empty per-sample outputs.\n")
+      file.create(paste0(prefix, ".per-sample-types.png"))
+      fwrite(data.table(sample = character(), variant_type = character(),
+                        ref_context = character(), count = integer()),
+             paste0(prefix, ".per-sample-types.tsv"), sep = "\t")
+      if (!is.null(giab_strat_beds_arg)) {
+        file.create(paste0(prefix, ".per-sample-giab-strat.png"))
+        fwrite(data.table(sample = character(), variant_type = character(),
+                          ps_giab_region = character(), count = integer()),
+               paste0(prefix, ".per-sample-giab-strat.tsv"), sep = "\t")
+      }
+    }
+  }
 }
 
 cat("Done.\n")

@@ -220,6 +220,49 @@ def giab_strat_stats_outputs(callers=None):
                 outputs.append(f"{OUT_DIR}/merged.dv.variants.{filt}.{suffix}")
     return outputs
 
+def per_sample_stats_outputs(callers=None):
+    """Return per-sample stats outputs for multisample VCF rules."""
+    if callers is None:
+        callers = ["deconstruct", "call", "deepvariant"]
+    outputs = []
+    for suffix in ["per-sample-types.png", "per-sample-types.tsv"]:
+        if "deconstruct" in callers:
+            outputs.append(f"{OUT_DIR}/{OUT_NAME}.sites.{suffix}")
+            outputs.append(f"{OUT_DIR}/{OUT_NAME}.variants.{suffix}")
+        if "call" in callers:
+            for filt in ["all", "pass"]:
+                outputs.append(f"{OUT_DIR}/merged.call.sites.{filt}.{suffix}")
+                outputs.append(f"{OUT_DIR}/merged.call.variants.{filt}.{suffix}")
+        if "deepvariant" in callers:
+            for filt in ["all", "pass"]:
+                outputs.append(f"{OUT_DIR}/merged.dv.sites.{filt}.{suffix}")
+                outputs.append(f"{OUT_DIR}/merged.dv.variants.{filt}.{suffix}")
+    if giab_strat_configured():
+        for suffix in ["per-sample-giab-strat.png", "per-sample-giab-strat.tsv"]:
+            if "deconstruct" in callers:
+                outputs.append(f"{OUT_DIR}/{OUT_NAME}.sites.{suffix}")
+                outputs.append(f"{OUT_DIR}/{OUT_NAME}.variants.{suffix}")
+            if "call" in callers:
+                for filt in ["all", "pass"]:
+                    outputs.append(f"{OUT_DIR}/merged.call.sites.{filt}.{suffix}")
+                    outputs.append(f"{OUT_DIR}/merged.call.variants.{filt}.{suffix}")
+            if "deepvariant" in callers:
+                for filt in ["all", "pass"]:
+                    outputs.append(f"{OUT_DIR}/merged.dv.sites.{filt}.{suffix}")
+                    outputs.append(f"{OUT_DIR}/merged.dv.variants.{filt}.{suffix}")
+    return outputs
+
+def compare_call_dv_outputs():
+    """Return call-vs-DV comparison outputs when samples are configured."""
+    if not SAMPLES:
+        return []
+    outputs = []
+    for mode in ["sites", "variants"]:
+        for filt in ["all", "pass"]:
+            outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{mode}.{filt}.compare.png")
+            outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{mode}.{filt}.compare.tsv")
+    return outputs
+
 ############################################################################
 # Target rules
 ############################################################################
@@ -245,6 +288,8 @@ rule all:
         *annotation_snp_outputs(),
         *annotation_stats_outputs(),
         *giab_strat_stats_outputs(),
+        *per_sample_stats_outputs(),
+        *compare_call_dv_outputs(),
         *polymorphism_outputs(),
         # per-sample genotyping outputs
         expand("{out}/{s}.vcf.gz", out=OUT_DIR, s=SAMPLES),
@@ -334,6 +379,7 @@ rule graph_only:
         *annotation_snp_outputs(["deconstruct"]),
         *annotation_stats_outputs(["deconstruct"]),
         *giab_strat_stats_outputs(["deconstruct"]),
+        *per_sample_stats_outputs(["deconstruct"]),
         *polymorphism_outputs(),
 
 rule genotype_all:
@@ -375,6 +421,7 @@ rule genotype_all:
         *annotation_snp_outputs(["call"]),
         *annotation_stats_outputs(["call"]),
         *giab_strat_stats_outputs(["call"]),
+        *per_sample_stats_outputs(["call"]),
 
 rule deepvariant_all:
     """Run DeepVariant on all samples"""
@@ -392,6 +439,7 @@ rule deepvariant_all:
         *annotation_snp_outputs(["deepvariant"]),
         *annotation_stats_outputs(["deepvariant"]),
         *giab_strat_stats_outputs(["deepvariant"]),
+        *per_sample_stats_outputs(["deepvariant"]),
 
 # Resolve wildcard ambiguities:
 # - {OUT_NAME}.vcf.gz matches both deconstruct and call (sample={OUT_NAME})
@@ -925,6 +973,11 @@ rule deconstruct_sites_stats:
         *([ f"{OUT_DIR}/{OUT_NAME}.sites.giab-strat.png",
             f"{OUT_DIR}/{OUT_NAME}.sites.giab-strat.tsv"]
           if giab_strat_configured() else []),
+        f"{OUT_DIR}/{OUT_NAME}.sites.per-sample-types.png",
+        f"{OUT_DIR}/{OUT_NAME}.sites.per-sample-types.tsv",
+        *([ f"{OUT_DIR}/{OUT_NAME}.sites.per-sample-giab-strat.png",
+            f"{OUT_DIR}/{OUT_NAME}.sites.per-sample-giab-strat.tsv"]
+          if giab_strat_configured() else []),
     resources:
         mem_mb=256000,
         runtime=2880,
@@ -939,7 +992,7 @@ rule deconstruct_sites_stats:
     shell:
         "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{OUT_NAME}.sites"
         " --mode sites --af-step 0.05 --title '{REF} Deconstruct'"
-        " {params.annot_arg} {params.giab_arg}"
+        " {params.annot_arg} {params.giab_arg} --per-sample --ref-sample {REF}"
 
 rule deconstruct_variants_stats:
     """Deconstruct VCF → variant-level stats + plots (uses pre-normed VCF)"""
@@ -959,6 +1012,11 @@ rule deconstruct_variants_stats:
         *([ f"{OUT_DIR}/{OUT_NAME}.variants.giab-strat.png",
             f"{OUT_DIR}/{OUT_NAME}.variants.giab-strat.tsv"]
           if giab_strat_configured() else []),
+        f"{OUT_DIR}/{OUT_NAME}.variants.per-sample-types.png",
+        f"{OUT_DIR}/{OUT_NAME}.variants.per-sample-types.tsv",
+        *([ f"{OUT_DIR}/{OUT_NAME}.variants.per-sample-giab-strat.png",
+            f"{OUT_DIR}/{OUT_NAME}.variants.per-sample-giab-strat.tsv"]
+          if giab_strat_configured() else []),
     resources:
         mem_mb=256000,
         runtime=2880,
@@ -973,7 +1031,7 @@ rule deconstruct_variants_stats:
     shell:
         "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{OUT_NAME}.variants"
         " --mode variants --af-step 0.05 --title '{REF} Deconstruct'"
-        " {params.annot_arg} {params.giab_arg}"
+        " {params.annot_arg} {params.giab_arg} --per-sample --ref-sample {REF}"
 
 rule call_stats:
     """Per-sample call VCF → variant stats + plots (one mode/filter combo)"""
@@ -1059,6 +1117,11 @@ rule merged_call_stats:
         *([ f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.giab-strat.png",
             f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.giab-strat.tsv"]
           if giab_strat_configured() else []),
+        f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.per-sample-types.png",
+        f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.per-sample-types.tsv",
+        *([ f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.per-sample-giab-strat.png",
+            f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.per-sample-giab-strat.tsv"]
+          if giab_strat_configured() else []),
     resources:
         mem_mb=256000,
         runtime=2880,
@@ -1073,7 +1136,7 @@ rule merged_call_stats:
     shell:
         "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.call.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged Call'"
-        " {params.annot_arg} {params.giab_arg}"
+        " {params.annot_arg} {params.giab_arg} --per-sample"
 
 rule merged_dv_stats:
     """Merged DeepVariant VCF → variant stats + plots (one mode/filter combo, includes AF spectrum)"""
@@ -1093,6 +1156,11 @@ rule merged_dv_stats:
         *([ f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.giab-strat.png",
             f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.giab-strat.tsv"]
           if giab_strat_configured() else []),
+        f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.per-sample-types.png",
+        f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.per-sample-types.tsv",
+        *([ f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.per-sample-giab-strat.png",
+            f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.per-sample-giab-strat.tsv"]
+          if giab_strat_configured() else []),
     resources:
         mem_mb=256000,
         runtime=2880,
@@ -1107,4 +1175,26 @@ rule merged_dv_stats:
     shell:
         "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.dv.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged DeepVariant'"
-        " {params.annot_arg} {params.giab_arg}"
+        " {params.annot_arg} {params.giab_arg} --per-sample"
+
+############################################################################
+# Call vs DeepVariant comparison
+############################################################################
+
+rule compare_call_dv:
+    """Compare merged call and merged DeepVariant VCFs per-sample"""
+    input:
+        call_vcf=lambda wc: f"{OUT_DIR}/merged.call.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.call.vcf.gz",
+        dv_vcf=lambda wc: f"{OUT_DIR}/merged.deepvariant.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.deepvariant.vcf.gz",
+    output:
+        f"{OUT_DIR}/merged.call-vs-dv.{{mode}}.{{filt}}.compare.png",
+        f"{OUT_DIR}/merged.call-vs-dv.{{mode}}.{{filt}}.compare.tsv",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
+    shell:
+        "Rscript scripts/vcf-compare.R {input.call_vcf} {input.dv_vcf}"
+        " {OUT_DIR}/merged.call-vs-dv.{wildcards.mode}.{wildcards.filt}"
+        " --mode {wildcards.mode} --filter {wildcards.filt}"
+        " --label-a Call --label-b DeepVariant"
+        " --title '{REF} Call vs DeepVariant'"
