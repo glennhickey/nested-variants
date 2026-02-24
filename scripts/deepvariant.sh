@@ -154,12 +154,18 @@ BAM_ABS="$(cd "$(dirname "$BAM")" && pwd)/$(basename "$BAM")"
 OUT_ABS="$(cd "$OUTPUT_DIR" && pwd)"
 VCF_ABS="${OUT_ABS}/${OUTPUT_NAME}"
 
+# Use node-local scratch for DeepVariant intermediate files (tfrecords).
+# Falls back to output directory if $TMPDIR is not set.
+DV_TMPDIR="${TMPDIR:-${OUT_ABS}}/dv_intermediate_${SAMPLE}"
+mkdir -p "${DV_TMPDIR}"
+
 # Build the command to run
 CMD="/usr/bin/time -v docker run \
   --user \"$(id -u):$(id -g)\" \
   -v \"$(dirname "${REF_ABS}")\":\"$(dirname "${REF_ABS}")\" \
   -v \"$(dirname "${BAM_ABS}")\":\"$(dirname "${BAM_ABS}")\" \
   -v \"${OUT_ABS}\":\"${OUT_ABS}\" \
+  -v \"${DV_TMPDIR}\":\"${DV_TMPDIR}\" \
   google/deepvariant:${DV_VERSION} \
   /opt/deepvariant/bin/run_deepvariant \
   --model_type=WGS \
@@ -168,13 +174,13 @@ CMD="/usr/bin/time -v docker run \
   --output_vcf=\"${VCF_ABS}\" \
   --num_shards=${CPUS} \
   --sample_name=\"${SAMPLE}\" \
-  --intermediate_results_dir=\"${OUT_ABS}/dv_intermediate_${SAMPLE}\" \
+  --intermediate_results_dir=\"${DV_TMPDIR}\" \
   --make_examples_extra_args=\"min_mapping_quality=0,keep_legacy_allele_counter_behavior=true,normalize_reads=true\""
 
 if $LOCAL; then
     # Run locally
     bash -c "$CMD"
-    rm -rf "${OUT_ABS}/dv_intermediate_${SAMPLE}"
+    rm -rf "${DV_TMPDIR}"
 else
     # Submit SLURM job with resource requirements
     sbatch -W \
@@ -187,5 +193,5 @@ else
         --time="${TIME}" \
         --output=/dev/null \
         --error="${OUTPUT_DIR}/${OUTPUT_NAME%.vcf.gz}.deepvariant.log" \
-        --wrap="$CMD && rm -rf '${OUT_ABS}/dv_intermediate_${SAMPLE}'"
+        --wrap="$CMD && rm -rf '${DV_TMPDIR}'"
 fi
