@@ -568,7 +568,7 @@ rule filtered_paths:
         f"{OUT_DIR}/{OUT_NAME}.filtered-paths.txt",
     threads: 1
     resources:
-        mem_mb=4000,
+        mem_mb=int(rule_mem_gb("filtered_paths", 64)) * 1024,
         runtime=30,
     shell:
         "vg paths -x {input} -S {AUGREF} -E"
@@ -1009,7 +1009,7 @@ rule deconstruct_sites_stats:
             f"{OUT_DIR}/{OUT_NAME}.sites.per-sample-giab-strat.tsv"]
           if giab_strat_configured() else []),
     resources:
-        mem_mb=256000,
+        mem_mb=int(rule_mem_gb("deconstruct_stats", 512)) * 1024,
         runtime=2880,
     params:
         annot_arg=lambda wc, input: (
@@ -1048,7 +1048,7 @@ rule deconstruct_variants_stats:
             f"{OUT_DIR}/{OUT_NAME}.variants.per-sample-giab-strat.tsv"]
           if giab_strat_configured() else []),
     resources:
-        mem_mb=256000,
+        mem_mb=int(rule_mem_gb("deconstruct_stats", 512)) * 1024,
         runtime=2880,
     params:
         annot_arg=lambda wc, input: (
