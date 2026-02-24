@@ -168,11 +168,13 @@ CMD="/usr/bin/time -v docker run \
   --output_vcf=\"${VCF_ABS}\" \
   --num_shards=${CPUS} \
   --sample_name=\"${SAMPLE}\" \
+  --intermediate_results_dir=\"${OUT_ABS}/dv_intermediate_${SAMPLE}\" \
   --make_examples_extra_args=\"min_mapping_quality=0,keep_legacy_allele_counter_behavior=true,normalize_reads=true\""
 
 if $LOCAL; then
     # Run locally
     bash -c "$CMD"
+    rm -rf "${OUT_ABS}/dv_intermediate_${SAMPLE}"
 else
     # Submit SLURM job with resource requirements
     sbatch -W \
@@ -185,5 +187,5 @@ else
         --time="${TIME}" \
         --output=/dev/null \
         --error="${OUTPUT_DIR}/${OUTPUT_NAME%.vcf.gz}.deepvariant.log" \
-        --wrap="$CMD"
+        --wrap="$CMD && rm -rf '${OUT_ABS}/dv_intermediate_${SAMPLE}'"
 fi
