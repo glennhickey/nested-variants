@@ -1228,3 +1228,4 @@ rule compare_call_dv:
         " --mode {wildcards.mode} --filter {wildcards.filt}"
         " --label-a Call --label-b DeepVariant"
         " --title '{REF} Call vs DeepVariant'"
+        " --strip-prefix '{AUGREF}#0#'"

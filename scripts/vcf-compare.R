@@ -28,11 +28,12 @@ if (length(args) < 3) {
 vcf_a   <- args[1]
 vcf_b   <- args[2]
 prefix  <- args[3]
-title   <- NULL
-mode    <- "sites"
-filter  <- "all"
-label_a <- "Call"
-label_b <- "DeepVariant"
+title        <- NULL
+mode         <- "sites"
+filter       <- "all"
+label_a      <- "Call"
+label_b      <- "DeepVariant"
+strip_prefix <- NULL
 
 i <- 4
 while (i <= length(args)) {
@@ -46,6 +47,8 @@ while (i <= length(args)) {
     label_a <- args[i + 1]; i <- i + 2
   } else if (args[i] == "--label-b" && i + 1 <= length(args)) {
     label_b <- args[i + 1]; i <- i + 2
+  } else if (args[i] == "--strip-prefix" && i + 1 <= length(args)) {
+    strip_prefix <- args[i + 1]; i <- i + 2
   } else {
     i <- i + 1
   }
@@ -159,6 +162,14 @@ cat("  Samples:", vcf_a_data$n, " Records:", nrow(vcf_a_data$dt), "\n")
 cat("Reading VCF B:", vcf_b, "\n")
 vcf_b_data <- read_vcf_with_gt(vcf_b, mode, filter)
 cat("  Samples:", vcf_b_data$n, " Records:", nrow(vcf_b_data$dt), "\n")
+
+# Strip augref prefix from CHROM values so both VCFs use the same names
+# (vg call -S strips the prefix but DeepVariant keeps the FASTA contig names)
+if (!is.null(strip_prefix)) {
+  cat("Stripping prefix '", strip_prefix, "' from CHROM values\n", sep = "")
+  vcf_a_data$dt[, CHROM := sub(strip_prefix, "", CHROM, fixed = TRUE)]
+  vcf_b_data$dt[, CHROM := sub(strip_prefix, "", CHROM, fixed = TRUE)]
+}
 
 # Find overlapping samples
 shared_samples <- intersect(vcf_a_data$samples, vcf_b_data$samples)
