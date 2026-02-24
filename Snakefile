@@ -879,6 +879,7 @@ rule deepvariant:
         " --out-name {wildcards.sample}.deepvariant.vcf.gz"
         " --dv-version {config[dv_version]}"
         " --cpus {threads} --mem {params.mem_gb}gb"
+        " --tmpdir {resources.tmpdir}"
         " --local"
 
 rule call_plots:

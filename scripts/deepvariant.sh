@@ -32,6 +32,7 @@ TIME="16:00:00"
 PARTITION="long"
 JOB_NAME="deepvariant"
 LOCAL=false
+DV_SCRATCH=""
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -80,6 +81,10 @@ while [[ $# -gt 0 ]]; do
             LOCAL=true
             shift
             ;;
+        --tmpdir)
+            DV_SCRATCH="$2"
+            shift 2
+            ;;
         -h|--help)
             echo "Usage: $0 --bam <file.bam> --ref <file.fa> --sample <name> --out-dir <dir> --out-name <name> [options]"
             echo ""
@@ -95,6 +100,7 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Execution Options:"
             echo "  --local               Run commands locally instead of via SLURM"
+            echo "  --tmpdir <dir>        Scratch directory for DV temp files (default: \$TMPDIR or output dir)"
             echo ""
             echo "SLURM Resource Options (optional, with defaults):"
             echo "  --cpus <N>            CPUs per task (default: 16)"
@@ -154,18 +160,28 @@ BAM_ABS="$(cd "$(dirname "$BAM")" && pwd)/$(basename "$BAM")"
 OUT_ABS="$(cd "$OUTPUT_DIR" && pwd)"
 VCF_ABS="${OUT_ABS}/${OUTPUT_NAME}"
 
-# Use node-local scratch for DeepVariant intermediate files (tfrecords).
-# Falls back to output directory if $TMPDIR is not set.
-DV_TMPDIR="${TMPDIR:-${OUT_ABS}}/dv_intermediate_${SAMPLE}"
+# Scratch directory for DeepVariant intermediate files and temp.
+# Priority: --tmpdir flag > $TMPDIR > output directory.
+# Skip /tmp as scratch: it is often tmpfs with limited space and Docker bind
+# mounts from tmpfs may not be writable inside the container with --user.
+DV_SCRATCH="${DV_SCRATCH:-${TMPDIR:-}}"
+if [ -z "${DV_SCRATCH}" ] || [ "${DV_SCRATCH}" = "/tmp" ]; then
+    DV_SCRATCH="${OUT_ABS}"
+fi
+DV_TMPDIR="${DV_SCRATCH}/dv_intermediate_${SAMPLE}"
 mkdir -p "${DV_TMPDIR}"
 
-# Build the command to run
+# Build the command to run.
+# DV_TMPDIR is bind-mounted at the same host path and also as /tmp inside the
+# container, so ALL temp operations (DV tfrecords, Bazel runfiles, GNU Parallel
+# scratch) use our controlled scratch dir instead of the container's /tmp.
 CMD="/usr/bin/time -v docker run \
   --user \"$(id -u):$(id -g)\" \
   -v \"$(dirname "${REF_ABS}")\":\"$(dirname "${REF_ABS}")\" \
   -v \"$(dirname "${BAM_ABS}")\":\"$(dirname "${BAM_ABS}")\" \
   -v \"${OUT_ABS}\":\"${OUT_ABS}\" \
   -v \"${DV_TMPDIR}\":\"${DV_TMPDIR}\" \
+  -v \"${DV_TMPDIR}\":/tmp \
   google/deepvariant:${DV_VERSION} \
   /opt/deepvariant/bin/run_deepvariant \
   --model_type=WGS \
