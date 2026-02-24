@@ -655,19 +655,22 @@ if (per_sample) {
         grepl("_[0-9]+_alt$", CHROM), "Off-reference", "On-reference"
       )]
 
-      # 4. Melt to long format: one row per (variant, sample)
+      # 4. Count carriers per sample without melting (avoids exceeding R's 2^31
+      #    vector limit when n_variants × n_samples is very large).
       gt_sample_cols <- paste0("GT_", seq_len(n_all_samples))
-      gt_long <- melt(gt_dt, id.vars = c("CHROM", "POS", "REF", "ALT", "variant_type", "ref_context"),
-                       measure.vars = gt_sample_cols,
-                       variable.name = "sample_idx", value.name = "GT")
-      # Map sample index to sample name (using all_sample_names for positional lookup)
-      gt_long[, sample := all_sample_names[as.integer(sub("GT_", "", sample_idx))]]
-      # Filter to non-ref samples and keep only carriers (any non-zero allele)
-      gt_long <- gt_long[sample %in% sample_names & grepl("[1-9]", GT)]
-      cat("Carrier genotype rows:", nrow(gt_long), "\n")
-
-      # 5. Per-sample counts
-      ps_counts <- gt_long[, .(count = .N), by = .(sample, variant_type, ref_context)]
+      ps_list <- vector("list", n_samples)
+      total_carriers <- 0L
+      for (si in seq_along(sample_names)) {
+        sname <- sample_names[si]
+        col_idx <- match(sname, all_sample_names)
+        gt_col <- gt_sample_cols[col_idx]
+        carriers <- grepl("[1-9]", gt_dt[[gt_col]])
+        total_carriers <- total_carriers + sum(carriers)
+        ps_list[[si]] <- gt_dt[carriers, .(count = .N), by = .(variant_type, ref_context)
+                               ][, sample := sname]
+      }
+      ps_counts <- rbindlist(ps_list)
+      cat("Carrier genotype rows:", total_carriers, "\n")
 
       # Ensure all sample × type × context combinations exist (fill with 0)
       all_combos <- CJ(sample = sample_names,
@@ -795,17 +798,18 @@ if (per_sample) {
           gt_dt[get(col) == TRUE, ps_giab_region := strat_names_ps[k]]
         }
 
-        # Re-melt with giab_region for per-sample counting
-        gt_long_giab <- melt(gt_dt,
-          id.vars = c("CHROM", "POS", "REF", "ALT", "variant_type", "ref_context", "ps_giab_region"),
-          measure.vars = gt_sample_cols,
-          variable.name = "sample_idx", value.name = "GT")
-        gt_long_giab[, sample := all_sample_names[as.integer(sub("GT_", "", sample_idx))]]
-        gt_long_giab <- gt_long_giab[sample %in% sample_names & grepl("[1-9]", GT)]
-
-        # Count per sample × variant_type × giab_region
-        ps_giab_counts <- gt_long_giab[, .(count = .N),
-                                        by = .(sample, variant_type, ps_giab_region)]
+        # Count per sample × variant_type × giab_region (loop to avoid melt)
+        ps_giab_list <- vector("list", n_samples)
+        for (si in seq_along(sample_names)) {
+          sname <- sample_names[si]
+          col_idx <- match(sname, all_sample_names)
+          gt_col <- gt_sample_cols[col_idx]
+          carriers <- grepl("[1-9]", gt_dt[[gt_col]])
+          ps_giab_list[[si]] <- gt_dt[carriers, .(count = .N),
+                                       by = .(variant_type, ps_giab_region)
+                                       ][, sample := sname]
+        }
+        ps_giab_counts <- rbindlist(ps_giab_list)
 
         # Ensure all combos exist
         region_levels_ps <- c(strat_names_ps, "Off-reference")
