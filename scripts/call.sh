@@ -23,6 +23,7 @@ REF=""
 SAMPLE=""
 OUTPUT_DIR="."
 OUTPUT_NAME=""
+FILTER_CONTIGS=""
 
 # SLURM resource defaults
 CPUS="16"
@@ -75,6 +76,10 @@ while [[ $# -gt 0 ]]; do
             PARTITION="$2"
             shift 2
             ;;
+        --filter-contigs)
+            FILTER_CONTIGS="$2"
+            shift 2
+            ;;
         --local)
             LOCAL=true
             shift
@@ -89,6 +94,9 @@ while [[ $# -gt 0 ]]; do
             echo "  --sample <name>       Sample name (passed to -s)"
             echo "  --out-dir <dir>       Output directory for VCF file"
             echo "  --out-name <name>     Output name for VCF file"
+            echo ""
+            echo "Filtering Options:"
+            echo "  --filter-contigs <file>  File listing contigs to keep (one per line; pipes through bcftools view -T)"
             echo ""
             echo "Execution Options:"
             echo "  --local               Run commands locally instead of via SLURM"
@@ -153,10 +161,26 @@ mkdir -p "$OUTPUT_DIR"
 VCF="${OUTPUT_DIR}/${OUTPUT_NAME}"
 PACK="${OUTPUT_DIR}/${OUTPUT_NAME%.vcf.gz}.pack"
 
+# Build the filter pipe (empty when no contig filtering requested).
+# Note: vg call processes all contigs regardless; we filter the VCF output
+# post-hoc via bcftools.  This is correct because restricting vg call's input
+# paths could change genotyping results.
+if [ -n "$FILTER_CONTIGS" ]; then
+    # Strip augref path prefix (REF#0#) to get VCF contig names and format
+    # as bcftools targets file (CHROM\tPOS\tPOS_TO, 1-based).
+    # Uses awk sub() for literal prefix stripping (safe with regex metacharacters).
+    TARGETS_FILE="${OUTPUT_DIR}/${OUTPUT_NAME%.vcf.gz}.filter-targets.tmp"
+    awk -v prefix="${REF}#0#" -v OFS='\t' \
+      '{sub(prefix, ""); print $0, 1, 2147483647}' "${FILTER_CONTIGS}" > "${TARGETS_FILE}"
+    FILTER_PIPE="bcftools view -T \"${TARGETS_FILE}\" |"
+else
+    FILTER_PIPE=""
+fi
+
 # Build the command to run
 CMD="/usr/bin/time -v vg pack -x \"${GBZ}\" -g \"${GAM}\" -o \"${PACK}\" -t ${CPUS} && \\
-/usr/bin/time -v vg call \"${GBZ}\" -k \"${PACK}\" -z -a -A -S ${REF} -s ${SAMPLE} -t ${CPUS} | bgzip > \"${VCF}\" && \\
-tabix -fp vcf \"${VCF}\""
+/usr/bin/time -v vg call \"${GBZ}\" -k \"${PACK}\" -z -a -A -S ${REF} -s ${SAMPLE} -t ${CPUS} | ${FILTER_PIPE} bgzip > \"${VCF}\" && \\
+tabix -fp vcf \"${VCF}\"$([ -n "${TARGETS_FILE}" ] && echo " && rm -f \"${TARGETS_FILE}\"")"
 
 if $LOCAL; then
     # Run locally

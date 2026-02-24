@@ -63,6 +63,12 @@ def decon_opts():
         opts.append("--star-allele")
     return " ".join(opts)
 
+def surject_filtering():
+    """True when min_surject_len > 0 (filter contigs for surject/call)."""
+    val = config.get("min_surject_len", 0)
+    assert str(val).isdigit(), f"min_surject_len must be a non-negative integer, got: {val}"
+    return int(val) > 0
+
 # Annotation helpers
 def annotation_inputs():
     """Return list of configured annotation BED files."""
@@ -554,6 +560,21 @@ rule fasta:
         " --cpus {threads} --mem {params.mem_gb}gb"
         " --local"
 
+rule filtered_paths:
+    """GBZ → filtered augref path list (contigs >= min_surject_len)"""
+    input:
+        f"{OUT_DIR}/{OUT_NAME}.gbz",
+    output:
+        f"{OUT_DIR}/{OUT_NAME}.filtered-paths.txt",
+    threads: 1
+    resources:
+        mem_mb=4000,
+        runtime=30,
+    shell:
+        "vg paths -x {input} -S {AUGREF} -E"
+        " | awk '$2 >= {config[min_surject_len]}' | cut -f1"
+        " > {output}"
+
 rule length_hist:
     """Augref segments → length histogram"""
     input:
@@ -780,10 +801,14 @@ rule giraffe:
         " --local"
 
 rule call:
-    """GAM → VCF (vg call)"""
+    """GAM → VCF (vg call)
+    Note: unlike surject (which filters at vg level via -F), call runs vg call
+    on all contigs and filters the VCF output post-hoc via bcftools view -T.
+    This avoids changing genotyping results from restricting input paths."""
     input:
         gam=f"{OUT_DIR}/{{sample}}.gam",
         gbz=f"{OUT_DIR}/{OUT_NAME}.gbz",
+        paths=f"{OUT_DIR}/{OUT_NAME}.filtered-paths.txt" if surject_filtering() else [],
     output:
         f"{OUT_DIR}/{{sample}}.vcf.gz",
     threads: rule_cpus("call", 128)
@@ -792,6 +817,7 @@ rule call:
         runtime=rule_runtime("call"),
     params:
         mem_gb=rule_mem_gb("call", 512),
+        filter_arg=lambda wc, input: f"--filter-contigs {input.paths}" if surject_filtering() else "",
     shell:
         "scripts/call.sh"
         " --gbz {input.gbz}"
@@ -800,6 +826,7 @@ rule call:
         " --sample {wildcards.sample}"
         " --out-dir {OUT_DIR}"
         " --out-name {wildcards.sample}.vcf.gz"
+        " {params.filter_arg}"
         " --cpus {threads} --mem {params.mem_gb}gb"
         " --local"
 
@@ -808,6 +835,7 @@ rule surject:
     input:
         gam=f"{OUT_DIR}/{{sample}}.gam",
         gbz=f"{OUT_DIR}/{OUT_NAME}.gbz",
+        paths=f"{OUT_DIR}/{OUT_NAME}.filtered-paths.txt" if surject_filtering() else [],
     output:
         f"{OUT_DIR}/{{sample}}.bam",
     threads: rule_cpus("surject", 128)
@@ -816,6 +844,7 @@ rule surject:
         runtime=rule_runtime("surject"),
     params:
         mem_gb=rule_mem_gb("surject", 512),
+        paths_arg=lambda wc, input: f"--paths-file {input.paths}" if surject_filtering() else "",
     shell:
         "scripts/surject.sh"
         " --gbz {input.gbz}"
@@ -824,6 +853,7 @@ rule surject:
         " --sample {wildcards.sample}"
         " --out-dir {OUT_DIR}"
         " --out-name {wildcards.sample}.bam"
+        " {params.paths_arg}"
         " --cpus {threads} --mem {params.mem_gb}gb"
         " --local"
 

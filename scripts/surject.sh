@@ -23,6 +23,7 @@ REF=""
 SAMPLE=""
 OUTPUT_DIR="."
 OUTPUT_NAME=""
+PATHS_FILE=""
 
 # SLURM resource defaults
 CPUS="16"
@@ -75,6 +76,10 @@ while [[ $# -gt 0 ]]; do
             PARTITION="$2"
             shift 2
             ;;
+        --paths-file)
+            PATHS_FILE="$2"
+            shift 2
+            ;;
         --local)
             LOCAL=true
             shift
@@ -89,6 +94,9 @@ while [[ $# -gt 0 ]]; do
             echo "  --sample <name>       Sample name (passed to -N)"
             echo "  --out-dir <dir>       Output directory for BAM file"
             echo "  --out-name <name>     Output name for BAM file"
+            echo ""
+            echo "Filtering Options:"
+            echo "  --paths-file <file>   File listing paths to surject onto (one per line; uses -F instead of -n)"
             echo ""
             echo "Execution Options:"
             echo "  --local               Run commands locally instead of via SLURM"
@@ -166,9 +174,11 @@ trap '[ -n "\${WORK_TMPDIR}" ] && rm -rf "\${WORK_TMPDIR}"' EXIT
 # Stage GBZ to node-local scratch for fast random I/O
 echo "Staging GBZ to \${WORK_TMPDIR}"
 cp "${GBZ}" "\${WORK_TMPDIR}/${GBZ_BASE}"
+$(if [ -n "$PATHS_FILE" ]; then PATHS_BASE=$(basename "$PATHS_FILE"); echo "cp \"${PATHS_FILE}\" \"\${WORK_TMPDIR}/${PATHS_BASE}\""; fi)
 
 # Surject GAM → BAM via local scratch
-/usr/bin/time -v vg surject -x "\${WORK_TMPDIR}/${GBZ_BASE}" -n ${REF} -N ${SAMPLE} -i -b -t ${CPUS} "${GAM}" | \\
+# When --paths-file is provided, use -F (explicit path list) instead of -n (path prefix)
+/usr/bin/time -v vg surject -x "\${WORK_TMPDIR}/${GBZ_BASE}" $(if [ -n "$PATHS_FILE" ]; then echo "-F \${WORK_TMPDIR}/$(basename "$PATHS_FILE")"; else echo "-n ${REF}"; fi) -N ${SAMPLE} -i -b -t ${CPUS} "${GAM}" | \\
 /usr/bin/time -v samtools sort -@ ${CPUS} -T "\${WORK_TMPDIR}/sort_${SAMPLE}" -o "\${WORK_TMPDIR}/${BAM_BASE}"
 mv "\${WORK_TMPDIR}/${BAM_BASE}" "${BAM}"
 /usr/bin/time -v samtools index -@ ${CPUS} "${BAM}"
