@@ -269,6 +269,15 @@ def compare_call_dv_outputs():
             outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{mode}.{filt}.compare.tsv")
     return outputs
 
+def vcfeval_compare_outputs():
+    """Return vcfeval-based call-vs-DV comparison outputs when samples are configured."""
+    if not SAMPLES:
+        return []
+    return [
+        f"{OUT_DIR}/merged.call-vs-dv.vcfeval-compare.png",
+        f"{OUT_DIR}/merged.call-vs-dv.vcfeval-compare.tsv",
+    ]
+
 ############################################################################
 # Target rules
 ############################################################################
@@ -296,6 +305,7 @@ rule all:
         *giab_strat_stats_outputs(),
         *per_sample_stats_outputs(),
         *compare_call_dv_outputs(),
+        *vcfeval_compare_outputs(),
         *polymorphism_outputs(),
         # per-sample genotyping outputs
         expand("{out}/{s}.vcf.gz", out=OUT_DIR, s=SAMPLES),
@@ -1128,7 +1138,7 @@ rule dv_stats:
     shell:
         "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{wildcards.sample}.dv.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} DeepVariant ({wildcards.sample})'"
-        " {params.annot_arg} {params.giab_arg}"
+        " {params.annot_arg} {params.giab_arg} --no-sv"
 
 rule merged_call_stats:
     """Merged call VCF → variant stats + plots (one mode/filter combo, includes AF spectrum)"""
@@ -1206,7 +1216,7 @@ rule merged_dv_stats:
     shell:
         "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.dv.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged DeepVariant'"
-        " {params.annot_arg} {params.giab_arg} --per-sample"
+        " {params.annot_arg} {params.giab_arg} --per-sample --no-sv"
 
 ############################################################################
 # Call vs DeepVariant comparison
@@ -1230,3 +1240,78 @@ rule compare_call_dv:
         " --label-a Call --label-b DeepVariant"
         " --title '{REF} Call vs DeepVariant'"
         " --strip-prefix '{AUGREF}#0#'"
+        " --no-sv"
+
+############################################################################
+# vcfeval-based Call vs DeepVariant comparison
+############################################################################
+
+rule vcfeval_per_sample:
+    """Run rtg vcfeval per sample: call VCF (base) vs DeepVariant VCF (query)
+
+    vg call strips the augref prefix from contig names but DeepVariant keeps it.
+    The reference FASTA also uses the full augref prefix.  Restore the prefix on
+    the call VCF so all three inputs share the same contig namespace.
+    """
+    input:
+        call_vcf=f"{OUT_DIR}/{{sample}}.vcf.gz",
+        dv_vcf=f"{OUT_DIR}/{{sample}}.deepvariant.vcf.gz",
+        ref=f"{OUT_DIR}/{OUT_NAME}.fa.gz",
+    output:
+        tp=f"{OUT_DIR}/vcfeval/{{sample}}/tp.vcf.gz",
+        tp_baseline=f"{OUT_DIR}/vcfeval/{{sample}}/tp-baseline.vcf.gz",
+        fp=f"{OUT_DIR}/vcfeval/{{sample}}/fp.vcf.gz",
+        fn=f"{OUT_DIR}/vcfeval/{{sample}}/fn.vcf.gz",
+    threads: rule_cpus("vcfeval", 16)
+    resources:
+        mem_mb=rule_mem_gb("vcfeval", 32) * 1024,
+        runtime=rule_runtime("vcfeval"),
+    params:
+        out_dir=f"{OUT_DIR}/vcfeval/{{sample}}",
+        docker=config.get("vcfeval_docker", "kockan/vcfeval_docker:v1.1"),
+        augref_prefix=f"{AUGREF}#0#",
+    shell:
+        # Build contig rename map: stripped_name → augref_prefix#0#name
+        "mkdir -p {params.out_dir}"
+        " && bcftools query -f '%CHROM\\n' {input.call_vcf} | sort -u"
+        "    | sed 's/^\\(.*\\)/\\1\\t{params.augref_prefix}\\1/'"
+        "    > {params.out_dir}/rename-chrs.txt"
+        " && bcftools annotate --rename-chrs {params.out_dir}/rename-chrs.txt"
+        "    {input.call_vcf} -Oz -o {params.out_dir}/call.renamed.vcf.gz"
+        " && tabix -fp vcf {params.out_dir}/call.renamed.vcf.gz"
+        " && python3 scripts/vcfcomp.py vcfeval"
+        "    --truth {params.out_dir}/call.renamed.vcf.gz"
+        "    --calls {input.dv_vcf}"
+        "    --ref {input.ref}"
+        "    --out-dir {params.out_dir}"
+        "    --threads {threads}"
+        "    --docker {params.docker}"
+        "    --no-preprocess"
+        " && rm -f {params.out_dir}/call.renamed.vcf.gz"
+        "    {params.out_dir}/call.renamed.vcf.gz.tbi"
+        "    {params.out_dir}/rename-chrs.txt"
+
+rule vcfeval_compare_plot:
+    """Aggregate per-sample vcfeval results into comparison plot"""
+    input:
+        tp_baseline=expand(f"{OUT_DIR}/vcfeval/{{sample}}/tp-baseline.vcf.gz", sample=SAMPLES),
+        fp=expand(f"{OUT_DIR}/vcfeval/{{sample}}/fp.vcf.gz", sample=SAMPLES),
+        fn=expand(f"{OUT_DIR}/vcfeval/{{sample}}/fn.vcf.gz", sample=SAMPLES),
+    output:
+        f"{OUT_DIR}/merged.call-vs-dv.vcfeval-compare.png",
+        f"{OUT_DIR}/merged.call-vs-dv.vcfeval-compare.tsv",
+    params:
+        vcfeval_dirs=lambda wc, input: ",".join(
+            [f"{OUT_DIR}/vcfeval/{s}" for s in SAMPLES]),
+        sample_names=",".join(SAMPLES),
+    resources:
+        mem_mb=32000,
+        runtime=120,
+    shell:
+        "Rscript scripts/vcf-compare-vcfeval.R"
+        " {OUT_DIR}/merged.call-vs-dv"
+        " --vcfeval-dirs {params.vcfeval_dirs}"
+        " --samples {params.sample_names}"
+        " --label-a Call --label-b DeepVariant"
+        " --title '{REF} Call vs DeepVariant (vcfeval)'"
+        " --no-sv"

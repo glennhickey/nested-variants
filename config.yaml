@@ -40,6 +40,9 @@ scale_type: log1p
 # DeepVariant Docker image version
 dv_version: "1.9.0"
 
+# vcfeval Docker image for haplotype-aware VCF comparison
+vcfeval_docker: "kockan/vcfeval_docker:v1.1"
+
 # Samples (optional — only needed for genotype/deepvariant rules)
 # Each entry maps sample name → reads index file path
 samples: {}

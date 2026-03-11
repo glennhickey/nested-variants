@@ -34,6 +34,7 @@ filter       <- "all"
 label_a      <- "Call"
 label_b      <- "DeepVariant"
 strip_prefix <- NULL
+no_sv        <- FALSE
 
 i <- 4
 while (i <= length(args)) {
@@ -49,6 +50,8 @@ while (i <= length(args)) {
     label_b <- args[i + 1]; i <- i + 2
   } else if (args[i] == "--strip-prefix" && i + 1 <= length(args)) {
     strip_prefix <- args[i + 1]; i <- i + 2
+  } else if (args[i] == "--no-sv") {
+    no_sv <- TRUE; i <- i + 1
   } else {
     i <- i + 1
   }
@@ -196,10 +199,17 @@ if (length(only_b) > 0) cat("  Warning: samples only in B:", paste(only_b, colla
 dt_a <- classify_variants(vcf_a_data$dt)
 dt_b <- classify_variants(vcf_b_data$dt)
 
+# Drop SV categories if requested (callers like DeepVariant don't call SVs)
+if (no_sv) {
+  dt_a <- dt_a[!variant_type %in% c("SV Insertion", "SV Deletion")]
+  dt_b <- dt_b[!variant_type %in% c("SV Insertion", "SV Deletion")]
+}
+
 # ---------------------------------------------------------------------------
 # For each shared sample: determine shared / A-only / B-only
 # ---------------------------------------------------------------------------
-type_levels <- c("SNP", "MNP", "Insertion", "Deletion", "SV Insertion", "SV Deletion", "Other")
+sv_types <- if (no_sv) character(0) else c("SV Insertion", "SV Deletion")
+type_levels <- c("SNP", "MNP", "Insertion", "Deletion", sv_types, "Other")
 
 results_list <- vector("list", n_shared)
 for (si in seq_along(shared_samples)) {

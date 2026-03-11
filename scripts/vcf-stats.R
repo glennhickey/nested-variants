@@ -48,6 +48,7 @@ giab_strat_beds_arg  <- NULL
 giab_strat_names_arg <- NULL
 per_sample <- FALSE
 ref_sample <- NULL
+no_sv      <- FALSE
 
 i <- 3
 while (i <= length(args)) {
@@ -81,6 +82,9 @@ while (i <= length(args)) {
   } else if (args[i] == "--ref-sample" && i + 1 <= length(args)) {
     ref_sample <- args[i + 1]
     i <- i + 2
+  } else if (args[i] == "--no-sv") {
+    no_sv <- TRUE
+    i <- i + 1
   } else {
     i <- i + 1
   }
@@ -191,6 +195,11 @@ dt[, ref_context := fifelse(
   grepl("_[0-9]+_alt$", CHROM), "Off-reference", "On-reference"
 )]
 
+# Drop SV categories if requested
+if (no_sv) {
+  dt <- dt[!variant_type %in% c("SV Insertion", "SV Deletion")]
+}
+
 # Ts/Tv classification (SNPs only — biallelic SNPs where ALT has no comma)
 dt[variant_type == "SNP" & !grepl(",", ALT), tstv := {
   transitions <- c("AG", "GA", "CT", "TC")
@@ -289,7 +298,8 @@ if (nrow(tstv_dt) > 0) {
 }
 
 # Order variant types (drop empty levels)
-type_levels <- c("SNP", "MNP", "Insertion", "Deletion", "SV Insertion", "SV Deletion", "Other")
+sv_types <- if (no_sv) character(0) else c("SV Insertion", "SV Deletion")
+type_levels <- c("SNP", "MNP", "Insertion", "Deletion", sv_types, "Other")
 plot_dt[, variant_type := factor(variant_type, levels = intersect(type_levels, unique(variant_type)))]
 
 p1 <- ggplot(plot_dt, aes(x = variant_type, y = count, fill = ref_context)) +
@@ -654,6 +664,11 @@ if (per_sample) {
       gt_dt[, ref_context := fifelse(
         grepl("_[0-9]+_alt$", CHROM), "Off-reference", "On-reference"
       )]
+
+      # Drop SV categories if requested
+      if (no_sv) {
+        gt_dt <- gt_dt[!variant_type %in% c("SV Insertion", "SV Deletion")]
+      }
 
       # 4. Count carriers per sample without melting (avoids exceeding R's 2^31
       #    vector limit when n_variants × n_samples is very large).
