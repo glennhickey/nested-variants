@@ -1264,7 +1264,7 @@ rule vcfeval_per_sample:
         fn=f"{OUT_DIR}/vcfeval/{{sample}}/fn.vcf.gz",
     threads: rule_cpus("vcfeval", 16)
     resources:
-        mem_mb=rule_mem_gb("vcfeval", 32) * 1024,
+        mem_mb=rule_mem_gb("vcfeval", 128) * 1024,
         runtime=rule_runtime("vcfeval"),
     params:
         out_dir=f"{OUT_DIR}/vcfeval/{{sample}}",
@@ -1273,7 +1273,8 @@ rule vcfeval_per_sample:
         augref_prefix=f"{AUGREF}#0#",
     shell:
         # Build contig rename map: stripped_name → augref_prefix#0#name
-        "mkdir -p {params.out_dir}"
+        "export RTG_MEM=$(({resources.mem_mb} / 1024))g"
+        " && mkdir -p {params.out_dir}"
         " && bcftools query -f '%CHROM\\n' {input.call_vcf} | sort -u"
         "    | sed 's/^\\(.*\\)/\\1\\t{params.augref_prefix}\\1/'"
         "    > {params.out_dir}/rename-chrs.txt"

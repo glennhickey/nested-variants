@@ -64,7 +64,8 @@ partition: long
 
 # Per-rule resource overrides (uncomment to customize)
 # Rule defaults when not set: paths=128/512, deconstruct=128/512, haplotypes=128/512,
-# giraffe=128/512, surject=128/512, call=128/512, deepvariant=128/512, fasta=128/512
+# giraffe=128/512, surject=128/512, call=128/512, deepvariant=128/512, fasta=128/512,
+# vcfeval=16/128
 # paths_cpus: 128
 # paths_mem_gb: 512
 # deconstruct_cpus: 128
