@@ -1257,6 +1257,7 @@ rule vcfeval_per_sample:
         call_vcf=f"{OUT_DIR}/{{sample}}.vcf.gz",
         dv_vcf=f"{OUT_DIR}/{{sample}}.deepvariant.vcf.gz",
         ref=f"{OUT_DIR}/{OUT_NAME}.fa.gz",
+        paths=f"{OUT_DIR}/{OUT_NAME}.filtered-paths.txt" if surject_filtering() else [],
     output:
         tp=f"{OUT_DIR}/vcfeval/{{sample}}/tp.vcf.gz",
         tp_baseline=f"{OUT_DIR}/vcfeval/{{sample}}/tp-baseline.vcf.gz",
@@ -1284,12 +1285,14 @@ rule vcfeval_per_sample:
         "            if(seen[id]++) next}} {{print}}'"
         "    | bgzip > {params.out_dir}/call.renamed.vcf.gz"
         " && tabix -fp vcf {params.out_dir}/call.renamed.vcf.gz"
-        # Build BED of contigs with variants in either VCF to avoid 283k empty jobs
+        # Build BED of contigs to evaluate: variant-containing contigs restricted
+        # to the filtered paths (contigs >= min_surject_len) when filtering is active
         " && {{"
+        "    ALLOWED=$(if [ -n '{input.paths}' ]; then cat {input.paths} | sort; else cut -f1 {input.ref}.fai | sort; fi);"
         "    comm -12"
         "      <({{ bcftools query -f '%CHROM\\n' {params.out_dir}/call.renamed.vcf.gz;"
         "           bcftools query -f '%CHROM\\n' {input.dv_vcf}; }} | sort -u)"
-        "      <(cut -f1 {input.ref}.fai | sort)"
+        "      <(echo \"$ALLOWED\")"
         "    | join -t $'\\t' - <(awk '{{OFS=\"\\t\"; print $1, $2}}' {input.ref}.fai | sort -k1,1)"
         "    | awk '{{OFS=\"\\t\"; print $1, 0, $2}}'"
         "    > {params.out_dir}/eval-regions.bed;"
