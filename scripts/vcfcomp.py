@@ -305,7 +305,8 @@ def vcfeval(truth_vcf,
             options,
             docker_image):
     """
-    Run rtg vcfeval on two vcfs, using the provided reference and bed
+    Run rtg vcfeval on two vcfs, using the provided reference and bed.
+    If docker_image is None or empty, run rtg directly (must be on PATH).
     """
 
     try:
@@ -319,17 +320,34 @@ def vcfeval(truth_vcf,
     if os.path.exists(ve_dir):
         shutil.rmtree(ve_dir)
 
-    # put everything in the same place
-    link_files = [truth_vcf, truth_vcf + '.tbi', calls_vcf, calls_vcf + '.tbi', ref_fasta, ref_fasta + '.fai']
-    if bed_regions:
-        link_files.append(bed_regions)
-    for f in link_files:
-        if os.path.isfile(f) and os.path.dirname(f) != output_dir:
-            subprocess.check_call(['ln', '-f', os.path.abspath(f), os.path.abspath(output_dir)])
+    use_docker = bool(docker_image)
 
-    docker_cmd = ['docker', 'run', '--rm',
-                  '-u', '{}:{}'.format(os.getuid(), os.getgid()),
-                  '-v', os.path.abspath(output_dir) + ':/data', docker_image]
+    if use_docker:
+        # put everything in the same place for Docker bind mount
+        link_files = [truth_vcf, truth_vcf + '.tbi', calls_vcf, calls_vcf + '.tbi', ref_fasta, ref_fasta + '.fai']
+        if bed_regions:
+            link_files.append(bed_regions)
+        for f in link_files:
+            if os.path.isfile(f) and os.path.dirname(f) != output_dir:
+                subprocess.check_call(['ln', '-f', os.path.abspath(f), os.path.abspath(output_dir)])
+
+        docker_cmd = ['docker', 'run', '--rm',
+                      '-u', '{}:{}'.format(os.getuid(), os.getgid()),
+                      '-v', os.path.abspath(output_dir) + ':/data', docker_image]
+        path_prefix = '/data/'
+        ref_path = lambda name: '/data/' + name
+        vcf_path = lambda vcf: '/data/' + os.path.basename(vcf)
+        out_path = '/data/' + os.path.basename(ve_dir)
+    else:
+        docker_cmd = []
+        path_prefix = os.path.abspath(output_dir) + '/'
+        ref_path = lambda name: os.path.join(os.path.abspath(output_dir), name)
+        vcf_path = lambda vcf: os.path.abspath(vcf)
+        out_path = os.path.abspath(ve_dir)
+        # still link ref into output_dir for SDF creation
+        for f in [ref_fasta, ref_fasta + '.fai']:
+            if os.path.isfile(f) and os.path.dirname(os.path.abspath(f)) != os.path.abspath(output_dir):
+                subprocess.check_call(['ln', '-f', os.path.abspath(f), os.path.abspath(output_dir)])
 
     # make the sdf (todo: should have option to pass this in to avoid recomputing)
     ref_name = os.path.basename(ref_fasta)
@@ -337,17 +355,18 @@ def vcfeval(truth_vcf,
         ref_name = 'ref.SDF'
         if os.path.exists(os.path.join(output_dir, ref_name)):
             shutil.rmtree(os.path.join(output_dir, ref_name))
-        subprocess.check_call(docker_cmd + ['rtg', 'format', '/data/' + os.path.basename(ref_fasta),
-                                            '-o', '/data/' + ref_name])
+        subprocess.check_call(docker_cmd + ['rtg', 'format',
+                                            path_prefix + os.path.basename(ref_fasta),
+                                            '-o', ref_path(ref_name)])
     # run vcfeval
     vcfeval_cmd = ['rtg', 'vcfeval',
-                   '-b', '/data/' + os.path.basename(truth_vcf),
-                   '-c', '/data/' + os.path.basename(calls_vcf),
-                   '-t', '/data/' + ref_name,
+                   '-b', vcf_path(truth_vcf),
+                   '-c', vcf_path(calls_vcf),
+                   '-t', ref_path(ref_name),
                    '--threads', str(threads),
-                   '-o', '/data/' + os.path.basename(ve_dir)]
+                   '-o', out_path]
     if bed_regions:
-        vcfeval_cmd += ['-e', '/data/' + os.path.basename(bed_regions)]
+        vcfeval_cmd += ['-e', vcf_path(bed_regions)]
     if options:
         vcfeval_cmd += options.split()
     subprocess.check_call(docker_cmd + vcfeval_cmd)
@@ -795,6 +814,8 @@ def main(command_line=None):
                               help='completely ignore chrY')
     vcfeval_parser.add_argument('--no-preprocess', action='store_true',
                               help='skip VCF preprocessing (use when calls VCF is already prepared)')
+    vcfeval_parser.add_argument('--no-docker', action='store_true',
+                              help='run rtg directly instead of via Docker (rtg must be on PATH)')
 
     vcfeval_breakdown_parser = subparsers.add_parser('vcfeval-breakdown', help='Make chromosome-decomposed table of vcfeval results')
     vcfeval_breakdown_parser.add_argument('--dir', required=True,
@@ -937,7 +958,7 @@ def main(command_line=None):
         vcfeval(args.truth, hap_calls, args.ref, getattr(args, 'regions', None), args.sample, args.out_dir,
                 threads = args.threads,
                 options=args.options,
-                docker_image = args.docker)
+                docker_image = None if args.no_docker else args.docker)
 
     if args.command == 'aardvark':
         assert not args.ref.endswith('.gz')

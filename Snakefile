@@ -1268,7 +1268,8 @@ rule vcfeval_per_sample:
         runtime=rule_runtime("vcfeval"),
     params:
         out_dir=f"{OUT_DIR}/vcfeval/{{sample}}",
-        docker=config.get("vcfeval_docker", "kockan/vcfeval_docker:v1.1"),
+        docker_arg=lambda wc: f"--docker {config['vcfeval_docker']}" if config.get("vcfeval_docker") else "",
+        no_docker="" if config.get("vcfeval_docker") else "--no-docker",
         augref_prefix=f"{AUGREF}#0#",
     shell:
         # Build contig rename map: stripped_name → augref_prefix#0#name
@@ -1285,7 +1286,7 @@ rule vcfeval_per_sample:
         "    --ref {input.ref}"
         "    --out-dir {params.out_dir}"
         "    --threads {threads}"
-        "    --docker {params.docker}"
+        "    {params.docker_arg} {params.no_docker}"
         "    --no-preprocess"
         " && rm -f {params.out_dir}/call.renamed.vcf.gz"
         "    {params.out_dir}/call.renamed.vcf.gz.tbi"

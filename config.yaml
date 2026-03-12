@@ -41,7 +41,8 @@ scale_type: log1p
 dv_version: "1.9.0"
 
 # vcfeval Docker image for haplotype-aware VCF comparison
-vcfeval_docker: "kockan/vcfeval_docker:v1.1"
+# Leave empty to use rtg directly (must be on PATH); set to use Docker instead
+vcfeval_docker: ""
 
 # Samples (optional — only needed for genotype/deepvariant rules)
 # Each entry maps sample name → reads index file path
