@@ -1262,7 +1262,7 @@ rule vcfeval_per_sample:
         tp_baseline=f"{OUT_DIR}/vcfeval/{{sample}}/tp-baseline.vcf.gz",
         fp=f"{OUT_DIR}/vcfeval/{{sample}}/fp.vcf.gz",
         fn=f"{OUT_DIR}/vcfeval/{{sample}}/fn.vcf.gz",
-    threads: rule_cpus("vcfeval", 16)
+    threads: rule_cpus("vcfeval", 64)
     resources:
         mem_mb=rule_mem_gb("vcfeval", 128) * 1024,
         runtime=rule_runtime("vcfeval"),
