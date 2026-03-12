@@ -366,7 +366,7 @@ def vcfeval(truth_vcf,
                    '--threads', str(threads),
                    '-o', out_path]
     if bed_regions:
-        vcfeval_cmd += ['-e', vcf_path(bed_regions)]
+        vcfeval_cmd += ['--bed-regions', vcf_path(bed_regions)]
     if options:
         vcfeval_cmd += options.split()
     subprocess.check_call(docker_cmd + vcfeval_cmd)
