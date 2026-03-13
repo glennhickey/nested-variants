@@ -512,6 +512,20 @@ rule deconstruct:
         " --cpus {threads} --mem {params.mem_gb}gb"
         " --local"
 
+rule annotate_tr:
+    """Annotate indels with tandem repeat motifs"""
+    input:
+        vcf=f"{OUT_DIR}/{OUT_NAME}.vcf.gz",
+        ref=f"{OUT_DIR}/{OUT_NAME}.fa.gz",
+    output:
+        f"{OUT_DIR}/{OUT_NAME}.tr.vcf.gz",
+    resources:
+        mem_mb=int(rule_mem_gb("annotate_tr", 64)) * 1024,
+        runtime=rule_runtime("annotate_tr", 120),
+    shell:
+        "python3 scripts/annotate-tr.py --vcf {input.vcf} --ref {input.ref}"
+        " -o {output} && tabix -fp vcf {output}"
+
 rule split_vcf:
     """VCF → onref / nestedref / offref"""
     input:
@@ -999,7 +1013,7 @@ rule merged_dv_plots:
 rule deconstruct_sites_stats:
     """Deconstruct VCF → site-level stats + plots (includes AF spectrum)"""
     input:
-        vcf=f"{OUT_DIR}/{OUT_NAME}.vcf.gz",
+        vcf=f"{OUT_DIR}/{OUT_NAME}.tr.vcf.gz",
         annot_beds=augref_annot_beds(),
         giab_beds=augref_giab_strat_beds(),
     output:
@@ -1038,7 +1052,7 @@ rule deconstruct_sites_stats:
 rule deconstruct_variants_stats:
     """Deconstruct VCF → variant-level stats + plots (uses pre-normed VCF)"""
     input:
-        vcf=f"{OUT_DIR}/{OUT_NAME}.normed.vcf.gz",
+        vcf=f"{OUT_DIR}/{OUT_NAME}.tr.normed.vcf.gz",
         annot_beds=augref_annot_beds(),
         giab_beds=augref_giab_strat_beds(),
     output:
@@ -1297,10 +1311,16 @@ rule vcfeval_per_sample:
         "    | awk '{{OFS=\"\\t\"; print $1, 0, $2}}'"
         "    > {params.out_dir}/eval-regions.bed;"
         " }}"
+        # Build a filtered reference FASTA with only eval contigs so that
+        # rtg format / vcfeval don't create 283K+ jobs for the full augref
+        " && cut -f1 {params.out_dir}/eval-regions.bed > {params.out_dir}/eval-contigs.txt"
+        " && samtools faidx {input.ref} -r {params.out_dir}/eval-contigs.txt"
+        "    | bgzip > {params.out_dir}/eval-ref.fa.gz"
+        " && samtools faidx {params.out_dir}/eval-ref.fa.gz"
         " && python3 scripts/vcfcomp.py vcfeval"
         "    --truth {params.out_dir}/call.renamed.vcf.gz"
         "    --calls {input.dv_vcf}"
-        "    --ref {input.ref}"
+        "    --ref {params.out_dir}/eval-ref.fa.gz"
         "    --regions {params.out_dir}/eval-regions.bed"
         "    --out-dir {params.out_dir}"
         "    --threads {threads}"
@@ -1310,6 +1330,10 @@ rule vcfeval_per_sample:
         "    {params.out_dir}/call.renamed.vcf.gz.tbi"
         "    {params.out_dir}/rename-chrs.txt"
         "    {params.out_dir}/eval-regions.bed"
+        "    {params.out_dir}/eval-contigs.txt"
+        "    {params.out_dir}/eval-ref.fa.gz"
+        "    {params.out_dir}/eval-ref.fa.gz.fai"
+        "    {params.out_dir}/eval-ref.fa.gz.gzi"
 
 rule vcfeval_compare_plot:
     """Aggregate per-sample vcfeval results into comparison plot"""

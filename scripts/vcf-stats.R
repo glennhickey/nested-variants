@@ -118,13 +118,13 @@ if (mode == "variants") {
   pipe_prefix <- sprintf("bcftools view -c1 '%s' 2>/dev/null | %s bcftools +fill-tags - -- -t AF 2>/dev/null", vcf, filter_cmd)
 }
 
-# Try with AF first (filter out all-homref sites from vg call -A)
+# Try with AF + TR_MOTIF first (filter out all-homref sites from vg call -A)
 cmd_af <- sprintf(
-  "%s | bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT\\t%%INFO/AF\\n' 2>/dev/null",
+  "%s | bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT\\t%%INFO/AF\\t%%INFO/TR_MOTIF\\n' 2>/dev/null",
   pipe_prefix
 )
 dt <- tryCatch(
-  fread(cmd = cmd_af, col.names = c("CHROM", "POS", "REF", "ALT", "AF_str")),
+  fread(cmd = cmd_af, col.names = c("CHROM", "POS", "REF", "ALT", "AF_str", "TR_MOTIF")),
   error = function(e) NULL,
   warning = function(w) NULL
 )
@@ -132,17 +132,35 @@ dt <- tryCatch(
 has_af <- !is.null(dt) && nrow(dt) > 0 && !all(is.na(dt$AF_str) | dt$AF_str == ".")
 
 if (is.null(dt) || nrow(dt) == 0) {
-  # Fallback: read without AF
+  # Fallback: read without AF (still include TR_MOTIF)
   cmd_no_af <- sprintf(
-    "%s | bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT\\n' 2>/dev/null",
+    "%s | bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT\\t%%INFO/TR_MOTIF\\n' 2>/dev/null",
     pipe_prefix
   )
-  dt <- fread(cmd = cmd_no_af, col.names = c("CHROM", "POS", "REF", "ALT"))
+  dt <- tryCatch(
+    fread(cmd = cmd_no_af, col.names = c("CHROM", "POS", "REF", "ALT", "TR_MOTIF")),
+    error = function(e) NULL,
+    warning = function(w) NULL
+  )
+  if (is.null(dt) || nrow(dt) == 0) {
+    # Final fallback: no AF, no TR_MOTIF
+    cmd_bare <- sprintf(
+      "%s | bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT\\n' 2>/dev/null",
+      pipe_prefix
+    )
+    dt <- fread(cmd = cmd_bare, col.names = c("CHROM", "POS", "REF", "ALT"))
+  }
   has_af <- FALSE
 }
 
 if (!has_af && "AF_str" %in% names(dt)) {
   dt[, AF_str := NULL]
+}
+
+# Detect TR_MOTIF availability
+has_tr <- "TR_MOTIF" %in% names(dt) && !all(is.na(dt$TR_MOTIF) | dt$TR_MOTIF == ".")
+if ("TR_MOTIF" %in% names(dt) && !has_tr) {
+  dt[, TR_MOTIF := NULL]
 }
 
 cat("Read", nrow(dt), "variant records\n")
@@ -205,6 +223,19 @@ dt[variant_type == "SNP" & !grepl(",", ALT), tstv := {
   transitions <- c("AG", "GA", "CT", "TC")
   fifelse(paste0(REF, ALT) %in% transitions, "Ts", "Tv")
 }]
+
+# Tandem repeat flag for indels (from TR_MOTIF annotation)
+if (has_tr) {
+  cat("TR_MOTIF field detected — flagging tandem repeat indels\n")
+  # For multi-allelic (sites mode): any non-"." value among comma-separated motifs
+  dt[, is_repeat := FALSE]
+  dt[variant_type %in% c("Insertion", "Deletion", "SV Insertion", "SV Deletion"),
+     is_repeat := grepl("[^.,]", TR_MOTIF)]
+  dt[, TR_MOTIF := NULL]
+  cat("Tandem repeat indels:", sum(dt$is_repeat), "of",
+      sum(dt$variant_type %in% c("Insertion", "Deletion", "SV Insertion", "SV Deletion")),
+      "indel records\n")
+}
 
 # ---------------------------------------------------------------------------
 # AF: compute per-site non-reference frequency (sum of alt AFs)
@@ -284,7 +315,7 @@ save_png <- function(plot, file, width = 8, height = 6) {
 }
 
 # ---------------------------------------------------------------------------
-# Plot 1: Variant type bar chart
+# Plot 1: Variant type bar chart (with tandem repeat overlay when available)
 # ---------------------------------------------------------------------------
 plot_dt <- dt[, .(count = .N), by = .(ref_context, variant_type)]
 
@@ -302,23 +333,56 @@ sv_types <- if (no_sv) character(0) else c("SV Insertion", "SV Deletion")
 type_levels <- c("SNP", "MNP", "Insertion", "Deletion", sv_types, "Other")
 plot_dt[, variant_type := factor(variant_type, levels = intersect(type_levels, unique(variant_type)))]
 
-p1 <- ggplot(plot_dt, aes(x = variant_type, y = count, fill = ref_context)) +
-  geom_col(position = "dodge", width = 0.7) +
-  geom_text(aes(label = label),
-            position = position_dodge(width = 0.7),
-            vjust = -0.5, size = 3, na.rm = TRUE) +
-  scale_fill_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
-                    name = NULL) +
-  scale_y_continuous(labels = scales::comma) +
-  labs(title = title, subtitle = paste0("Variant Type Counts ", mode_label, filter_label),
-       x = "Variant Type", y = "Count") +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(hjust = 0.5, face = "bold"),
-    plot.subtitle = element_text(hjust = 0.5),
-    panel.background = element_rect(fill = "white", color = NA),
-    plot.background  = element_rect(fill = "white", color = NA)
-  )
+if (has_tr) {
+  # Tandem repeat overlay: full bar (faded) + TR portion (solid) on top
+  indel_types <- c("Insertion", "Deletion", "SV Insertion", "SV Deletion")
+  tr_counts <- dt[variant_type %in% indel_types,
+                  .(tr_count = sum(is_repeat)), by = .(ref_context, variant_type)]
+  plot_dt <- merge(plot_dt, tr_counts, by = c("ref_context", "variant_type"), all.x = TRUE)
+  plot_dt[is.na(tr_count), tr_count := 0L]
+
+  # TR overlay data (only indel types with tr_count > 0)
+  tr_dt <- plot_dt[variant_type %in% indel_types & tr_count > 0,
+                   .(ref_context, variant_type, count = tr_count)]
+
+  p1 <- ggplot(plot_dt, aes(x = variant_type, y = count, fill = ref_context)) +
+    geom_col(position = "dodge", width = 0.7, alpha = 0.4) +
+    geom_col(data = tr_dt, position = "dodge", width = 0.7, alpha = 1.0) +
+    geom_text(aes(label = label),
+              position = position_dodge(width = 0.7),
+              vjust = -0.5, size = 3, na.rm = TRUE) +
+    scale_fill_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
+                      name = NULL) +
+    scale_y_continuous(labels = scales::comma) +
+    labs(title = title, subtitle = paste0("Variant Type Counts ", mode_label, filter_label,
+                                          " (solid = tandem repeat)"),
+         x = "Variant Type", y = "Count") +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(hjust = 0.5, face = "bold"),
+      plot.subtitle = element_text(hjust = 0.5),
+      panel.background = element_rect(fill = "white", color = NA),
+      plot.background  = element_rect(fill = "white", color = NA)
+    )
+} else {
+  p1 <- ggplot(plot_dt, aes(x = variant_type, y = count, fill = ref_context)) +
+    geom_col(position = "dodge", width = 0.7) +
+    geom_text(aes(label = label),
+              position = position_dodge(width = 0.7),
+              vjust = -0.5, size = 3, na.rm = TRUE) +
+    scale_fill_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
+                      name = NULL) +
+    scale_y_continuous(labels = scales::comma) +
+    labs(title = title, subtitle = paste0("Variant Type Counts ", mode_label, filter_label),
+         x = "Variant Type", y = "Count") +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(hjust = 0.5, face = "bold"),
+      plot.subtitle = element_text(hjust = 0.5),
+      panel.background = element_rect(fill = "white", color = NA),
+      plot.background  = element_rect(fill = "white", color = NA)
+    )
+}
 
 save_png(p1, paste0(prefix, ".variant-types.png"))
 
