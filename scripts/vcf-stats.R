@@ -334,7 +334,7 @@ type_levels <- c("SNP", "MNP", "Insertion", "Deletion", sv_types, "Other")
 plot_dt[, variant_type := factor(variant_type, levels = intersect(type_levels, unique(variant_type)))]
 
 if (has_tr) {
-  # Tandem repeat overlay: full bar (faded) + TR portion (solid) on top
+  # Tandem repeat overlay: solid full bar + faded TR portion on top
   indel_types <- c("Insertion", "Deletion", "SV Insertion", "SV Deletion")
   tr_counts <- dt[variant_type %in% indel_types,
                   .(tr_count = sum(is_repeat)), by = .(ref_context, variant_type)]
@@ -346,8 +346,9 @@ if (has_tr) {
                    .(ref_context, variant_type, count = tr_count)]
 
   p1 <- ggplot(plot_dt, aes(x = variant_type, y = count, fill = ref_context)) +
-    geom_col(position = "dodge", width = 0.7, alpha = 0.4) +
-    geom_col(data = tr_dt, position = "dodge", width = 0.7, alpha = 1.0) +
+    geom_col(position = "dodge", width = 0.7) +
+    geom_col(data = tr_dt, position = "dodge", width = 0.7, alpha = 0.35,
+             fill = "white") +
     geom_text(aes(label = label),
               position = position_dodge(width = 0.7),
               vjust = -0.5, size = 3, na.rm = TRUE) +
@@ -355,7 +356,7 @@ if (has_tr) {
                       name = NULL) +
     scale_y_continuous(labels = scales::comma) +
     labs(title = title, subtitle = paste0("Variant Type Counts ", mode_label, filter_label,
-                                          " (solid = tandem repeat)"),
+                                          " (faded = tandem repeat)"),
          x = "Variant Type", y = "Count") +
     theme_minimal() +
     theme(

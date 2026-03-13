@@ -1012,8 +1012,20 @@ def main(command_line=None):
 
         if args.no_preprocess:
             hap_calls = calls_vcf
+            hap_truth = truth_vcf
         else:
-            # run some preprocessing (only on calls -- assume truth from giab is ready to go)
+            # preprocess both truth and calls: size filter, normalize, fix chrX/Y GTs
+            hap_truth = os.path.join(args.out_dir, os.path.basename(truth_vcf.replace('.vcf.gz', '.hap.vcf.gz')))
+            vcf_preprocess(truth_vcf,
+                           hap_truth,
+                           ref_fasta,
+                           args.exclude_y,
+                           args.haploid_x,
+                           args.sample,
+                           0,
+                           args.max_length,
+                           False,
+                           True)
             hap_calls = os.path.join(args.out_dir, os.path.basename(calls_vcf.replace('.vcf.gz', '.hap.vcf.gz')))
             vcf_preprocess(calls_vcf,
                            hap_calls,
@@ -1026,7 +1038,7 @@ def main(command_line=None):
                            False,
                            True)
 
-        vcfeval(truth_vcf, hap_calls, ref_fasta, getattr(args, 'regions', None), args.sample, args.out_dir,
+        vcfeval(hap_truth, hap_calls, ref_fasta, getattr(args, 'regions', None), args.sample, args.out_dir,
                 threads = args.threads,
                 options=args.options,
                 docker_image = None if args.no_docker else args.docker)
