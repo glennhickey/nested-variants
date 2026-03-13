@@ -278,6 +278,20 @@ def vcfeval_compare_outputs():
         f"{OUT_DIR}/merged.call-vs-dv.vcfeval-compare.tsv",
     ]
 
+def pantree_outputs():
+    """Return pantree comparison outputs when pantree_vcf is configured."""
+    if not config.get("pantree_vcf", ""):
+        return []
+    return [
+        f"{OUT_DIR}/pantree.variant-types.png",
+        f"{OUT_DIR}/pantree.density.png",
+        f"{OUT_DIR}/{OUT_NAME}.pantree-types.png",
+        f"{OUT_DIR}/{OUT_NAME}.pantree-types-pct.png",
+        f"{OUT_DIR}/{OUT_NAME}.pantree-size-dist.png",
+        f"{OUT_DIR}/{OUT_NAME}.pantree-af.png",
+        f"{OUT_DIR}/{OUT_NAME}.pantree-compare.tsv",
+    ]
+
 ############################################################################
 # Target rules
 ############################################################################
@@ -307,6 +321,7 @@ rule all:
         *compare_call_dv_outputs(),
         *vcfeval_compare_outputs(),
         *polymorphism_outputs(),
+        *pantree_outputs(),
         # per-sample genotyping outputs
         expand("{out}/{s}.vcf.gz", out=OUT_DIR, s=SAMPLES),
         expand("{out}/{s}.call-offref.png", out=OUT_DIR, s=SAMPLES),
@@ -397,6 +412,7 @@ rule graph_only:
         *giab_strat_stats_outputs(["deconstruct"]),
         *per_sample_stats_outputs(["deconstruct"]),
         *polymorphism_outputs(),
+        *pantree_outputs(),
 
 rule genotype_all:
     """Genotype all samples (vg call) + merge"""
@@ -1257,11 +1273,13 @@ rule compare_call_dv:
         " --no-sv"
 
 ############################################################################
-# vcfeval-based Call vs DeepVariant comparison
+# VCF comparison: Call vs DeepVariant (vcfeval or aardvark)
 ############################################################################
 
 rule vcfeval_per_sample:
-    """Run rtg vcfeval per sample: call VCF (base) vs DeepVariant VCF (query)
+    """Run VCF comparison per sample: call VCF (truth) vs DeepVariant VCF (calls)
+
+    Dispatches to vcfeval or aardvark based on config['eval_tool'].
 
     vg call strips the augref prefix from contig names but DeepVariant keeps it.
     The reference FASTA also uses the full augref prefix.  Restore the prefix on
@@ -1273,7 +1291,6 @@ rule vcfeval_per_sample:
         ref=f"{OUT_DIR}/{OUT_NAME}.fa.gz",
         paths=f"{OUT_DIR}/{OUT_NAME}.filtered-paths.txt" if surject_filtering() else [],
     output:
-        tp=f"{OUT_DIR}/vcfeval/{{sample}}/tp.vcf.gz",
         tp_baseline=f"{OUT_DIR}/vcfeval/{{sample}}/tp-baseline.vcf.gz",
         fp=f"{OUT_DIR}/vcfeval/{{sample}}/fp.vcf.gz",
         fn=f"{OUT_DIR}/vcfeval/{{sample}}/fn.vcf.gz",
@@ -1283,6 +1300,7 @@ rule vcfeval_per_sample:
         runtime=rule_runtime("vcfeval"),
     params:
         out_dir=f"{OUT_DIR}/vcfeval/{{sample}}",
+        eval_tool=config.get("eval_tool", "aardvark"),
         docker_arg=lambda wc: f"--docker {config['vcfeval_docker']}" if config.get("vcfeval_docker") else "",
         no_docker="" if config.get("vcfeval_docker") else "--no-docker",
         augref_prefix=f"{AUGREF}#0#",
@@ -1303,7 +1321,7 @@ rule vcfeval_per_sample:
         # Stage inputs to node-local scratch for fast I/O
         " && WORK_TMPDIR=$(mktemp -d \"${{TMPDIR:-{params.out_dir}}}/vcfeval.XXXXXX\")"
         " && trap 'rm -rf \"$WORK_TMPDIR\"' EXIT"
-        " && echo \"Staging vcfeval inputs to $WORK_TMPDIR\""
+        " && echo \"Staging inputs to $WORK_TMPDIR\""
         " && cp {params.out_dir}/call.renamed.vcf.gz"
         "       {params.out_dir}/call.renamed.vcf.gz.tbi"
         "       {input.dv_vcf} {input.dv_vcf}.tbi"
@@ -1311,7 +1329,7 @@ rule vcfeval_per_sample:
         "       \"$WORK_TMPDIR/\""
         " && {{ [ -f {input.ref}.gzi ]"
         "       && cp {input.ref}.gzi \"$WORK_TMPDIR/\" || true; }}"
-        " && python3 scripts/vcfcomp.py vcfeval"
+        " && python3 scripts/vcfcomp.py {params.eval_tool}"
         "    --truth $WORK_TMPDIR/call.renamed.vcf.gz"
         "    --calls $WORK_TMPDIR/$(basename {input.dv_vcf})"
         "    --ref $WORK_TMPDIR/$(basename {input.ref})"
@@ -1320,10 +1338,11 @@ rule vcfeval_per_sample:
         "    --min-contig-len {params.min_vcfeval_len}"
         "    {params.docker_arg} {params.no_docker}"
         # Copy results back from local scratch
-        " && for f in tp.vcf.gz tp.vcf.gz.tbi tp-baseline.vcf.gz tp-baseline.vcf.gz.tbi"
+        " && for f in tp-baseline.vcf.gz tp-baseline.vcf.gz.tbi"
         "          fp.vcf.gz fp.vcf.gz.tbi fn.vcf.gz fn.vcf.gz.tbi"
         "          summary.txt snp_roc.tsv.gz non_snp_roc.tsv.gz weighted_roc.tsv.gz"
-        "          phasing.txt vcfeval.log progress; do"
+        "          phasing.txt vcfeval.log progress"
+        "          query.vcf.gz query.vcf.gz.tbi truth.vcf.gz truth.vcf.gz.tbi; do"
         "    [ -f \"$WORK_TMPDIR/$f\" ] && cp \"$WORK_TMPDIR/$f\" {params.out_dir}/;"
         "  done"
         # Clean up staged files on shared storage
@@ -1355,3 +1374,86 @@ rule vcfeval_compare_plot:
         " --label-a Call --label-b DeepVariant"
         " --title '{REF} Call vs DeepVariant (vcfeval)'"
         " --no-sv"
+
+############################################################################
+# Pantree comparison rules (optional — only when pantree_vcf is set)
+############################################################################
+
+rule pantree_extract:
+    """Pantree VCF → standardized records TSV"""
+    input:
+        vcf=config["pantree_vcf"] if config.get("pantree_vcf", "") else [],
+    output:
+        f"{OUT_DIR}/pantree.records.tsv",
+    resources:
+        mem_mb=32000,
+        runtime=120,
+    shell:
+        "python3 scripts/pantree-extract.py"
+        " --vcf {input.vcf} --output {output}"
+
+rule pantree_stats:
+    """Pantree records TSV → standalone variant-type/size/AF plots"""
+    input:
+        f"{OUT_DIR}/pantree.records.tsv",
+    output:
+        f"{OUT_DIR}/pantree.vcf-stats.tsv",
+        f"{OUT_DIR}/pantree.variant-types.png",
+        f"{OUT_DIR}/pantree.size-dist.png",
+        f"{OUT_DIR}/pantree.size-dist-log.png",
+        f"{OUT_DIR}/pantree.af-spectrum.png",
+    resources:
+        mem_mb=32000,
+        runtime=120,
+    shell:
+        "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/pantree"
+        " --tsv --title 'Pantree'"
+
+rule deconstruct_records:
+    """Export deconstruct VCF as records TSV for comparison"""
+    input:
+        f"{OUT_DIR}/{OUT_NAME}.tr.vcf.gz",
+    output:
+        f"{OUT_DIR}/{OUT_NAME}.records.tsv",
+    resources:
+        mem_mb=int(rule_mem_gb("deconstruct_stats", 512)) * 1024,
+        runtime=2880,
+    shell:
+        "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{OUT_NAME}"
+        " --mode sites --dump-records --records-only"
+        " --title '{REF} Deconstruct'"
+
+rule pantree_compare:
+    """Side-by-side comparison of our deconstruct vs pantree"""
+    input:
+        ours=f"{OUT_DIR}/{OUT_NAME}.records.tsv",
+        pantree=f"{OUT_DIR}/pantree.records.tsv",
+    output:
+        f"{OUT_DIR}/{OUT_NAME}.pantree-types.png",
+        f"{OUT_DIR}/{OUT_NAME}.pantree-types-pct.png",
+        f"{OUT_DIR}/{OUT_NAME}.pantree-size-dist.png",
+        f"{OUT_DIR}/{OUT_NAME}.pantree-af.png",
+        f"{OUT_DIR}/{OUT_NAME}.pantree-compare.tsv",
+    resources:
+        mem_mb=32000,
+        runtime=120,
+    shell:
+        "Rscript scripts/pantree-compare.R"
+        " --ours {input.ours} --pantree {input.pantree}"
+        " --prefix {OUT_DIR}/{OUT_NAME}"
+        " --title '{REF} vs Pantree'"
+
+rule pantree_density:
+    """Pantree records TSV → chromosome density ideogram"""
+    input:
+        f"{OUT_DIR}/pantree.records.tsv",
+    output:
+        f"{OUT_DIR}/pantree.density.png",
+    resources:
+        mem_mb=32000,
+        runtime=120,
+    shell:
+        "Rscript scripts/pantree-density.R"
+        " {input} {output}"
+        " 'Pantree Variant Density'"
+        " --ref {REF}"

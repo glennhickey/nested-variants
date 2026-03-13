@@ -18,8 +18,11 @@ min_augref_len: 50
 # Minimum contig length for surjection/DeepVariant (0 = no filtering)
 min_surject_len: 1000
 
-# Minimum contig length for vcfeval comparison (0 = use all eval contigs)
+# Minimum contig length for vcfeval/aardvark comparison (0 = use all eval contigs)
 min_vcfeval_len: 100000
+
+# VCF comparison tool: "vcfeval" (rtg) or "aardvark"
+eval_tool: aardvark
 
 # Deconstruct options
 cluster: ""
@@ -36,6 +39,9 @@ annot_segdups: ""
 annot_censat: ""
 annot_pclai: ""
 giab_strat: ""   # prefix for GIAB partition BEDs ({prefix}-easy.bed, -segdup.bed, -otherdifficult.bed)
+
+# Pantree VCF for side-by-side comparison (optional, empty = skip)
+pantree_vcf: ""
 
 # Scale type for density plots: log1p, sqrt, log, identity
 scale_type: log1p

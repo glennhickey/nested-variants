@@ -216,6 +216,7 @@ snakemake --profile profiles/slurm all \
     annot_censat=$ANNOT/hprc-v2-censat-grch38-chm13.bed \
     annot_pclai=$ANNOT/hprc-v2-pclai-grch38-chm13.bed \
     giab_strat=$ANNOT/hprc-v2-giab \
+    pantree_vcf=/private/home/ghickey/dev/work/pantree/CHM13-464.MCv2.0.noY.gz \
     "samples={HG001: $GIAB/HG001.novaseq.pcr-free.gs.paths, HG002: $GIAB/HG002.novaseq.pcr-free.gs.paths, HG003: $GIAB/HG003.novaseq.pcr-free.gs.paths, HG004: $GIAB/HG004.novaseq.pcr-free.gs.paths, HG005: $GIAB/HG005.novaseq.pcr-free.gs.paths, HG006: $GIAB/HG006.novaseq.pcr-free.gs.paths, HG007: $GIAB/HG007.novaseq.pcr-free.gs.paths, NA12891: $GIAB/NA12891.novaseq.pcr-free.gs.paths, NA12892: $GIAB/NA12892.novaseq.pcr-free.gs.paths}" --rerun-incomplete --default-resources slurm_partition=high_priority
 ```
 

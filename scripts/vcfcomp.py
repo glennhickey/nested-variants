@@ -507,30 +507,77 @@ def aardvark(truth_vcf,
     if os.path.exists(ve_dir):
         shutil.rmtree(ve_dir)
 
-    # put everything in the same place
-    for f in [truth_vcf, truth_vcf + '.tbi', calls_vcf, calls_vcf + '.tbi', ref_fasta, ref_fasta + '.fai', bed_regions]:
-        if os.path.isfile(f) and os.path.dirname(f) != output_dir:
-            subprocess.check_call(['ln', '-f', os.path.abspath(f), os.path.abspath(output_dir)])
+    if docker_image:
+        # put everything in the same place for Docker bind mount
+        link_files = [truth_vcf, truth_vcf + '.tbi', calls_vcf, calls_vcf + '.tbi',
+                      ref_fasta, ref_fasta + '.fai']
+        if bed_regions:
+            link_files.append(bed_regions)
+        for f in link_files:
+            if os.path.isfile(f) and os.path.dirname(f) != output_dir:
+                subprocess.check_call(['ln', '-f', os.path.abspath(f), os.path.abspath(output_dir)])
 
-    docker_cmd = ['docker', 'run', '--rm',
-                  '-u', '{}:{}'.format(os.getuid(), os.getgid()),
-                  '-v', os.path.abspath(output_dir) + ':/data', docker_image]
-        
-    # run aardvark 
+        docker_cmd = ['docker', 'run', '--rm',
+                      '-u', '{}:{}'.format(os.getuid(), os.getgid()),
+                      '-v', os.path.abspath(output_dir) + ':/data', docker_image]
+        path = lambda f: '/data/' + os.path.basename(f)
+    else:
+        docker_cmd = []
+        path = lambda f: os.path.abspath(f)
+        ve_dir = os.path.abspath(ve_dir)
+
+    # run aardvark
     aardvark_cmd = ['aardvark', 'compare',
-                    '-t', '/data/' + os.path.basename(truth_vcf),
-                    '-q', '/data/' + os.path.basename(calls_vcf),                 
-                    '-b', '/data/' + os.path.basename(bed_regions),
-                    '-r', '/data/' + os.path.basename(ref_fasta),
+                    '-t', path(truth_vcf),
+                    '-q', path(calls_vcf),
+                    '-r', path(ref_fasta),
                     '--threads', str(threads),
-                    '-o', '/data/' + os.path.basename(ve_dir),
+                    '-o', path(ve_dir),
                     '--compare-label', os.path.basename(calls_vcf)]
+    if bed_regions:
+        aardvark_cmd += ['-b', path(bed_regions)]
     if options:
         aardvark_cmd += options.split()
     subprocess.check_call(docker_cmd + aardvark_cmd)
 
     subprocess.check_call('mv {}/* {}'.format(ve_dir, output_dir), shell=True)
     shutil.rmtree(ve_dir)
+
+
+def aardvark_split_vcfs(output_dir):
+    """Split aardvark query.vcf.gz and truth.vcf.gz into vcfeval-compatible
+    fp.vcf.gz, fn.vcf.gz, and tp-baseline.vcf.gz based on BD tags.
+    """
+    # query.vcf.gz contains FP (BD=FP) and TP from calls perspective
+    # truth.vcf.gz contains FN (BD=FN) and TP from truth perspective (= tp-baseline)
+    for in_name, out_tp, out_other, other_tag in [
+        ('query.vcf.gz', None, 'fp.vcf.gz', 'FP'),
+        ('truth.vcf.gz', 'tp-baseline.vcf.gz', 'fn.vcf.gz', 'FN'),
+    ]:
+        in_path = os.path.join(output_dir, in_name)
+        if not os.path.isfile(in_path):
+            continue
+        in_vcf = pysam.VariantFile(in_path, 'r')
+        other_vcf = pysam.VariantFile(os.path.join(output_dir, out_other), 'w', header=in_vcf.header)
+        tp_vcf = None
+        if out_tp:
+            tp_vcf = pysam.VariantFile(os.path.join(output_dir, out_tp), 'w', header=in_vcf.header)
+        for var in in_vcf.fetch():
+            bd = None
+            for s in var.samples.values():
+                bd = s.get('BD', None)
+                break
+            if bd == other_tag:
+                other_vcf.write(var)
+            elif tp_vcf and bd == 'TP':
+                tp_vcf.write(var)
+        in_vcf.close()
+        other_vcf.close()
+        if tp_vcf:
+            tp_vcf.close()
+        # Index the outputs
+        for f in [out_other] + ([out_tp] if out_tp else []):
+            subprocess.check_call(['tabix', '-fp', 'vcf', os.path.join(output_dir, f)])
     
 def aardvark_chromsplit(aardvark_outdir):
     """ breakdown the aardvark vcfs into a per-chromosome table"""
@@ -890,25 +937,31 @@ def main(command_line=None):
     aardvark_parser.add_argument('--calls', required=True,
                                  help='calls VCF')
     aardvark_parser.add_argument('--ref', required=True,
-                                 help='reference fasta (or save time by passing in a .SDF from rtg format)')
-    aardvark_parser.add_argument('--regions', required=True,
-                                 help='BED regions to evaluate')
+                                 help='reference fasta')
+    aardvark_parser.add_argument('--regions',
+                                 help='BED regions to evaluate (optional)')
     aardvark_parser.add_argument('--out-dir', required=True,
                                  help='output directory')
     aardvark_parser.add_argument('--min-length', type=int, default=default_aardvark_min_length,
                                 help='ignore sites with alleles shorter than this')
     aardvark_parser.add_argument('--max-length', type=int, default=default_aardvark_max_length,
-                                help='ignore sites with alleles longer than this')            
+                                help='ignore sites with alleles longer than this')
+    aardvark_parser.add_argument('--min-contig-len', type=int, default=0,
+                                help='filter FASTA and VCFs to contigs >= this length')
     aardvark_parser.add_argument('--sample',
                                  help='subset to this sample')
     aardvark_parser.add_argument('--docker', default=default_aardvark_docker,
                                  help='use this docker image instead of the default')
+    aardvark_parser.add_argument('--no-docker', action='store_true',
+                                 help='run aardvark directly instead of via Docker')
+    aardvark_parser.add_argument('--no-preprocess', action='store_true',
+                                 help='skip VCF preprocessing')
     aardvark_parser.add_argument('--threads', type=int, default=8,
-                                 help='number of threads (default=8)')    
+                                 help='number of threads (default=8)')
     aardvark_parser.add_argument('--options', default=default_aardvark_options,
                                  help='use these options instead of the default (surround in quotes)')
     aardvark_parser.add_argument('--haploid-x', action='store_true',
-                                 help='make sure chrX is haploid')    
+                                 help='make sure chrX is haploid')
     aardvark_parser.add_argument('--exclude-y', action='store_true',
                                  help='completely ignore chrY')
 
@@ -1044,25 +1097,73 @@ def main(command_line=None):
                 docker_image = None if args.no_docker else args.docker)
 
     if args.command == 'aardvark':
-        assert not args.ref.endswith('.gz')
-        # run some preprocessing (only on calls -- assume truth from giab is ready to go)
-        hap_calls = os.path.join(args.out_dir, os.path.basename(args.calls.replace('.vcf.gz', '.hap.vcf.gz')))        
-        vcf_preprocess(args.calls,
-                       hap_calls,
-                       args.ref,
-                       args.exclude_y,
-                       args.haploid_x,
-                       args.sample,
-                       args.min_length,
-                       args.max_length,
-                       False,
-                       True)
-        
+        ref_fasta = args.ref
+        truth_vcf = args.truth
+        calls_vcf = args.calls
+
+        # Filter to large contigs if requested
+        if args.min_contig_len > 0:
+            ref_fasta, truth_vcf, calls_vcf = filter_contigs(
+                ref_fasta, truth_vcf, calls_vcf, args.min_contig_len, args.out_dir)
+
+        if args.no_preprocess:
+            hap_calls = calls_vcf
+            hap_truth = truth_vcf
+        else:
+            # preprocess both truth and calls
+            hap_truth = os.path.join(args.out_dir, os.path.basename(truth_vcf.replace('.vcf.gz', '.hap.vcf.gz')))
+            vcf_preprocess(truth_vcf,
+                           hap_truth,
+                           ref_fasta,
+                           args.exclude_y,
+                           args.haploid_x,
+                           args.sample,
+                           args.min_length,
+                           args.max_length,
+                           False,
+                           True)
+            hap_calls = os.path.join(args.out_dir, os.path.basename(calls_vcf.replace('.vcf.gz', '.hap.vcf.gz')))
+            vcf_preprocess(calls_vcf,
+                           hap_calls,
+                           ref_fasta,
+                           args.exclude_y,
+                           args.haploid_x,
+                           args.sample,
+                           args.min_length,
+                           args.max_length,
+                           False,
+                           True)
+
+        # auto-generate regions BED from FASTA index if not provided
+        if not getattr(args, 'regions', None):
+            fai_path = ref_fasta + '.fai'
+            if not os.path.isfile(fai_path):
+                subprocess.check_call(['samtools', 'faidx', ref_fasta])
+            regions_bed = os.path.join(args.out_dir, 'eval-regions.bed')
+            with open(fai_path) as fai_in, open(regions_bed, 'w') as bed_out:
+                for line in fai_in:
+                    parts = line.split('\t')
+                    bed_out.write('{}\t0\t{}\n'.format(parts[0], parts[1]))
+            sys.stderr.write('Generated regions BED from {}: {}\n'.format(fai_path, regions_bed))
+            args.regions = regions_bed
+
+        # aardvark needs uncompressed FASTA
+        if ref_fasta.endswith('.gz'):
+            uncomp_ref = os.path.join(args.out_dir, os.path.basename(ref_fasta).replace('.fa.gz', '.fa').replace('.fasta.gz', '.fasta'))
+            sys.stderr.write('Decompressing {} -> {}\n'.format(ref_fasta, uncomp_ref))
+            subprocess.check_call('bgzip -d -c {} > {}'.format(ref_fasta, uncomp_ref), shell=True)
+            subprocess.check_call(['samtools', 'faidx', uncomp_ref])
+            ref_fasta = uncomp_ref
+
         # run aardvark
-        aardvark(args.truth, hap_calls, args.ref, args.regions, args.sample, args.out_dir,
-                 threads = args.threads,
+        aardvark(hap_truth, hap_calls, ref_fasta,
+                 getattr(args, 'regions', None), args.sample, args.out_dir,
+                 threads=args.threads,
                  options=args.options,
-                 docker_image = args.docker)        
+                 docker_image=None if args.no_docker else args.docker)
+
+        # split aardvark output into vcfeval-compatible fp/fn/tp-baseline VCFs
+        aardvark_split_vcfs(args.out_dir)        
 
     elif args.command == 'happy-breakdown':
         table = happy_chromsplit(args.vcf)

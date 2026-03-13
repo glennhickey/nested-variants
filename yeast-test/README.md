@@ -68,6 +68,12 @@ snakemake --cores 4 graph_only \
            annot_segdups=yeast-test/fake-segdups.bed \
            annot_censat=yeast-test/fake-censat.bed
 
+# Graph construction + pantree comparison (optional)
+snakemake --cores 4 graph_only \
+  --config vg=yeast-test/chrI.vg ref=S288C \
+           out_dir=yeast-test/output out_name=chrI.nested \
+           mem_gb=4 pantree_vcf=pantree-sample.vcf
+
 # Full pipeline: genotype + DeepVariant + merge + vcfeval for both samples
 snakemake --cores 4 all \
   --config vg=yeast-test/chrI.vg ref=S288C \
@@ -173,7 +179,19 @@ yeast-test/output/
 ├── vcfeval/SK1/summary.txt                  # precision/recall summary
 ├── vcfeval/YPS128/...                       # same structure
 ├── merged.call-vs-dv.vcfeval-compare.tsv    # aggregated comparison table
-└── merged.call-vs-dv.vcfeval-compare.png    # comparison bar chart
+├── merged.call-vs-dv.vcfeval-compare.png    # comparison bar chart
+#
+# --- Pantree comparison (when pantree_vcf configured) ---
+#
+├── pantree.records.tsv                      # extracted pantree records
+├── pantree.variant-types.png                # pantree standalone variant types
+├── pantree.density.png                      # pantree on-reference density ideogram
+├── chrI.nested.records.tsv                  # our deconstruct records (for comparison)
+├── chrI.nested.pantree-types.png            # side-by-side variant type counts
+├── chrI.nested.pantree-types-pct.png        # side-by-side variant type percentages
+├── chrI.nested.pantree-size-dist.png        # overlaid indel size distributions
+├── chrI.nested.pantree-af.png               # overlaid AF spectra
+└── chrI.nested.pantree-compare.tsv          # summary comparison table
 ```
 
 ## Clean up

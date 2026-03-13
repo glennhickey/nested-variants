@@ -49,6 +49,9 @@ giab_strat_names_arg <- NULL
 per_sample <- FALSE
 ref_sample <- NULL
 no_sv      <- FALSE
+tsv_input  <- FALSE
+dump_records <- FALSE
+records_only <- FALSE
 
 i <- 3
 while (i <= length(args)) {
@@ -85,6 +88,15 @@ while (i <= length(args)) {
   } else if (args[i] == "--no-sv") {
     no_sv <- TRUE
     i <- i + 1
+  } else if (args[i] == "--tsv") {
+    tsv_input <- TRUE
+    i <- i + 1
+  } else if (args[i] == "--dump-records") {
+    dump_records <- TRUE
+    i <- i + 1
+  } else if (args[i] == "--records-only") {
+    records_only <- TRUE
+    i <- i + 1
   } else {
     i <- i + 1
   }
@@ -103,8 +115,29 @@ mode_label <- if (mode == "sites") "(per site)" else "(per variant)"
 filter_label <- if (filter == "pass") ", PASS only" else ""
 
 # ---------------------------------------------------------------------------
-# Read VCF
+# Read VCF (or pre-extracted TSV)
 # ---------------------------------------------------------------------------
+if (tsv_input) {
+  cat("Reading pre-extracted TSV:", vcf, "\n")
+  dt <- fread(vcf)
+  has_af <- "nonref_af" %in% names(dt) && !all(is.na(dt$nonref_af))
+  has_tr <- "is_repeat" %in% names(dt) && any(dt$is_repeat == TRUE | dt$is_repeat == "TRUE")
+  # Convert is_repeat to logical if character
+  if ("is_repeat" %in% names(dt) && is.character(dt$is_repeat)) {
+    dt[, is_repeat := (is_repeat == "TRUE")]
+  }
+  # Ts/Tv classification for on-reference SNPs with single-base REF and ALT
+  if ("REF" %in% names(dt) && "ALT" %in% names(dt)) {
+    dt[variant_type == "SNP" & nchar(REF) == 1 & nchar(ALT) == 1, tstv := {
+      transitions <- c("AG", "GA", "CT", "TC")
+      fifelse(paste0(REF, ALT) %in% transitions, "Ts", "Tv")
+    }]
+  }
+  cat("Read", nrow(dt), "variant records\n")
+  cat("AF available:", has_af, "\n")
+  if (has_tr) cat("TR annotation detected:", sum(dt$is_repeat), "tandem repeat indels\n")
+  if (nrow(dt) == 0) { cat("No variants found. Exiting.\n"); quit(status = 0) }
+} else {
 cat("Reading VCF:", vcf, " (mode:", mode, ", filter:", filter, ")\n")
 
 # Build pipeline prefix: variants mode pipes through bcftools norm -m- first
@@ -257,6 +290,23 @@ if (has_af) {
     })]
   }
   dt[, AF_str := NULL]
+}
+
+}  # end of else (VCF reading path)
+
+# ---------------------------------------------------------------------------
+# Dump per-record TSV if requested
+# ---------------------------------------------------------------------------
+if (dump_records) {
+  records_path <- paste0(prefix, ".records.tsv")
+  cols <- intersect(c("CHROM", "POS", "REF", "ALT", "ref_context", "variant_type",
+                       "size", "size_signed", "nonref_af", "is_repeat"), names(dt))
+  fwrite(dt[, ..cols], records_path, sep = "\t")
+  cat("Wrote per-record TSV:", records_path, "\n")
+  if (records_only) {
+    cat("--records-only: skipping plots.\n")
+    quit(status = 0)
+  }
 }
 
 # ---------------------------------------------------------------------------
