@@ -18,6 +18,9 @@ min_augref_len: 50
 # Minimum contig length for surjection/DeepVariant (0 = no filtering)
 min_surject_len: 1000
 
+# Minimum contig length for vcfeval comparison (0 = use all eval contigs)
+min_vcfeval_len: 100000
+
 # Deconstruct options
 cluster: ""
 snarls: ""

@@ -1286,6 +1286,7 @@ rule vcfeval_per_sample:
         docker_arg=lambda wc: f"--docker {config['vcfeval_docker']}" if config.get("vcfeval_docker") else "",
         no_docker="" if config.get("vcfeval_docker") else "--no-docker",
         augref_prefix=f"{AUGREF}#0#",
+        min_vcfeval_len=config.get("min_vcfeval_len", 0),
     shell:
         # Build contig rename map: stripped_name → augref_prefix#0#name
         "export RTG_MEM=$(({resources.mem_mb} / 1024))g"
@@ -1308,7 +1309,7 @@ rule vcfeval_per_sample:
         "           bcftools query -f '%CHROM\\n' {input.dv_vcf}; }} | sort -u)"
         "      <(echo \"$ALLOWED\")"
         "    | join -t $'\\t' - <(awk '{{OFS=\"\\t\"; print $1, $2}}' {input.ref}.fai | sort -k1,1)"
-        "    | awk '{{OFS=\"\\t\"; print $1, 0, $2}}'"
+        "    | awk '{{OFS=\"\\t\"; if ($2 >= {params.min_vcfeval_len}) print $1, 0, $2}}'"
         "    > {params.out_dir}/eval-regions.bed;"
         " }}"
         # Build a filtered reference FASTA with only eval contigs so that
