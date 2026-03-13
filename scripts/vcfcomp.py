@@ -49,6 +49,67 @@ default_aardvark_min_length = 0
 default_aardvark_docker = 'quay.io/glennhickey/aardvark:v0.9.0'
 default_aardvark_options = '--enable-haplotype-metrics --enable-weighted-haplotype-metrics --enable-record-basepair-metrics'
 
+def filter_contigs(ref_fasta, truth_vcf, calls_vcf, min_len, out_dir):
+    """Filter FASTA and VCFs to only contigs >= min_len.
+
+    Returns (filtered_ref, filtered_truth, filtered_calls) paths.
+    """
+    try:
+        os.makedirs(out_dir)
+    except:
+        pass
+
+    # Read .fai to find contigs meeting the length threshold
+    fai_path = ref_fasta + '.fai'
+    if not os.path.isfile(fai_path):
+        # Try without .gz extension for bgzipped FASTA
+        subprocess.check_call(['samtools', 'faidx', ref_fasta])
+    keep_contigs = []
+    with open(fai_path) as f:
+        for line in f:
+            parts = line.split('\t')
+            if int(parts[1]) >= min_len:
+                keep_contigs.append(parts[0])
+
+    sys.stderr.write('filter_contigs: keeping {}/{} contigs >= {} bp\n'.format(
+        len(keep_contigs), sum(1 for _ in open(fai_path)), min_len))
+
+    if not keep_contigs:
+        sys.exit('filter_contigs: no contigs >= {} bp in {}'.format(min_len, ref_fasta))
+
+    # Write contig list and regions file
+    contig_list = os.path.join(out_dir, 'eval-contigs.txt')
+    with open(contig_list, 'w') as f:
+        for c in keep_contigs:
+            f.write(c + '\n')
+
+    # Filter FASTA
+    filtered_ref = os.path.join(out_dir, 'eval-ref.fa.gz')
+    subprocess.check_call(
+        'samtools faidx {} -r {} | bgzip > {}'.format(ref_fasta, contig_list, filtered_ref),
+        shell=True)
+    subprocess.check_call(['samtools', 'faidx', filtered_ref])
+
+    # Build comma-separated region string for bcftools
+    regions = ','.join(keep_contigs)
+
+    # Filter truth VCF
+    filtered_truth = os.path.join(out_dir, 'eval-truth.vcf.gz')
+    subprocess.check_call(
+        'bcftools view -r {} {} -Oz -o {}'.format(regions, truth_vcf, filtered_truth),
+        shell=True)
+    subprocess.check_call(['tabix', '-fp', 'vcf', filtered_truth])
+
+    # Filter calls VCF
+    filtered_calls = os.path.join(out_dir, 'eval-calls.vcf.gz')
+    subprocess.check_call(
+        'bcftools view -r {} {} -Oz -o {}'.format(regions, calls_vcf, filtered_calls),
+        shell=True)
+    subprocess.check_call(['tabix', '-fp', 'vcf', filtered_calls])
+
+    return filtered_ref, filtered_truth, filtered_calls
+
+
 def vcf_preprocess(input_vcf,
                    output_vcf,
                    ref_fasta,
@@ -812,6 +873,8 @@ def main(command_line=None):
                               help='make sure chrX is haploid')    
     vcfeval_parser.add_argument('--exclude-y', action='store_true',
                               help='completely ignore chrY')
+    vcfeval_parser.add_argument('--min-contig-len', type=int, default=0,
+                              help='filter FASTA and VCFs to contigs >= this length before preprocessing/vcfeval (0 = no filtering)')
     vcfeval_parser.add_argument('--no-preprocess', action='store_true',
                               help='skip VCF preprocessing (use when calls VCF is already prepared)')
     vcfeval_parser.add_argument('--no-docker', action='store_true',
@@ -938,14 +1001,23 @@ def main(command_line=None):
                 docker_image = args.docker)
 
     if args.command == 'vcfeval':
+        ref_fasta = args.ref
+        truth_vcf = args.truth
+        calls_vcf = args.calls
+
+        # Filter to large contigs if requested
+        if args.min_contig_len > 0:
+            ref_fasta, truth_vcf, calls_vcf = filter_contigs(
+                ref_fasta, truth_vcf, calls_vcf, args.min_contig_len, args.out_dir)
+
         if args.no_preprocess:
-            hap_calls = args.calls
+            hap_calls = calls_vcf
         else:
             # run some preprocessing (only on calls -- assume truth from giab is ready to go)
-            hap_calls = os.path.join(args.out_dir, os.path.basename(args.calls.replace('.vcf.gz', '.hap.vcf.gz')))
-            vcf_preprocess(args.calls,
+            hap_calls = os.path.join(args.out_dir, os.path.basename(calls_vcf.replace('.vcf.gz', '.hap.vcf.gz')))
+            vcf_preprocess(calls_vcf,
                            hap_calls,
-                           args.ref,
+                           ref_fasta,
                            args.exclude_y,
                            args.haploid_x,
                            args.sample,
@@ -954,8 +1026,7 @@ def main(command_line=None):
                            False,
                            True)
 
-        # run vcfeval
-        vcfeval(args.truth, hap_calls, args.ref, getattr(args, 'regions', None), args.sample, args.out_dir,
+        vcfeval(truth_vcf, hap_calls, ref_fasta, getattr(args, 'regions', None), args.sample, args.out_dir,
                 threads = args.threads,
                 options=args.options,
                 docker_image = None if args.no_docker else args.docker)

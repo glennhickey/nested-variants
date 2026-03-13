@@ -10,6 +10,7 @@ VCF merging.
 - samtools / bgzip / tabix
 - bcftools (for `split_vcf`, `merge_call_vcfs`, `merge_dv_vcfs`)
 - Docker (for `deepvariant`, optional)
+- rtg (RTG Tools, for `vcfeval`)
 - R + ggplot2, data.table, dplyr, scales (for `plots` / `call_plots` / `dv_plots` / `annotation_plots`, optional)
 - bedtools (for `annotation_intersect`, optional)
 - snakemake (>= 8)
@@ -67,12 +68,13 @@ snakemake --cores 4 graph_only \
            annot_segdups=yeast-test/fake-segdups.bed \
            annot_censat=yeast-test/fake-censat.bed
 
-# Full pipeline: genotype + DeepVariant + merge for both samples
+# Full pipeline: genotype + DeepVariant + merge + vcfeval for both samples
 snakemake --cores 4 all \
   --config vg=yeast-test/chrI.vg ref=S288C \
            out_dir=yeast-test/output out_name=chrI.nested \
            'samples={SK1: yeast-test/SK1.reads.idx, YPS128: yeast-test/YPS128.reads.idx}' \
-           mem_gb=4 \
+           mem_gb=4 min_vcfeval_len=1000 \
+           vcfeval_cpus=4 vcfeval_mem_gb=4 \
            annot_genes=yeast-test/fake-genes.bed \
            annot_repeats=yeast-test/fake-repeats.bed \
            annot_segdups=yeast-test/fake-segdups.bed \
@@ -160,7 +162,18 @@ yeast-test/output/
 ├── merged.dv.{sites,variants}.{all,pass}.size-dist.png
 ├── merged.dv.{sites,variants}.{all,pass}.af-spectrum.png
 ├── merged.deepvariant.annot-snp-counts.{all,pass}.png
-└── merged.deepvariant.annot-snp-tstv.{all,pass}.png
+├── merged.deepvariant.annot-snp-tstv.{all,pass}.png
+#
+# --- vcfeval: call vs DeepVariant comparison (per-sample + merged) ---
+#
+├── vcfeval/SK1/tp.vcf.gz                    # true positives (call perspective)
+├── vcfeval/SK1/tp-baseline.vcf.gz           # true positives (baseline perspective)
+├── vcfeval/SK1/fp.vcf.gz                    # false positives
+├── vcfeval/SK1/fn.vcf.gz                    # false negatives
+├── vcfeval/SK1/summary.txt                  # precision/recall summary
+├── vcfeval/YPS128/...                       # same structure
+├── merged.call-vs-dv.vcfeval-compare.tsv    # aggregated comparison table
+└── merged.call-vs-dv.vcfeval-compare.png    # comparison bar chart
 ```
 
 ## Clean up
