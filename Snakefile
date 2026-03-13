@@ -1339,7 +1339,6 @@ rule vcfeval_per_sample:
         "    --out-dir $WORK_TMPDIR"
         "    --threads {threads}"
         "    {params.docker_arg} {params.no_docker}"
-        "    --no-preprocess"
         # Copy results back from local scratch
         " && for f in tp.vcf.gz tp.vcf.gz.tbi tp-baseline.vcf.gz tp-baseline.vcf.gz.tbi"
         "          fp.vcf.gz fp.vcf.gz.tbi fn.vcf.gz fn.vcf.gz.tbi"
