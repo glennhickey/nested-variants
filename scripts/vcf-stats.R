@@ -301,7 +301,7 @@ if (dump_records) {
   records_path <- paste0(prefix, ".records.tsv")
   cols <- intersect(c("CHROM", "POS", "REF", "ALT", "ref_context", "variant_type",
                        "size", "size_signed", "nonref_af", "is_repeat"), names(dt))
-  fwrite(dt[, ..cols], records_path, sep = "\t")
+  fwrite(dt[, ..cols], records_path, sep = "\t", nThread = 1)
   cat("Wrote per-record TSV:", records_path, "\n")
   if (records_only) {
     cat("--records-only: skipping plots.\n")
