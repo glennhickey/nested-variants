@@ -7,7 +7,7 @@
 #          [--title TITLE] [--ours-label LABEL] [--pantree-label LABEL]
 #
 # Both TSVs must have columns:
-#   CHROM POS REF ALT ref_context variant_type size size_signed nonref_af is_repeat
+#   CHROM POS ref_context variant_type size size_signed nonref_af is_repeat
 #
 # Outputs:
 #   {prefix}.pantree-types.png      — variant type counts side-by-side
