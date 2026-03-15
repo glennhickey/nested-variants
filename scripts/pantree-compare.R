@@ -56,9 +56,22 @@ if (is.null(ours_path) || is.null(pantree_path) || is.null(prefix)) {
   quit(status = 1)
 }
 
-save_png <- function(filename, plot, width = 10, height = 7) {
-  ggsave(filename, plot, width = width, height = height, dpi = 300, bg = "white")
-  cat("Saved:", filename, "\n")
+save_png <- function(plot, file, width = 10, height = 7) {
+  tryCatch({
+    if (requireNamespace("ragg", quietly = TRUE)) {
+      ragg::agg_png(file, width = width, height = height, units = "in", res = 300)
+      print(plot)
+      dev.off()
+    } else {
+      ggsave(file, plot = plot, width = width, height = height, dpi = 300,
+             device = grDevices::png, type = "cairo")
+    }
+  }, error = function(e) {
+    grDevices::png(file, width = width * 300, height = height * 300, res = 300, type = "cairo")
+    print(plot)
+    dev.off()
+  })
+  cat("Saved:", file, "\n")
 }
 
 # ---------------------------------------------------------------------------
@@ -150,7 +163,7 @@ p1 <- ggplot(counts_all, aes(x = variant_type, y = count, fill = interaction(sou
     plot.background  = element_rect(fill = "white", color = NA),
     axis.text.x = element_text(angle = 30, hjust = 1)
   )
-save_png(paste0(prefix, ".pantree-types.png"), p1)
+save_png(p1, paste0(prefix, ".pantree-types.png"))
 
 # ---------------------------------------------------------------------------
 # Plot 2: Variant type percentages
@@ -183,7 +196,7 @@ p2 <- ggplot(counts_all, aes(x = variant_type, y = pct, fill = interaction(sourc
     plot.background  = element_rect(fill = "white", color = NA),
     axis.text.x = element_text(angle = 30, hjust = 1)
   )
-save_png(paste0(prefix, ".pantree-types-pct.png"), p2)
+save_png(p2, paste0(prefix, ".pantree-types-pct.png"))
 
 # ---------------------------------------------------------------------------
 # Plot 3: Size distribution overlay
@@ -223,9 +236,7 @@ if (nrow(dt_indels) > 0) {
         panel.background = element_rect(fill = "white", color = NA),
         plot.background  = element_rect(fill = "white", color = NA)
       )
-    ggsave(paste0(prefix, ".pantree-size-dist.png"), p3,
-           width = 12, height = 6, dpi = 300, bg = "white")
-    cat("Saved:", paste0(prefix, ".pantree-size-dist.png"), "\n")
+    save_png(p3, paste0(prefix, ".pantree-size-dist.png"), width = 12, height = 6)
   } else {
     file.create(paste0(prefix, ".pantree-size-dist.png"))
   }
@@ -262,7 +273,7 @@ if (has_af_ours && has_af_pt) {
       panel.background = element_rect(fill = "white", color = NA),
       plot.background  = element_rect(fill = "white", color = NA)
     )
-  save_png(paste0(prefix, ".pantree-af.png"), p4)
+  save_png(p4, paste0(prefix, ".pantree-af.png"))
 } else {
   file.create(paste0(prefix, ".pantree-af.png"))
   cat("Skipping AF spectrum: AF data not available in both sources.\n")
