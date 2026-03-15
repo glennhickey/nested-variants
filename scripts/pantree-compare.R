@@ -79,20 +79,36 @@ for (d in list(dt_ours, dt_pt)) {
   }
 }
 
-# Restrict to shared chromosomes so the comparison is fair
-# (e.g. pantree may exclude chrY)
-shared_chroms <- intersect(unique(dt_ours$CHROM), unique(dt_pt$CHROM))
-if (length(shared_chroms) < length(unique(dt_ours$CHROM))) {
-  dropped <- setdiff(unique(dt_ours$CHROM), shared_chroms)
-  cat("Dropping", length(dropped), "chromosomes from", ours_label,
-      "not in", pantree_label, ":", paste(dropped, collapse = ", "), "\n")
-  dt_ours <- dt_ours[CHROM %in% shared_chroms]
+# Normalize CHROM to base chromosome for fair comparison.
+# Our deconstruct records have augref path names like "augref_CHM13#0#chr1" or
+# "augref_CHM13#0#chr10_10001_alt"; pantree has plain "chr1", "chr10".
+# Strip augref prefix and _NNN_alt suffix to get the base chromosome.
+normalize_chrom <- function(x) {
+  x <- sub("^augref_[^#]+#[^#]+#", "", x)   # augref_REF#HAP#chrom → chrom
+  x <- sub("_[0-9]+_alt$", "", x)            # chr10_10001_alt → chr10
+  x
 }
-if (length(shared_chroms) < length(unique(dt_pt$CHROM))) {
-  dropped <- setdiff(unique(dt_pt$CHROM), shared_chroms)
-  cat("Dropping", length(dropped), "chromosomes from", pantree_label,
+
+dt_ours[, base_chrom := normalize_chrom(CHROM)]
+dt_pt[, base_chrom := normalize_chrom(CHROM)]
+
+# Restrict to shared base chromosomes so the comparison is fair
+# (e.g. pantree may exclude chrY)
+shared_chroms <- intersect(unique(dt_ours$base_chrom), unique(dt_pt$base_chrom))
+n_ours_chroms <- uniqueN(dt_ours$base_chrom)
+n_pt_chroms   <- uniqueN(dt_pt$base_chrom)
+
+if (length(shared_chroms) < n_ours_chroms) {
+  dropped <- setdiff(unique(dt_ours$base_chrom), shared_chroms)
+  cat("Dropping", length(dropped), "base chromosomes from", ours_label,
+      "not in", pantree_label, ":", paste(dropped, collapse = ", "), "\n")
+  dt_ours <- dt_ours[base_chrom %in% shared_chroms]
+}
+if (length(shared_chroms) < n_pt_chroms) {
+  dropped <- setdiff(unique(dt_pt$base_chrom), shared_chroms)
+  cat("Dropping", length(dropped), "base chromosomes from", pantree_label,
       "not in", ours_label, ":", paste(dropped, collapse = ", "), "\n")
-  dt_pt <- dt_pt[CHROM %in% shared_chroms]
+  dt_pt <- dt_pt[base_chrom %in% shared_chroms]
 }
 
 cat(ours_label, ":", nrow(dt_ours), "records\n")
