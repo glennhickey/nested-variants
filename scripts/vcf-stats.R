@@ -863,23 +863,25 @@ if (per_sample) {
                           by = c("sample", "variant_type", "ref_context"), all.x = TRUE)
       ps_counts[is.na(count), count := 0L]
 
-      # Summary stats across samples
-      ps_summary <- ps_counts[, .(mean_count = mean(count),
-                                   min_count = min(count),
-                                   max_count = max(count),
-                                   sd_count = sd(count)),
-                               by = .(variant_type, ref_context)]
-
       # Write per-sample TSV
       setorder(ps_counts, sample, ref_context, variant_type)
       fwrite(ps_counts, paste0(prefix, ".per-sample-types.tsv"), sep = "\t")
       cat("Wrote per-sample stats:", paste0(prefix, ".per-sample-types.tsv"), "\n")
 
-      # 6. Plot
+      # 6. Plot — facet small variants vs SVs so SVs get their own y-axis
+      ps_counts <- ps_counts[variant_type != "Other"]
       ps_counts[, variant_type := factor(variant_type,
-        levels = intersect(type_levels, unique(variant_type)))]
-      ps_summary[, variant_type := factor(variant_type,
-        levels = intersect(type_levels, unique(variant_type)))]
+        levels = intersect(setdiff(type_levels, "Other"), unique(variant_type)))]
+      sv_type_names <- c("SV Insertion", "SV Deletion")
+      ps_counts[, size_class := fifelse(variant_type %in% sv_type_names,
+                                         "Structural Variants", "Small Variants")]
+      ps_counts[, size_class := factor(size_class, levels = c("Small Variants", "Structural Variants"))]
+
+      ps_summary <- ps_counts[, .(mean_count = mean(count),
+                                   min_count = min(count),
+                                   max_count = max(count),
+                                   sd_count = sd(count)),
+                               by = .(variant_type, ref_context, size_class)]
 
       if (n_samples <= 20) {
         # Bar at mean + jittered dots + min/max error bars
@@ -900,6 +902,7 @@ if (per_sample) {
           scale_color_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
                              name = NULL) +
           scale_y_continuous(labels = scales::comma) +
+          facet_wrap(~ size_class, scales = "free") +
           labs(title = title,
                subtitle = paste0("Per-Sample Variant Counts ", mode_label, filter_label,
                                  " (N=", n_samples, " samples, bars=mean)"),
@@ -920,6 +923,7 @@ if (per_sample) {
           scale_fill_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
                             name = NULL) +
           scale_y_continuous(labels = scales::comma) +
+          facet_wrap(~ size_class, scales = "free") +
           labs(title = title,
                subtitle = paste0("Per-Sample Variant Counts ", mode_label, filter_label,
                                  " (N=", n_samples, " samples)"),
@@ -933,7 +937,7 @@ if (per_sample) {
           )
       }
 
-      save_png(p_ps, paste0(prefix, ".per-sample-types.png"))
+      save_png(p_ps, paste0(prefix, ".per-sample-types.png"), width = 12)
 
       # -----------------------------------------------------------------------
       # Per-sample GIAB stratification (when --giab-strat-beds + --per-sample)
