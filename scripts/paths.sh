@@ -169,6 +169,8 @@ THREADS_PER_JOB=$(( CPUS / (NUM_JOBS > 0 ? NUM_JOBS : 1) ))
 (( THREADS_PER_JOB < 1 )) && THREADS_PER_JOB=1
 
 # Process each VG file
+PIDS=()
+PID_NAMES=()
 for VG in "${VG_FILES[@]}"; do
     BASE=$(basename "$VG")
     if [[ $BASE != "chrEBV.vg" ]]; then
@@ -198,10 +200,23 @@ for VG in "${VG_FILES[@]}"; do
                 --error="${WORK_DIR}/${OUTPUT_NAME}.${BASE}.log" \
                 --wrap="$CMD" &
         fi
+        PIDS+=($!)
+        PID_NAMES+=("$BASE")
     fi
 done
 
-wait
+# Wait for each job individually and check exit codes
+FAILED=()
+for i in "${!PIDS[@]}"; do
+    if ! wait "${PIDS[$i]}"; then
+        FAILED+=("${PID_NAMES[$i]}")
+        echo "ERROR: ${PID_NAMES[$i]} failed (PID ${PIDS[$i]})" >&2
+    fi
+done
+if [ ${#FAILED[@]} -gt 0 ]; then
+    echo "ERROR: ${#FAILED[@]} job(s) failed: ${FAILED[*]}" >&2
+    exit 1
+fi
 
 # Merge per-chromosome augref segment tables into one file
 SEGS_MERGED="${OUTPUT_DIR}/${OUTPUT_NAME}.augref-segs.tsv"
@@ -217,6 +232,18 @@ for SEGS in "$WORK_DIR"/*.augref-segs.tsv; do
         fi
     fi
 done > "$SEGS_MERGED"
+
+# Verify all expected GFA files exist before merging
+MISSING=()
+for GFA in "${GFA_FILES[@]}"; do
+    if [ ! -s "$GFA" ]; then
+        MISSING+=("$(basename "$GFA")")
+    fi
+done
+if [ ${#MISSING[@]} -gt 0 ]; then
+    echo "ERROR: ${#MISSING[@]} GFA file(s) missing or empty: ${MISSING[*]}" >&2
+    exit 1
+fi
 
 # Merge per-chromosome GFAs into single file (vg gbwt needs a real file)
 WORK_TMPDIR="${TMPDIR:-${OUTPUT_DIR}}"
