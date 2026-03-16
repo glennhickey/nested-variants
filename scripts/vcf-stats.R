@@ -932,44 +932,69 @@ if (per_sample) {
 
         cat("Per-sample GIAB stratification from", length(strat_files_ps), "BEDs\n")
 
+        # Map off-ref variants to reference coordinates via segs (same as standalone)
+        gt_dt[, giab_chrom := CHROM]
+        gt_dt[, giab_start := POS - 1L]
+        gt_dt[, giab_end := POS - 1L + ref_len]
+
+        if (!is.null(segs_file)) {
+          if (is.null(segs_dt)) {
+            segs_dt <- fread(segs_file, select = c(4, 5, 6, 7),
+                             col.names = c("augref_path", "ref_path", "ref_start", "ref_end"))
+            segs_dt <- unique(segs_dt, by = "augref_path")
+            segs_dt[, ref_chrom := paste0("augref_", ref_path)]
+          }
+          ps_offref_idx <- which(gt_dt$ref_context == "Off-reference")
+          if (length(ps_offref_idx) > 0) {
+            ps_offref_map <- merge(
+              gt_dt[ps_offref_idx, .(row_idx = .I, CHROM)],
+              segs_dt[, .(augref_path, ref_chrom, ref_start, ref_end)],
+              by.x = "CHROM", by.y = "augref_path", all.x = TRUE, sort = FALSE)
+            ps_matched <- ps_offref_map[!is.na(ref_chrom)]
+            if (nrow(ps_matched) > 0) {
+              set(gt_dt, i = ps_offref_idx[ps_matched$row_idx], j = "giab_chrom", value = ps_matched$ref_chrom)
+              set(gt_dt, i = ps_offref_idx[ps_matched$row_idx], j = "giab_start", value = ps_matched$ref_start)
+              set(gt_dt, i = ps_offref_idx[ps_matched$row_idx], j = "giab_end",   value = ps_matched$ref_end)
+            }
+          }
+        }
+
         # Write variant BED from gt_dt
         tmp_bed_ps <- tempfile(fileext = ".sorted.bed")
         tmp_unsorted_ps <- tempfile(fileext = ".bed")
-        fwrite(gt_dt[, .(CHROM, POS - 1L, POS - 1L + ref_len)],
+        fwrite(gt_dt[, .(giab_chrom, giab_start, giab_end)],
                tmp_unsorted_ps, sep = "\t", col.names = FALSE)
         system(sprintf("LC_ALL=C sort -k1,1 -k2,2n '%s' > '%s'", tmp_unsorted_ps, tmp_bed_ps))
         unlink(tmp_unsorted_ps)
 
         # bedtools intersect each partition
-        gt_dt[, ps_bed_start := POS - 1L]
-        setkey(gt_dt, CHROM, ps_bed_start)
+        setkey(gt_dt, giab_chrom, giab_start)
         for (k in seq_along(strat_files_ps)) {
           col <- paste0("ps_giab_", k)
           cmd <- sprintf("bedtools intersect -a '%s' -b '%s' -u -sorted 2>/dev/null",
                          tmp_bed_ps, strat_files_ps[k])
           hits <- tryCatch(
-            fread(cmd = cmd, select = 1:2, col.names = c("CHROM", "ps_bed_start"), header = FALSE),
-            error = function(e) data.table(CHROM = character(0), ps_bed_start = integer(0)),
-            warning = function(w) data.table(CHROM = character(0), ps_bed_start = integer(0))
+            fread(cmd = cmd, select = 1:2, col.names = c("giab_chrom", "giab_start"), header = FALSE),
+            error = function(e) data.table(giab_chrom = character(0), giab_start = integer(0)),
+            warning = function(w) data.table(giab_chrom = character(0), giab_start = integer(0))
           )
           set(gt_dt, j = col, value = FALSE)
           if (nrow(hits) > 0) {
             hits <- unique(hits)
-            gt_dt[hits, (col) := TRUE, on = .(CHROM, ps_bed_start)]
+            gt_dt[hits, (col) := TRUE, on = .(giab_chrom, giab_start)]
           }
         }
-        gt_dt[, ps_bed_start := NULL]
+        gt_dt[, c("giab_chrom", "giab_start", "giab_end") := NULL]
         unlink(tmp_bed_ps)
 
         # Classify each variant into one GIAB region
         gt_dt[, ps_giab_region := "Unclassified"]
-        gt_dt[ref_context == "Off-reference", ps_giab_region := "Off-reference"]
         for (k in rev(seq_along(strat_names_ps))) {
           col <- paste0("ps_giab_", k)
           gt_dt[get(col) == TRUE, ps_giab_region := strat_names_ps[k]]
         }
 
-        # Count per sample × variant_type × giab_region (loop to avoid melt)
+        # Count per sample × variant_type × giab_region × ref_context
         ps_giab_list <- vector("list", n_samples)
         for (si in seq_along(sample_names)) {
           sname <- sample_names[si]
@@ -977,22 +1002,24 @@ if (per_sample) {
           gt_col <- gt_sample_cols[col_idx]
           carriers <- grepl("[1-9]", gt_dt[[gt_col]])
           ps_giab_list[[si]] <- gt_dt[carriers, .(count = .N),
-                                       by = .(variant_type, ps_giab_region)
+                                       by = .(variant_type, ps_giab_region, ref_context)
                                        ][, sample := sname]
         }
         ps_giab_counts <- rbindlist(ps_giab_list)
 
         # Ensure all combos exist
-        region_levels_ps <- c(strat_names_ps, "Off-reference")
+        region_levels_ps <- strat_names_ps
         all_giab_combos <- CJ(sample = sample_names,
                                variant_type = unique(ps_giab_counts$variant_type),
-                               ps_giab_region = region_levels_ps)
+                               ps_giab_region = region_levels_ps,
+                               ref_context = c("On-reference", "Off-reference"))
         ps_giab_counts <- merge(all_giab_combos, ps_giab_counts,
-                                 by = c("sample", "variant_type", "ps_giab_region"), all.x = TRUE)
+                                 by = c("sample", "variant_type", "ps_giab_region", "ref_context"),
+                                 all.x = TRUE)
         ps_giab_counts[is.na(count), count := 0L]
 
         # Write TSV
-        setorder(ps_giab_counts, sample, ps_giab_region, variant_type)
+        setorder(ps_giab_counts, sample, ps_giab_region, ref_context, variant_type)
         fwrite(ps_giab_counts, paste0(prefix, ".per-sample-giab-strat.tsv"), sep = "\t")
         cat("Wrote per-sample GIAB strat:", paste0(prefix, ".per-sample-giab-strat.tsv"), "\n")
 
@@ -1000,7 +1027,7 @@ if (per_sample) {
         ps_giab_summary <- ps_giab_counts[, .(mean_count = mean(count),
                                                min_count = min(count),
                                                max_count = max(count)),
-                                           by = .(variant_type, ps_giab_region)]
+                                           by = .(variant_type, ps_giab_region, ref_context)]
 
         ps_giab_counts[, variant_type := factor(variant_type,
           levels = intersect(type_levels, unique(variant_type)))]
@@ -1014,7 +1041,7 @@ if (per_sample) {
         ps_giab_summary_plot <- ps_giab_summary[ps_giab_region != "Unclassified"]
 
         region_colors_ps <- c("Easy" = "forestgreen", "Segdup" = "firebrick",
-                               "Other Difficult" = "darkorange", "Off-reference" = "steelblue")
+                               "Other Difficult" = "darkorange")
 
         if (n_samples <= 20) {
           p_ps_giab <- ggplot() +
@@ -1032,6 +1059,7 @@ if (per_sample) {
             scale_fill_manual(values = region_colors_ps, name = "GIAB Region") +
             scale_color_manual(values = region_colors_ps, name = "GIAB Region") +
             scale_y_continuous(labels = scales::comma) +
+            facet_wrap(~ ref_context) +
             labs(title = title,
                  subtitle = paste0("Per-Sample GIAB Stratification ", mode_label, filter_label,
                                    " (N=", n_samples, " samples, bars=mean)"),
@@ -1050,6 +1078,7 @@ if (per_sample) {
                          outlier.size = 1) +
             scale_fill_manual(values = region_colors_ps, name = "GIAB Region") +
             scale_y_continuous(labels = scales::comma) +
+            facet_wrap(~ ref_context) +
             labs(title = title,
                  subtitle = paste0("Per-Sample GIAB Stratification ", mode_label, filter_label,
                                    " (N=", n_samples, " samples)"),
@@ -1063,7 +1092,7 @@ if (per_sample) {
             )
         }
 
-        save_png(p_ps_giab, paste0(prefix, ".per-sample-giab-strat.png"), width = 10)
+        save_png(p_ps_giab, paste0(prefix, ".per-sample-giab-strat.png"), width = 12)
 
         # Clean up
         for (k in seq_along(strat_names_ps)) set(gt_dt, j = paste0("ps_giab_", k), value = NULL)
