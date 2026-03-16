@@ -382,9 +382,18 @@ if (nrow(tstv_dt) > 0) {
   plot_dt[, label := NA_character_]
 }
 
-# Order variant types (drop empty levels)
+# Order variant types (drop empty levels and negligible types < 0.5% of total)
 sv_types <- if (no_sv) character(0) else c("SV Insertion", "SV Deletion")
 type_levels <- c("SNP", "MNP", "Insertion", "Deletion", sv_types, "Other")
+type_totals <- plot_dt[, .(total = sum(count)), by = variant_type]
+total_variants <- sum(type_totals$total)
+minor_types <- type_totals[total / total_variants < 0.005, variant_type]
+if (length(minor_types) > 0) {
+  cat("Dropping minor variant types from plots (<0.5%):", paste(minor_types, collapse = ", "), "\n")
+  plot_dt <- plot_dt[!variant_type %in% minor_types]
+  dt[, plot_type_minor := variant_type %in% minor_types]  # flag for downstream filtering
+}
+type_levels <- setdiff(type_levels, minor_types)
 plot_dt[, variant_type := factor(variant_type, levels = intersect(type_levels, unique(variant_type)))]
 
 if (has_tr) {
@@ -593,6 +602,7 @@ if (!is.null(annot_beds)) {
   ann_counts <- rbindlist(ann_counts_list, use.names = TRUE, fill = TRUE)
 
   if (nrow(ann_counts) > 0) {
+    ann_counts <- ann_counts[variant_type %in% type_levels]
     ann_counts[, variant_type := factor(variant_type, levels = type_levels)]
 
     p_annot <- ggplot(ann_counts, aes(x = variant_type, y = count, fill = ref_context)) +
@@ -710,6 +720,7 @@ if (!is.null(giab_strat_beds_arg)) {
 
   # Summary table — now includes ref_context breakdown
   giab_counts <- dt[, .(count = .N), by = .(variant_type, giab_region, ref_context)]
+  giab_counts <- giab_counts[variant_type %in% type_levels]
   giab_counts[, variant_type := factor(variant_type, levels = type_levels)]
   region_levels <- strat_names
   giab_counts[, giab_region := factor(giab_region, levels = region_levels)]
@@ -841,6 +852,7 @@ if (per_sample) {
                                ][, sample := sname]
       }
       ps_counts <- rbindlist(ps_list)
+      ps_counts <- ps_counts[variant_type %in% type_levels]
       cat("Carrier genotype rows:", total_carriers, "\n")
 
       # Ensure all sample × type × context combinations exist (fill with 0)
@@ -1006,6 +1018,7 @@ if (per_sample) {
                                        ][, sample := sname]
         }
         ps_giab_counts <- rbindlist(ps_giab_list)
+        ps_giab_counts <- ps_giab_counts[variant_type %in% type_levels]
 
         # Ensure all combos exist
         region_levels_ps <- strat_names_ps
