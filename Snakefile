@@ -275,10 +275,11 @@ def vcfeval_compare_outputs():
     """Return vcfeval-based call-vs-DV comparison outputs when samples are configured."""
     if not SAMPLES:
         return []
-    return [
-        f"{OUT_DIR}/merged.call-vs-dv.vcfeval-compare.png",
-        f"{OUT_DIR}/merged.call-vs-dv.vcfeval-compare.tsv",
-    ]
+    outputs = []
+    for filt in ["all", "pass"]:
+        outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-compare.png")
+        outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-compare.tsv")
+    return outputs
 
 def pantree_outputs():
     """Return pantree comparison outputs when pantree_vcf is configured."""
@@ -1357,14 +1358,14 @@ rule vcfeval_per_sample:
         "    {params.out_dir}/rename-chrs.txt"
 
 rule vcfeval_compare_plot:
-    """Aggregate per-sample vcfeval results into comparison plot"""
+    """Aggregate per-sample vcfeval results into comparison plot (one filter combo)"""
     input:
         tp_baseline=expand(f"{OUT_DIR}/vcfeval/{{sample}}/tp-baseline.vcf.gz", sample=SAMPLES),
         fp=expand(f"{OUT_DIR}/vcfeval/{{sample}}/fp.vcf.gz", sample=SAMPLES),
         fn=expand(f"{OUT_DIR}/vcfeval/{{sample}}/fn.vcf.gz", sample=SAMPLES),
     output:
-        f"{OUT_DIR}/merged.call-vs-dv.vcfeval-compare.png",
-        f"{OUT_DIR}/merged.call-vs-dv.vcfeval-compare.tsv",
+        f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-compare.png",
+        f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-compare.tsv",
     params:
         vcfeval_dirs=lambda wc, input: ",".join(
             [f"{OUT_DIR}/vcfeval/{s}" for s in SAMPLES]),
@@ -1374,11 +1375,12 @@ rule vcfeval_compare_plot:
         runtime=120,
     shell:
         "Rscript scripts/vcf-compare-vcfeval.R"
-        " {OUT_DIR}/merged.call-vs-dv"
+        " {OUT_DIR}/merged.call-vs-dv.{wildcards.filt}"
         " --vcfeval-dirs {params.vcfeval_dirs}"
         " --samples {params.sample_names}"
         " --label-a Call --label-b DeepVariant"
         " --title '{REF} Call vs DeepVariant (vcfeval)'"
+        " --filter {wildcards.filt}"
         " --no-sv"
 
 ############################################################################

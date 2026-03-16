@@ -5,7 +5,8 @@
 # Usage: Rscript scripts/vcf-compare-vcfeval.R <output_prefix>
 #          --vcfeval-dirs dir1,dir2,...   (per-sample vcfeval output directories)
 #          --samples sample1,sample2,... (corresponding sample names)
-#          [--label-a LABEL] [--label-b LABEL] [--title TITLE] [--no-sv]
+#          [--label-a LABEL] [--label-b LABEL] [--title TITLE]
+#          [--filter all|pass] [--no-sv]
 #
 # Each vcfeval directory must contain tp.vcf.gz, fp.vcf.gz, fn.vcf.gz.
 # TP = shared variants, FN = base-only (label-a only), FP = call-only (label-b only)
@@ -36,6 +37,7 @@ label_b      <- "DeepVariant"
 vcfeval_dirs <- NULL
 sample_names <- NULL
 no_sv        <- FALSE
+filter       <- "all"
 
 i <- 2
 while (i <= length(args)) {
@@ -49,6 +51,8 @@ while (i <= length(args)) {
     vcfeval_dirs <- unlist(strsplit(args[i + 1], ",", fixed = TRUE)); i <- i + 2
   } else if (args[i] == "--samples" && i + 1 <= length(args)) {
     sample_names <- unlist(strsplit(args[i + 1], ",", fixed = TRUE)); i <- i + 2
+  } else if (args[i] == "--filter" && i + 1 <= length(args)) {
+    filter <- args[i + 1]; i <- i + 2
   } else if (args[i] == "--no-sv") {
     no_sv <- TRUE; i <- i + 1
   } else {
@@ -64,6 +68,10 @@ if (length(vcfeval_dirs) != length(sample_names)) {
   cat("Error: --vcfeval-dirs and --samples must have the same number of entries\n")
   quit(status = 1)
 }
+if (!filter %in% c("all", "pass")) {
+  cat("Error: --filter must be 'all' or 'pass'\n"); quit(status = 1)
+}
+filter_label <- if (filter == "pass") ", PASS only" else ""
 if (is.null(title)) title <- paste(label_a, "vs", label_b, "(vcfeval)")
 
 n_samples <- length(sample_names)
@@ -108,12 +116,16 @@ classify_variants <- function(dt) {
 # ---------------------------------------------------------------------------
 # Helper: read a VCF via bcftools query (no sample GT needed — just records)
 # ---------------------------------------------------------------------------
-read_vcf_records <- function(vcf_path) {
+read_vcf_records <- function(vcf_path, filter = "all") {
   if (!file.exists(vcf_path)) {
     cat("  Warning: missing", vcf_path, "\n")
     return(data.table(CHROM = character(), POS = integer(), REF = character(), ALT = character()))
   }
-  cmd <- sprintf("bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT\\n' '%s' 2>/dev/null", vcf_path)
+  if (filter == "pass") {
+    cmd <- sprintf("bcftools view -f PASS '%s' 2>/dev/null | bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT\\n' 2>/dev/null", vcf_path)
+  } else {
+    cmd <- sprintf("bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT\\n' '%s' 2>/dev/null", vcf_path)
+  }
   dt <- tryCatch(
     fread(cmd = cmd, col.names = c("CHROM", "POS", "REF", "ALT")),
     error = function(e) data.table(CHROM = character(), POS = integer(), REF = character(), ALT = character())
@@ -156,9 +168,9 @@ for (si in seq_len(n_samples)) {
   # Use tp-baseline.vcf.gz for TP counts: it preserves the baseline (label_a)
   # representation so MNPs are not decomposed into SNPs.  tp.vcf.gz contains
   # the call-side view where --decompose splits MNPs into individual SNPs.
-  tp_dt <- read_vcf_records(file.path(ve_dir, "tp-baseline.vcf.gz"))
-  fn_dt <- read_vcf_records(file.path(ve_dir, "fn.vcf.gz"))
-  fp_dt <- read_vcf_records(file.path(ve_dir, "fp.vcf.gz"))
+  tp_dt <- read_vcf_records(file.path(ve_dir, "tp-baseline.vcf.gz"), filter)
+  fn_dt <- read_vcf_records(file.path(ve_dir, "fn.vcf.gz"), filter)
+  fp_dt <- read_vcf_records(file.path(ve_dir, "fp.vcf.gz"), filter)
 
   tp_dt <- classify_variants(tp_dt)
   fn_dt <- classify_variants(fn_dt)
@@ -251,7 +263,7 @@ if (n_samples <= 20) {
     scale_y_continuous(labels = scales::comma) +
     labs(title = title,
          subtitle = paste0(label_a, " vs ", label_b, " via vcfeval",
-                           " (N=", n_samples, " samples, bars=mean)"),
+                           filter_label, " (N=", n_samples, " samples, bars=mean)"),
          x = "Variant Type", y = "Count") +
     theme_minimal() +
     theme(
@@ -270,7 +282,7 @@ if (n_samples <= 20) {
     scale_y_continuous(labels = scales::comma) +
     labs(title = title,
          subtitle = paste0(label_a, " vs ", label_b, " via vcfeval",
-                           " (N=", n_samples, " samples)"),
+                           filter_label, " (N=", n_samples, " samples)"),
          x = "Variant Type", y = "Count") +
     theme_minimal() +
     theme(
