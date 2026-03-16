@@ -1289,6 +1289,8 @@ rule vcfeval_per_sample:
     """Run VCF comparison per sample: call VCF (truth) vs DeepVariant VCF (calls)
 
     Dispatches to vcfeval or aardvark based on config['eval_tool'].
+    When filt=pass, both VCFs are pre-filtered to PASS before comparison
+    (aardvark/vcfeval strip FILTER, so post-hoc filtering doesn't work).
 
     vg call strips the augref prefix from contig names but DeepVariant keeps it.
     The reference FASTA also uses the full augref prefix.  Restore the prefix on
@@ -1300,15 +1302,15 @@ rule vcfeval_per_sample:
         ref=f"{OUT_DIR}/{OUT_NAME}.fa.gz",
         paths=f"{OUT_DIR}/{OUT_NAME}.filtered-paths.txt" if surject_filtering() else [],
     output:
-        tp_baseline=f"{OUT_DIR}/vcfeval/{{sample}}/tp-baseline.vcf.gz",
-        fp=f"{OUT_DIR}/vcfeval/{{sample}}/fp.vcf.gz",
-        fn=f"{OUT_DIR}/vcfeval/{{sample}}/fn.vcf.gz",
+        tp_baseline=f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}/tp-baseline.vcf.gz",
+        fp=f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}/fp.vcf.gz",
+        fn=f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}/fn.vcf.gz",
     threads: rule_cpus("vcfeval", 64)
     resources:
         mem_mb=rule_mem_gb("vcfeval", 128) * 1024,
         runtime=rule_runtime("vcfeval"),
     params:
-        out_dir=f"{OUT_DIR}/vcfeval/{{sample}}",
+        out_dir=f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}",
         eval_tool=config.get("eval_tool", "aardvark"),
         docker_arg=lambda wc: f"--docker {config['vcfeval_docker']}" if config.get("vcfeval_docker") else "",
         no_docker="" if config.get("vcfeval_docker") else "--no-docker",
@@ -1321,26 +1323,44 @@ rule vcfeval_per_sample:
         " && bcftools query -f '%CHROM\\n' {input.call_vcf} | sort -u"
         "    | sed 's/^\\(.*\\)/\\1\\t{params.augref_prefix}\\1/'"
         "    > {params.out_dir}/rename-chrs.txt"
+        # Rename chroms; optionally pre-filter to PASS
         " && bcftools annotate --rename-chrs {params.out_dir}/rename-chrs.txt"
         "    {input.call_vcf}"
         "    | awk '/^##contig=/{{id=$0; sub(/.*ID=/, \"\", id); sub(/[,>].*/, \"\", id);"
         "            if(seen[id]++) next}} {{print}}'"
+        "    | if [ '{wildcards.filt}' = 'pass' ]; then"
+        "        bcftools view -f PASS 2>/dev/null;"
+        "      else cat; fi"
         "    | bgzip > {params.out_dir}/call.renamed.vcf.gz"
         " && tabix -fp vcf {params.out_dir}/call.renamed.vcf.gz"
+        # Pre-filter DV VCF to PASS if needed
+        " && if [ '{wildcards.filt}' = 'pass' ]; then"
+        "      bcftools view -f PASS {input.dv_vcf} 2>/dev/null"
+        "        | bgzip > {params.out_dir}/dv.pass.vcf.gz"
+        "      && tabix -fp vcf {params.out_dir}/dv.pass.vcf.gz;"
+        "    fi"
         # Stage inputs to node-local scratch for fast I/O
         " && WORK_TMPDIR=$(mktemp -d \"${{TMPDIR:-{params.out_dir}}}/vcfeval.XXXXXX\")"
         " && trap 'rm -rf \"$WORK_TMPDIR\"' EXIT"
         " && echo \"Staging inputs to $WORK_TMPDIR\""
         " && cp {params.out_dir}/call.renamed.vcf.gz"
         "       {params.out_dir}/call.renamed.vcf.gz.tbi"
-        "       {input.dv_vcf} {input.dv_vcf}.tbi"
         "       {input.ref} {input.ref}.fai"
         "       \"$WORK_TMPDIR/\""
+        " && if [ '{wildcards.filt}' = 'pass' ]; then"
+        "      cp {params.out_dir}/dv.pass.vcf.gz"
+        "         {params.out_dir}/dv.pass.vcf.gz.tbi"
+        "         \"$WORK_TMPDIR/\";"
+        "      DV_VCF=$WORK_TMPDIR/dv.pass.vcf.gz;"
+        "    else"
+        "      cp {input.dv_vcf} {input.dv_vcf}.tbi \"$WORK_TMPDIR/\";"
+        "      DV_VCF=$WORK_TMPDIR/$(basename {input.dv_vcf});"
+        "    fi"
         " && {{ [ -f {input.ref}.gzi ]"
         "       && cp {input.ref}.gzi \"$WORK_TMPDIR/\" || true; }}"
         " && python3 scripts/vcfcomp.py {params.eval_tool}"
         "    --truth $WORK_TMPDIR/call.renamed.vcf.gz"
-        "    --calls $WORK_TMPDIR/$(basename {input.dv_vcf})"
+        "    --calls $DV_VCF"
         "    --ref $WORK_TMPDIR/$(basename {input.ref})"
         "    --out-dir $WORK_TMPDIR"
         "    --threads {threads}"
@@ -1358,19 +1378,21 @@ rule vcfeval_per_sample:
         " && rm -f {params.out_dir}/call.renamed.vcf.gz"
         "    {params.out_dir}/call.renamed.vcf.gz.tbi"
         "    {params.out_dir}/rename-chrs.txt"
+        "    {params.out_dir}/dv.pass.vcf.gz"
+        "    {params.out_dir}/dv.pass.vcf.gz.tbi"
 
 rule vcfeval_compare_plot:
-    """Aggregate per-sample vcfeval results into comparison plot (one filter combo)"""
+    """Aggregate per-sample vcfeval results into comparison plot"""
     input:
-        tp_baseline=expand(f"{OUT_DIR}/vcfeval/{{sample}}/tp-baseline.vcf.gz", sample=SAMPLES),
-        fp=expand(f"{OUT_DIR}/vcfeval/{{sample}}/fp.vcf.gz", sample=SAMPLES),
-        fn=expand(f"{OUT_DIR}/vcfeval/{{sample}}/fn.vcf.gz", sample=SAMPLES),
+        tp_baseline=expand(f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}/tp-baseline.vcf.gz", sample=SAMPLES),
+        fp=expand(f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}/fp.vcf.gz", sample=SAMPLES),
+        fn=expand(f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}/fn.vcf.gz", sample=SAMPLES),
     output:
         f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-compare.png",
         f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-compare.tsv",
     params:
         vcfeval_dirs=lambda wc, input: ",".join(
-            [f"{OUT_DIR}/vcfeval/{s}" for s in SAMPLES]),
+            [f"{OUT_DIR}/vcfeval/{wc.filt}/{s}" for s in SAMPLES]),
         sample_names=",".join(SAMPLES),
     resources:
         mem_mb=32000,
@@ -1382,7 +1404,6 @@ rule vcfeval_compare_plot:
         " --samples {params.sample_names}"
         " --label-a Call --label-b DeepVariant"
         " --title '{REF} Call vs DeepVariant (vcfeval)'"
-        " --filter {wildcards.filt}"
         " --no-sv"
 
 rule vcfeval_per_sample_squash:
@@ -1390,6 +1411,7 @@ rule vcfeval_per_sample_squash:
 
     For vcfeval: uses --squash-ploidy.
     For aardvark: preprocesses VCFs to set all non-ref GTs to 1/1.
+    When filt=pass, both VCFs are pre-filtered to PASS before comparison.
     """
     input:
         call_vcf=f"{OUT_DIR}/{{sample}}.vcf.gz",
@@ -1397,15 +1419,15 @@ rule vcfeval_per_sample_squash:
         ref=f"{OUT_DIR}/{OUT_NAME}.fa.gz",
         paths=f"{OUT_DIR}/{OUT_NAME}.filtered-paths.txt" if surject_filtering() else [],
     output:
-        tp_baseline=f"{OUT_DIR}/vcfeval-squash/{{sample}}/tp-baseline.vcf.gz",
-        fp=f"{OUT_DIR}/vcfeval-squash/{{sample}}/fp.vcf.gz",
-        fn=f"{OUT_DIR}/vcfeval-squash/{{sample}}/fn.vcf.gz",
+        tp_baseline=f"{OUT_DIR}/vcfeval-squash/{{filt}}/{{sample}}/tp-baseline.vcf.gz",
+        fp=f"{OUT_DIR}/vcfeval-squash/{{filt}}/{{sample}}/fp.vcf.gz",
+        fn=f"{OUT_DIR}/vcfeval-squash/{{filt}}/{{sample}}/fn.vcf.gz",
     threads: rule_cpus("vcfeval", 64)
     resources:
         mem_mb=rule_mem_gb("vcfeval", 128) * 1024,
         runtime=rule_runtime("vcfeval"),
     params:
-        out_dir=f"{OUT_DIR}/vcfeval-squash/{{sample}}",
+        out_dir=f"{OUT_DIR}/vcfeval-squash/{{filt}}/{{sample}}",
         eval_tool=config.get("eval_tool", "aardvark"),
         docker_arg=lambda wc: f"--docker {config['vcfeval_docker']}" if config.get("vcfeval_docker") else "",
         no_docker="" if config.get("vcfeval_docker") else "--no-docker",
@@ -1417,28 +1439,46 @@ rule vcfeval_per_sample_squash:
         " && bcftools query -f '%CHROM\\n' {input.call_vcf} | sort -u"
         "    | sed 's/^\\(.*\\)/\\1\\t{params.augref_prefix}\\1/'"
         "    > {params.out_dir}/rename-chrs.txt"
+        # Rename chroms; optionally pre-filter to PASS
         " && bcftools annotate --rename-chrs {params.out_dir}/rename-chrs.txt"
         "    {input.call_vcf}"
         "    | awk '/^##contig=/{{id=$0; sub(/.*ID=/, \"\", id); sub(/[,>].*/, \"\", id);"
         "            if(seen[id]++) next}} {{print}}'"
+        "    | if [ '{wildcards.filt}' = 'pass' ]; then"
+        "        bcftools view -f PASS 2>/dev/null;"
+        "      else cat; fi"
         "    | bgzip > {params.out_dir}/call.renamed.vcf.gz"
         " && tabix -fp vcf {params.out_dir}/call.renamed.vcf.gz"
+        # Pre-filter DV VCF to PASS if needed
+        " && if [ '{wildcards.filt}' = 'pass' ]; then"
+        "      bcftools view -f PASS {input.dv_vcf} 2>/dev/null"
+        "        | bgzip > {params.out_dir}/dv.pass.vcf.gz"
+        "      && tabix -fp vcf {params.out_dir}/dv.pass.vcf.gz;"
+        "    fi"
         # Stage inputs to node-local scratch for fast I/O
         " && WORK_TMPDIR=$(mktemp -d \"${{TMPDIR:-{params.out_dir}}}/vcfeval.XXXXXX\")"
         " && trap 'rm -rf \"$WORK_TMPDIR\"' EXIT"
         " && echo \"Staging inputs to $WORK_TMPDIR\""
         " && cp {params.out_dir}/call.renamed.vcf.gz"
         "       {params.out_dir}/call.renamed.vcf.gz.tbi"
-        "       {input.dv_vcf} {input.dv_vcf}.tbi"
         "       {input.ref} {input.ref}.fai"
         "       \"$WORK_TMPDIR/\""
+        " && if [ '{wildcards.filt}' = 'pass' ]; then"
+        "      cp {params.out_dir}/dv.pass.vcf.gz"
+        "         {params.out_dir}/dv.pass.vcf.gz.tbi"
+        "         \"$WORK_TMPDIR/\";"
+        "      DV_VCF=$WORK_TMPDIR/dv.pass.vcf.gz;"
+        "    else"
+        "      cp {input.dv_vcf} {input.dv_vcf}.tbi \"$WORK_TMPDIR/\";"
+        "      DV_VCF=$WORK_TMPDIR/$(basename {input.dv_vcf});"
+        "    fi"
         " && {{ [ -f {input.ref}.gzi ]"
         "       && cp {input.ref}.gzi \"$WORK_TMPDIR/\" || true; }}"
         # Squash genotypes: for vcfeval use --squash-ploidy; for aardvark preprocess VCFs
         " && if [ '{params.eval_tool}' = 'vcfeval' ]; then"
         "      python3 scripts/vcfcomp.py {params.eval_tool}"
         "        --truth $WORK_TMPDIR/call.renamed.vcf.gz"
-        "        --calls $WORK_TMPDIR/$(basename {input.dv_vcf})"
+        "        --calls $DV_VCF"
         "        --ref $WORK_TMPDIR/$(basename {input.ref})"
         "        --out-dir $WORK_TMPDIR"
         "        --threads {threads}"
@@ -1450,7 +1490,7 @@ rule vcfeval_per_sample_squash:
         "        -- -t q -n c:'1/1' -i 'GT=\"het\"'"
         "        | bgzip > $WORK_TMPDIR/call.squash.vcf.gz"
         "      && tabix -fp vcf $WORK_TMPDIR/call.squash.vcf.gz"
-        "      && bcftools +setGT $WORK_TMPDIR/$(basename {input.dv_vcf})"
+        "      && bcftools +setGT $DV_VCF"
         "        -- -t q -n c:'1/1' -i 'GT=\"het\"'"
         "        | bgzip > $WORK_TMPDIR/dv.squash.vcf.gz"
         "      && tabix -fp vcf $WORK_TMPDIR/dv.squash.vcf.gz"
@@ -1474,19 +1514,21 @@ rule vcfeval_per_sample_squash:
         " && rm -f {params.out_dir}/call.renamed.vcf.gz"
         "    {params.out_dir}/call.renamed.vcf.gz.tbi"
         "    {params.out_dir}/rename-chrs.txt"
+        "    {params.out_dir}/dv.pass.vcf.gz"
+        "    {params.out_dir}/dv.pass.vcf.gz.tbi"
 
 rule vcfeval_compare_plot_squash:
     """Aggregate per-sample squashed vcfeval results into comparison plot"""
     input:
-        tp_baseline=expand(f"{OUT_DIR}/vcfeval-squash/{{sample}}/tp-baseline.vcf.gz", sample=SAMPLES),
-        fp=expand(f"{OUT_DIR}/vcfeval-squash/{{sample}}/fp.vcf.gz", sample=SAMPLES),
-        fn=expand(f"{OUT_DIR}/vcfeval-squash/{{sample}}/fn.vcf.gz", sample=SAMPLES),
+        tp_baseline=expand(f"{OUT_DIR}/vcfeval-squash/{{filt}}/{{sample}}/tp-baseline.vcf.gz", sample=SAMPLES),
+        fp=expand(f"{OUT_DIR}/vcfeval-squash/{{filt}}/{{sample}}/fp.vcf.gz", sample=SAMPLES),
+        fn=expand(f"{OUT_DIR}/vcfeval-squash/{{filt}}/{{sample}}/fn.vcf.gz", sample=SAMPLES),
     output:
         f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash-compare.png",
         f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash-compare.tsv",
     params:
         vcfeval_dirs=lambda wc, input: ",".join(
-            [f"{OUT_DIR}/vcfeval-squash/{s}" for s in SAMPLES]),
+            [f"{OUT_DIR}/vcfeval-squash/{wc.filt}/{s}" for s in SAMPLES]),
         sample_names=",".join(SAMPLES),
     resources:
         mem_mb=32000,
@@ -1498,7 +1540,6 @@ rule vcfeval_compare_plot_squash:
         " --samples {params.sample_names}"
         " --label-a Call --label-b DeepVariant"
         " --title '{REF} Call vs DeepVariant (vcfeval, squash-ploidy)'"
-        " --filter {wildcards.filt}"
         " --no-sv"
 
 ############################################################################
