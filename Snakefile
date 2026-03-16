@@ -1032,6 +1032,7 @@ rule deconstruct_sites_stats:
     """Deconstruct VCF → site-level stats + plots (includes AF spectrum)"""
     input:
         vcf=f"{OUT_DIR}/{OUT_NAME}.tr.vcf.gz",
+        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
         annot_beds=augref_annot_beds(),
         giab_beds=augref_giab_strat_beds(),
     output:
@@ -1065,12 +1066,14 @@ rule deconstruct_sites_stats:
     shell:
         "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{OUT_NAME}.sites"
         " --mode sites --af-step 0.05 --title '{REF} Deconstruct'"
+        " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample --ref-sample {REF}"
 
 rule deconstruct_variants_stats:
     """Deconstruct VCF → variant-level stats + plots (uses pre-normed VCF)"""
     input:
         vcf=f"{OUT_DIR}/{OUT_NAME}.tr.normed.vcf.gz",
+        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
         annot_beds=augref_annot_beds(),
         giab_beds=augref_giab_strat_beds(),
     output:
@@ -1104,6 +1107,7 @@ rule deconstruct_variants_stats:
     shell:
         "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{OUT_NAME}.variants"
         " --mode variants --af-step 0.05 --title '{REF} Deconstruct'"
+        " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample --ref-sample {REF}"
 
 rule call_stats:

@@ -52,6 +52,7 @@ no_sv      <- FALSE
 tsv_input  <- FALSE
 dump_records <- FALSE
 records_only <- FALSE
+segs_file    <- NULL
 
 i <- 3
 while (i <= length(args)) {
@@ -97,6 +98,9 @@ while (i <= length(args)) {
   } else if (args[i] == "--records-only") {
     records_only <- TRUE
     i <- i + 1
+  } else if (args[i] == "--segs" && i + 1 <= length(args)) {
+    segs_file <- args[i + 1]
+    i <- i + 2
   } else {
     i <- i + 1
   }
@@ -631,58 +635,95 @@ if (!is.null(giab_strat_beds_arg)) {
 
   cat("GIAB stratification from", length(strat_files), "BEDs\n")
 
-  # Write variant BED
+  # If --segs provided, map off-ref variants to reference coordinates so they
+  # can be classified into GIAB regions too (otherwise they'd be unclassifiable)
+  segs_dt <- NULL
+  if (!is.null(segs_file)) {
+    cat("Reading augref segments for off-ref GIAB mapping:", segs_file, "\n")
+    segs_dt <- fread(segs_file, select = c(4, 5, 6, 7),
+                     col.names = c("augref_path", "ref_path", "ref_start", "ref_end"))
+    # Keep one representative region per augref contig
+    segs_dt <- unique(segs_dt, by = "augref_path")
+    # Build reference BED coords: augref_<ref_path> to match augref GIAB BEDs
+    segs_dt[, ref_chrom := paste0("augref_", ref_path)]
+  }
+
+  # Build variant BED for intersection
+  # On-ref: use CHROM/POS directly (already in augref reference space)
+  # Off-ref with segs: map to reference coordinates via augref-segs table
+  dt[, giab_chrom := CHROM]
+  dt[, giab_start := POS - 1L]
+  dt[, giab_end := POS - 1L + ref_len]
+
+  if (!is.null(segs_dt)) {
+    offref_idx <- which(dt$ref_context == "Off-reference")
+    if (length(offref_idx) > 0) {
+      offref_map <- merge(
+        dt[offref_idx, .(row_idx = .I, CHROM)],
+        segs_dt[, .(augref_path, ref_chrom, ref_start, ref_end)],
+        by.x = "CHROM", by.y = "augref_path", all.x = TRUE, sort = FALSE)
+      matched <- offref_map[!is.na(ref_chrom)]
+      if (nrow(matched) > 0) {
+        set(dt, i = offref_idx[matched$row_idx], j = "giab_chrom", value = matched$ref_chrom)
+        set(dt, i = offref_idx[matched$row_idx], j = "giab_start", value = matched$ref_start)
+        set(dt, i = offref_idx[matched$row_idx], j = "giab_end",   value = matched$ref_end)
+        cat("Mapped", nrow(matched), "of", length(offref_idx),
+            "off-ref variants to reference coords for GIAB\n")
+      }
+    }
+  }
+
+  # Write variant BED and sort
   tmp_bed <- tempfile(fileext = ".sorted.bed")
   tmp_unsorted_giab <- tempfile(fileext = ".bed")
-  fwrite(dt[, .(CHROM, POS - 1L, POS - 1L + ref_len)],
+  fwrite(dt[, .(giab_chrom, giab_start, giab_end)],
          tmp_unsorted_giab, sep = "\t", col.names = FALSE)
   system(sprintf("LC_ALL=C sort -k1,1 -k2,2n '%s' > '%s'", tmp_unsorted_giab, tmp_bed))
   unlink(tmp_unsorted_giab)
 
   # bedtools intersect each partition
-  dt[, giab_bed_start := POS - 1L]
-  setkey(dt, CHROM, giab_bed_start)
+  setkey(dt, giab_chrom, giab_start)
   for (k in seq_along(strat_files)) {
     col <- paste0("giab_", k)
     cmd <- sprintf("bedtools intersect -a '%s' -b '%s' -u -sorted 2>/dev/null",
                    tmp_bed, strat_files[k])
     hits <- tryCatch(
-      fread(cmd = cmd, select = 1:2, col.names = c("CHROM", "giab_bed_start"), header = FALSE),
-      error = function(e) data.table(CHROM = character(0), giab_bed_start = integer(0)),
-      warning = function(w) data.table(CHROM = character(0), giab_bed_start = integer(0))
+      fread(cmd = cmd, select = 1:2, col.names = c("giab_chrom", "giab_start"), header = FALSE),
+      error = function(e) data.table(giab_chrom = character(0), giab_start = integer(0)),
+      warning = function(w) data.table(giab_chrom = character(0), giab_start = integer(0))
     )
     set(dt, j = col, value = FALSE)
     if (nrow(hits) > 0) {
       hits <- unique(hits)
-      dt[hits, (col) := TRUE, on = .(CHROM, giab_bed_start)]
+      dt[hits, (col) := TRUE, on = .(giab_chrom, giab_start)]
     }
   }
-  dt[, giab_bed_start := NULL]
+  dt[, c("giab_chrom", "giab_start", "giab_end") := NULL]
   unlink(tmp_bed)
 
-  # Classify each variant into exactly one category (priority: first hit wins)
-  # Off-ref variants get "Off-reference" since GIAB BEDs are reference-only
+  # Classify each variant into exactly one GIAB region (priority: first hit wins)
   dt[, giab_region := "Unclassified"]
-  dt[ref_context == "Off-reference", giab_region := "Off-reference"]
   for (k in rev(seq_along(strat_names))) {
     col <- paste0("giab_", k)
     dt[get(col) == TRUE, giab_region := strat_names[k]]
   }
 
-  # Summary table
-  giab_counts <- dt[, .(count = .N), by = .(variant_type, giab_region)]
+  # Summary table — now includes ref_context breakdown
+  giab_counts <- dt[, .(count = .N), by = .(variant_type, giab_region, ref_context)]
   giab_counts[, variant_type := factor(variant_type, levels = type_levels)]
-  region_levels <- c(strat_names, "Off-reference")
+  region_levels <- strat_names
   giab_counts[, giab_region := factor(giab_region, levels = region_levels)]
 
-  # Standalone grouped bar chart
+  # Grouped bar chart: facet by ref_context, dodge by GIAB region
   region_colors <- c("Easy" = "forestgreen", "Segdup" = "firebrick",
-                     "Other Difficult" = "darkorange", "Off-reference" = "steelblue")
-  p_giab <- ggplot(giab_counts[giab_region != "Unclassified"],
+                     "Other Difficult" = "darkorange")
+  giab_plot_dt <- giab_counts[giab_region != "Unclassified"]
+  p_giab <- ggplot(giab_plot_dt,
                    aes(x = variant_type, y = count, fill = giab_region)) +
     geom_col(position = "dodge", width = 0.7) +
     scale_fill_manual(values = region_colors, name = "GIAB Region") +
     scale_y_continuous(labels = scales::comma) +
+    facet_wrap(~ ref_context) +
     labs(title = title,
          subtitle = paste0("GIAB Genome Stratification ", mode_label, filter_label),
          x = "Variant Type", y = "Count") +
@@ -697,7 +738,7 @@ if (!is.null(giab_strat_beds_arg)) {
   save_png(p_giab, paste0(prefix, ".giab-strat.png"), width = 10, height = 6)
 
   # Write TSV
-  setorder(giab_counts, giab_region, variant_type)
+  setorder(giab_counts, giab_region, ref_context, variant_type)
   fwrite(giab_counts, paste0(prefix, ".giab-strat.tsv"), sep = "\t")
   cat("Wrote GIAB strat:", paste0(prefix, ".giab-strat.tsv"), "\n")
 
