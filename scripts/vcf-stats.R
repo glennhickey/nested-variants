@@ -384,7 +384,7 @@ if (nrow(tstv_dt) > 0) {
 
 # Order variant types (drop empty levels and negligible types < 0.5% of total)
 sv_types <- if (no_sv) character(0) else c("SV Insertion", "SV Deletion")
-type_levels <- c("SNP", "MNP", "Insertion", "Deletion", sv_types, "Other")
+type_levels <- c("SNP", "MNP", "Insertion", "Deletion", sv_types)
 type_totals <- plot_dt[, .(total = sum(count)), by = variant_type]
 total_variants <- sum(type_totals$total)
 minor_types <- type_totals[total / total_variants < 0.005, variant_type]
