@@ -574,7 +574,7 @@ if (!is.null(annot_beds)) {
     cat("  bedtools intersect:", anames[k], "\n")
     hit_col <- paste0(anames[k], "_hit")
     cmd <- sprintf(
-      "bedtools intersect -a '%s' -b '%s' -u -sorted 2>/dev/null",
+      "bedtools intersect -a '%s' -b '%s' -u",
       tmp_bed, bed_files[k]
     )
     hits <- tryCatch(
@@ -695,7 +695,7 @@ if (!is.null(giab_strat_beds_arg)) {
   setkey(dt, giab_chrom, giab_start)
   for (k in seq_along(strat_files)) {
     col <- paste0("giab_", k)
-    cmd <- sprintf("bedtools intersect -a '%s' -b '%s' -u -sorted 2>/dev/null",
+    cmd <- sprintf("bedtools intersect -a '%s' -b '%s' -u",
                    tmp_bed, strat_files[k])
     hits <- tryCatch(
       fread(cmd = cmd, select = 1:2, col.names = c("giab_chrom", "giab_start"), header = FALSE),
@@ -729,24 +729,28 @@ if (!is.null(giab_strat_beds_arg)) {
   region_colors <- c("Easy" = "forestgreen", "Segdup" = "firebrick",
                      "Other Difficult" = "darkorange")
   giab_plot_dt <- giab_counts[giab_region != "Unclassified"]
-  p_giab <- ggplot(giab_plot_dt,
-                   aes(x = variant_type, y = count, fill = giab_region)) +
-    geom_col(position = "dodge", width = 0.7) +
-    scale_fill_manual(values = region_colors, name = "GIAB Region") +
-    scale_y_continuous(labels = scales::comma) +
-    facet_wrap(~ ref_context) +
-    labs(title = title,
-         subtitle = paste0("GIAB Genome Stratification ", mode_label, filter_label),
-         x = "Variant Type", y = "Count") +
-    theme_minimal() +
-    theme(
-      plot.title = element_text(hjust = 0.5, face = "bold"),
-      plot.subtitle = element_text(hjust = 0.5),
-      panel.background = element_rect(fill = "white", color = NA),
-      plot.background  = element_rect(fill = "white", color = NA)
-    )
-
-  save_png(p_giab, paste0(prefix, ".giab-strat.png"), width = 10, height = 6)
+  if (nrow(giab_plot_dt) == 0) {
+    cat("No variants in GIAB stratification regions; creating empty GIAB plot.\n")
+    file.create(paste0(prefix, ".giab-strat.png"))
+  } else {
+    p_giab <- ggplot(giab_plot_dt,
+                     aes(x = variant_type, y = count, fill = giab_region)) +
+      geom_col(position = "dodge", width = 0.7) +
+      scale_fill_manual(values = region_colors, name = "GIAB Region") +
+      scale_y_continuous(labels = scales::comma) +
+      facet_wrap(~ ref_context) +
+      labs(title = title,
+           subtitle = paste0("GIAB Genome Stratification ", mode_label, filter_label),
+           x = "Variant Type", y = "Count") +
+      theme_minimal() +
+      theme(
+        plot.title = element_text(hjust = 0.5, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5),
+        panel.background = element_rect(fill = "white", color = NA),
+        plot.background  = element_rect(fill = "white", color = NA)
+      )
+    save_png(p_giab, paste0(prefix, ".giab-strat.png"), width = 10, height = 6)
+  }
 
   # Write TSV
   setorder(giab_counts, giab_region, ref_context, variant_type)
@@ -987,7 +991,7 @@ if (per_sample) {
         setkey(gt_dt, giab_chrom, giab_start)
         for (k in seq_along(strat_files_ps)) {
           col <- paste0("ps_giab_", k)
-          cmd <- sprintf("bedtools intersect -a '%s' -b '%s' -u -sorted 2>/dev/null",
+          cmd <- sprintf("bedtools intersect -a '%s' -b '%s' -u",
                          tmp_bed_ps, strat_files_ps[k])
           hits <- tryCatch(
             fread(cmd = cmd, select = 1:2, col.names = c("giab_chrom", "giab_start"), header = FALSE),
@@ -1057,59 +1061,64 @@ if (per_sample) {
         ps_giab_counts_plot <- ps_giab_counts[ps_giab_region != "Unclassified"]
         ps_giab_summary_plot <- ps_giab_summary[ps_giab_region != "Unclassified"]
 
-        region_colors_ps <- c("Easy" = "forestgreen", "Segdup" = "firebrick",
-                               "Other Difficult" = "darkorange")
-
-        if (n_samples <= 20) {
-          p_ps_giab <- ggplot() +
-            geom_col(data = ps_giab_summary_plot,
-                     aes(x = variant_type, y = mean_count, fill = ps_giab_region),
-                     position = position_dodge(width = 0.7), width = 0.7, alpha = 0.6) +
-            geom_errorbar(data = ps_giab_summary_plot,
-                          aes(x = variant_type, ymin = min_count, ymax = max_count,
-                              group = ps_giab_region),
-                          position = position_dodge(width = 0.7), width = 0.3) +
-            geom_point(data = ps_giab_counts_plot,
-                       aes(x = variant_type, y = count, color = ps_giab_region),
-                       position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.7),
-                       size = 1.5, alpha = 0.8) +
-            scale_fill_manual(values = region_colors_ps, name = "GIAB Region") +
-            scale_color_manual(values = region_colors_ps, name = "GIAB Region") +
-            scale_y_continuous(labels = scales::comma) +
-            facet_wrap(~ ref_context) +
-            labs(title = title,
-                 subtitle = paste0("Per-Sample GIAB Stratification ", mode_label, filter_label,
-                                   " (N=", n_samples, " samples, bars=mean)"),
-                 x = "Variant Type", y = "Count") +
-            theme_minimal() +
-            theme(
-              plot.title = element_text(hjust = 0.5, face = "bold"),
-              plot.subtitle = element_text(hjust = 0.5),
-              panel.background = element_rect(fill = "white", color = NA),
-              plot.background  = element_rect(fill = "white", color = NA)
-            )
+        if (nrow(ps_giab_counts_plot) == 0) {
+          cat("No variants in per-sample GIAB regions; creating empty plot.\n")
+          file.create(paste0(prefix, ".per-sample-giab-strat.png"))
         } else {
-          p_ps_giab <- ggplot(ps_giab_counts_plot,
-                              aes(x = variant_type, y = count, fill = ps_giab_region)) +
-            geom_boxplot(position = position_dodge(width = 0.7), width = 0.6,
-                         outlier.size = 1) +
-            scale_fill_manual(values = region_colors_ps, name = "GIAB Region") +
-            scale_y_continuous(labels = scales::comma) +
-            facet_wrap(~ ref_context) +
-            labs(title = title,
-                 subtitle = paste0("Per-Sample GIAB Stratification ", mode_label, filter_label,
-                                   " (N=", n_samples, " samples)"),
-                 x = "Variant Type", y = "Count") +
-            theme_minimal() +
-            theme(
-              plot.title = element_text(hjust = 0.5, face = "bold"),
-              plot.subtitle = element_text(hjust = 0.5),
-              panel.background = element_rect(fill = "white", color = NA),
-              plot.background  = element_rect(fill = "white", color = NA)
-            )
-        }
+          region_colors_ps <- c("Easy" = "forestgreen", "Segdup" = "firebrick",
+                                 "Other Difficult" = "darkorange")
 
-        save_png(p_ps_giab, paste0(prefix, ".per-sample-giab-strat.png"), width = 12)
+          if (n_samples <= 20) {
+            p_ps_giab <- ggplot() +
+              geom_col(data = ps_giab_summary_plot,
+                       aes(x = variant_type, y = mean_count, fill = ps_giab_region),
+                       position = position_dodge(width = 0.7), width = 0.7, alpha = 0.6) +
+              geom_errorbar(data = ps_giab_summary_plot,
+                            aes(x = variant_type, ymin = min_count, ymax = max_count,
+                                group = ps_giab_region),
+                            position = position_dodge(width = 0.7), width = 0.3) +
+              geom_point(data = ps_giab_counts_plot,
+                         aes(x = variant_type, y = count, color = ps_giab_region),
+                         position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.7),
+                         size = 1.5, alpha = 0.8) +
+              scale_fill_manual(values = region_colors_ps, name = "GIAB Region") +
+              scale_color_manual(values = region_colors_ps, name = "GIAB Region") +
+              scale_y_continuous(labels = scales::comma) +
+              facet_wrap(~ ref_context) +
+              labs(title = title,
+                   subtitle = paste0("Per-Sample GIAB Stratification ", mode_label, filter_label,
+                                     " (N=", n_samples, " samples, bars=mean)"),
+                   x = "Variant Type", y = "Count") +
+              theme_minimal() +
+              theme(
+                plot.title = element_text(hjust = 0.5, face = "bold"),
+                plot.subtitle = element_text(hjust = 0.5),
+                panel.background = element_rect(fill = "white", color = NA),
+                plot.background  = element_rect(fill = "white", color = NA)
+              )
+          } else {
+            p_ps_giab <- ggplot(ps_giab_counts_plot,
+                                aes(x = variant_type, y = count, fill = ps_giab_region)) +
+              geom_boxplot(position = position_dodge(width = 0.7), width = 0.6,
+                           outlier.size = 1) +
+              scale_fill_manual(values = region_colors_ps, name = "GIAB Region") +
+              scale_y_continuous(labels = scales::comma) +
+              facet_wrap(~ ref_context) +
+              labs(title = title,
+                   subtitle = paste0("Per-Sample GIAB Stratification ", mode_label, filter_label,
+                                     " (N=", n_samples, " samples)"),
+                   x = "Variant Type", y = "Count") +
+              theme_minimal() +
+              theme(
+                plot.title = element_text(hjust = 0.5, face = "bold"),
+                plot.subtitle = element_text(hjust = 0.5),
+                panel.background = element_rect(fill = "white", color = NA),
+                plot.background  = element_rect(fill = "white", color = NA)
+              )
+          }
+
+          save_png(p_ps_giab, paste0(prefix, ".per-sample-giab-strat.png"), width = 12)
+        }
 
         # Clean up
         for (k in seq_along(strat_names_ps)) set(gt_dt, j = paste0("ps_giab_", k), value = NULL)
