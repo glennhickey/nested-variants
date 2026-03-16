@@ -17,7 +17,7 @@
 #
 ################################################################################
 
-set -e
+set -eo pipefail
 
 # Initialize variables
 VG_FILES=()
@@ -181,7 +181,7 @@ for VG in "${VG_FILES[@]}"; do
         SEGS="${WORK_DIR}/${BASE}.augref-segs.tsv"
 
         # Build the command to run (threads split across parallel jobs)
-        CMD="/usr/bin/time -v vg paths -x \"$VG\" -Q ${REF} --compute-augref --min-augref-len ${MIN_AUGREF_LEN} --augref-sample ${AUGREF_SAMPLE} --augref-segs \"${SEGS}\" -t ${THREADS_PER_JOB} | /usr/bin/time -v vg convert -f - > \"${GFA}\""
+        CMD="set -eo pipefail; /usr/bin/time -v vg paths -x \"$VG\" -Q ${REF} --compute-augref --min-augref-len ${MIN_AUGREF_LEN} --augref-sample ${AUGREF_SAMPLE} --augref-segs \"${SEGS}\" -t ${THREADS_PER_JOB} | /usr/bin/time -v vg convert -f - > \"${GFA}\""
 
         LOG="${WORK_DIR}/${OUTPUT_NAME}.${BASE}.log"
         if $LOCAL; then

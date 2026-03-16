@@ -14,7 +14,7 @@
 #
 ################################################################################
 
-set -e
+set -eo pipefail
 
 # Initialize variables
 GBZ=""
@@ -134,7 +134,7 @@ FASTA="${OUTPUT_DIR}/${OUTPUT_NAME}"
 # vg paths: extract augmented reference paths as FASTA
 # bgzip: block-gzip for indexed random access
 # samtools faidx: create .fai + .gzi indexes
-CMD="/usr/bin/time -v bash -c 'vg paths -x \"${GBZ}\" -S \"${REF}\" -F -t ${CPUS} | bgzip -@ ${CPUS} > \"${FASTA}\"' && \
+CMD="set -eo pipefail; /usr/bin/time -v bash -c 'set -eo pipefail; vg paths -x \"${GBZ}\" -S \"${REF}\" -F -t ${CPUS} | bgzip -@ ${CPUS} > \"${FASTA}\"' && \
 /usr/bin/time -v samtools faidx \"${FASTA}\""
 
 if $LOCAL; then

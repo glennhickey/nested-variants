@@ -13,7 +13,7 @@
 #
 ################################################################################
 
-set -e
+set -eo pipefail
 
 # Initialize variables
 GBZ=""
@@ -163,7 +163,7 @@ fi
 if $STAR_ALLELE; then
     DECONSTRUCT_OPTS="${DECONSTRUCT_OPTS} -R"
 fi
-CMD="/usr/bin/time -v vg deconstruct \"$GBZ\" ${DECONSTRUCT_OPTS} | bgzip > \"${VCF}\" && tabix -fp vcf \"${VCF}\""
+CMD="set -eo pipefail; /usr/bin/time -v vg deconstruct \"$GBZ\" ${DECONSTRUCT_OPTS} | bgzip > \"${VCF}\" && tabix -fp vcf \"${VCF}\""
 
 if $LOCAL; then
     # Run locally

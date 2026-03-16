@@ -547,22 +547,6 @@ rule annotate_tr:
         "python3 scripts/annotate-tr.py --vcf {input.vcf} --ref {input.ref}"
         " -o {output} && tabix -fp vcf {output}"
 
-rule split_vcf:
-    """VCF → onref / nestedref / offref"""
-    input:
-        f"{OUT_DIR}/{OUT_NAME}.vcf.gz",
-    output:
-        f"{OUT_DIR}/{OUT_NAME}.onref.vcf.gz",
-        f"{OUT_DIR}/{OUT_NAME}.nestedref.vcf.gz",
-        f"{OUT_DIR}/{OUT_NAME}.offref.vcf.gz",
-    resources:
-        mem_mb=256000,
-        runtime=2880,
-    shell:
-        "cd {OUT_DIR} && {workflow.basedir}/scripts/split-ref.sh"
-        " -v {workflow.basedir}/{input}"
-        " -p {AUGREF}"
-
 rule haplotypes:
     """GBZ → .hapl index"""
     input:
@@ -590,6 +574,8 @@ rule fasta:
         f"{OUT_DIR}/{OUT_NAME}.gbz",
     output:
         f"{OUT_DIR}/{OUT_NAME}.fa.gz",
+        f"{OUT_DIR}/{OUT_NAME}.fa.gz.fai",
+        f"{OUT_DIR}/{OUT_NAME}.fa.gz.gzi",
     threads: rule_cpus("fasta", 128)
     resources:
         mem_mb=rule_mem_gb("fasta", 512) * 1024,

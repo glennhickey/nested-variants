@@ -14,7 +14,7 @@
 #
 ################################################################################
 
-set -e
+set -eo pipefail
 
 # Initialize variables
 GBZ=""
@@ -178,7 +178,7 @@ else
 fi
 
 # Build the command to run
-CMD="/usr/bin/time -v vg pack -x \"${GBZ}\" -g \"${GAM}\" -o \"${PACK}\" -t ${CPUS} && \\
+CMD="set -eo pipefail; /usr/bin/time -v vg pack -x \"${GBZ}\" -g \"${GAM}\" -o \"${PACK}\" -t ${CPUS} && \\
 /usr/bin/time -v vg call \"${GBZ}\" -k \"${PACK}\" -z -a -A -S ${REF} -s ${SAMPLE} -t ${CPUS} | ${FILTER_PIPE} bgzip > \"${VCF}\" && \\
 tabix -fp vcf \"${VCF}\"$([ -n "${TARGETS_FILE}" ] && echo " && rm -f \"${TARGETS_FILE}\"")"
 
