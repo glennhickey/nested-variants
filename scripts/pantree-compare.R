@@ -29,7 +29,7 @@ ours_path    <- NULL
 pantree_path <- NULL
 prefix       <- NULL
 title        <- "Variant Catalog Comparison"
-ours_label   <- "Nested Variants"
+ours_label   <- "Deconstruct"
 pantree_label <- "Pantree"
 
 i <- 1
@@ -203,8 +203,8 @@ save_png(p2, paste0(prefix, ".pantree-types-pct.png"))
 # ---------------------------------------------------------------------------
 indel_types <- c("Insertion", "Deletion", "SV Insertion", "SV Deletion")
 dt_indels <- rbind(
-  dt_ours[variant_type %in% indel_types, .(source, size, size_signed, variant_type)],
-  dt_pt[variant_type %in% indel_types, .(source, size, size_signed, variant_type)]
+  dt_ours[variant_type %in% indel_types, .(source, ref_context, size, size_signed, variant_type)],
+  dt_pt[variant_type %in% indel_types, .(source, ref_context, size, size_signed, variant_type)]
 )
 
 if (nrow(dt_indels) > 0) {
@@ -212,13 +212,13 @@ if (nrow(dt_indels) > 0) {
 
   # Small indels (1-49bp)
   dt_small <- dt_indels[size > 0 & size < 50,
-                        .(count = .N), by = .(source, size, direction)]
+                        .(count = .N), by = .(source, ref_context, size, direction)]
   # SVs (50-1000bp)
   dt_sv <- dt_indels[size >= 50 & size <= 1000,
-                     .(count = .N), by = .(source, size, direction)]
+                     .(count = .N), by = .(source, ref_context, size, direction)]
 
-  dt_small[, panel := "Small Indels (1-49 bp)"]
-  dt_sv[, panel := "Structural Variants (50-1000 bp)"]
+  dt_small[, size_panel := "Small Indels (1-49 bp)"]
+  dt_sv[, size_panel := "Structural Variants (50-1000 bp)"]
   dt_size <- rbind(dt_small, dt_sv)
 
   if (nrow(dt_size) > 0) {
@@ -226,7 +226,7 @@ if (nrow(dt_indels) > 0) {
       geom_line(linewidth = 0.7) +
       scale_color_manual(values = setNames(c("steelblue", "tomato3"), c(ours_label, pantree_label))) +
       scale_y_continuous(labels = scales::comma) +
-      facet_wrap(~ panel, scales = "free") +
+      facet_grid(ref_context ~ size_panel, scales = "free") +
       labs(title = title, subtitle = "Indel Size Distribution",
            x = "Size (bp)", y = "Count") +
       theme_minimal() +
@@ -236,7 +236,7 @@ if (nrow(dt_indels) > 0) {
         panel.background = element_rect(fill = "white", color = NA),
         plot.background  = element_rect(fill = "white", color = NA)
       )
-    save_png(p3, paste0(prefix, ".pantree-size-dist.png"), width = 12, height = 6)
+    save_png(p3, paste0(prefix, ".pantree-size-dist.png"), width = 12, height = 8)
   } else {
     file.create(paste0(prefix, ".pantree-size-dist.png"))
   }
