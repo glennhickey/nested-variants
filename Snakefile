@@ -1370,9 +1370,9 @@ rule vcfeval_per_sample:
 rule vcfeval_compare_plot:
     """Aggregate per-sample vcfeval results into comparison plot"""
     input:
-        tp_baseline=expand(f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}/tp-baseline.vcf.gz", sample=SAMPLES),
-        fp=expand(f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}/fp.vcf.gz", sample=SAMPLES),
-        fn=expand(f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}/fn.vcf.gz", sample=SAMPLES),
+        tp_baseline=expand(f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}/tp-baseline.vcf.gz", sample=SAMPLES, allow_missing=True),
+        fp=expand(f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}/fp.vcf.gz", sample=SAMPLES, allow_missing=True),
+        fn=expand(f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}/fn.vcf.gz", sample=SAMPLES, allow_missing=True),
     output:
         f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-compare.png",
         f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-compare.tsv",
@@ -1506,9 +1506,9 @@ rule vcfeval_per_sample_squash:
 rule vcfeval_compare_plot_squash:
     """Aggregate per-sample squashed vcfeval results into comparison plot"""
     input:
-        tp_baseline=expand(f"{OUT_DIR}/vcfeval-squash/{{filt}}/{{sample}}/tp-baseline.vcf.gz", sample=SAMPLES),
-        fp=expand(f"{OUT_DIR}/vcfeval-squash/{{filt}}/{{sample}}/fp.vcf.gz", sample=SAMPLES),
-        fn=expand(f"{OUT_DIR}/vcfeval-squash/{{filt}}/{{sample}}/fn.vcf.gz", sample=SAMPLES),
+        tp_baseline=expand(f"{OUT_DIR}/vcfeval-squash/{{filt}}/{{sample}}/tp-baseline.vcf.gz", sample=SAMPLES, allow_missing=True),
+        fp=expand(f"{OUT_DIR}/vcfeval-squash/{{filt}}/{{sample}}/fp.vcf.gz", sample=SAMPLES, allow_missing=True),
+        fn=expand(f"{OUT_DIR}/vcfeval-squash/{{filt}}/{{sample}}/fn.vcf.gz", sample=SAMPLES, allow_missing=True),
     output:
         f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash-compare.png",
         f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash-compare.tsv",
