@@ -183,9 +183,10 @@ for VG in "${VG_FILES[@]}"; do
         # Build the command to run (threads split across parallel jobs)
         CMD="/usr/bin/time -v vg paths -x \"$VG\" -Q ${REF} --compute-augref --min-augref-len ${MIN_AUGREF_LEN} --augref-sample ${AUGREF_SAMPLE} --augref-segs \"${SEGS}\" -t ${THREADS_PER_JOB} | /usr/bin/time -v vg convert -f - > \"${GFA}\""
 
+        LOG="${WORK_DIR}/${OUTPUT_NAME}.${BASE}.log"
         if $LOCAL; then
-            # Run locally in background
-            bash -c "$CMD" &
+            # Run locally in background; capture stderr to log file
+            bash -c "$CMD" 2>"$LOG" &
         else
             # Submit SLURM job with resource requirements
             sbatch -W \
@@ -215,6 +216,14 @@ for i in "${!PIDS[@]}"; do
 done
 if [ ${#FAILED[@]} -gt 0 ]; then
     echo "ERROR: ${#FAILED[@]} job(s) failed: ${FAILED[*]}" >&2
+    # Copy per-chromosome logs to output dir for debugging
+    for f in "${FAILED[@]}"; do
+        LOG="${WORK_DIR}/${OUTPUT_NAME}.${f}.log"
+        if [ -f "$LOG" ]; then
+            cp "$LOG" "${OUTPUT_DIR}/${OUTPUT_NAME}.${f}.log"
+            echo "  Log saved: ${OUTPUT_DIR}/${OUTPUT_NAME}.${f}.log" >&2
+        fi
+    done
     exit 1
 fi
 
@@ -234,10 +243,14 @@ for SEGS in "$WORK_DIR"/*.augref-segs.tsv; do
 done > "$SEGS_MERGED"
 
 # Verify all expected GFA files exist before merging
+echo "Per-chromosome GFA sizes:"
 MISSING=()
 for GFA in "${GFA_FILES[@]}"; do
     if [ ! -s "$GFA" ]; then
         MISSING+=("$(basename "$GFA")")
+        echo "  $(basename "$GFA"): MISSING/EMPTY" >&2
+    else
+        echo "  $(basename "$GFA"): $(du -h "$GFA" | cut -f1)"
     fi
 done
 if [ ${#MISSING[@]} -gt 0 ]; then
@@ -264,8 +277,9 @@ rm -rf "$WORK_DIR"
 # Convert merged GFA to GBZ format
 GBZ_OUTPUT="${OUTPUT_DIR}/${OUTPUT_NAME}.gbz"
 
+GBZ_LOG="${OUTPUT_DIR}/${OUTPUT_NAME}.gbz.log"
 if $LOCAL; then
-    /usr/bin/time -v vg gbwt -G "${MERGED_GFA}" --gbz-format -g "${GBZ_OUTPUT}"
+    /usr/bin/time -v vg gbwt -G "${MERGED_GFA}" --gbz-format -g "${GBZ_OUTPUT}" 2>"${GBZ_LOG}"
 else
     CMD="/usr/bin/time -v vg gbwt -G \"${MERGED_GFA}\" --gbz-format -g \"${GBZ_OUTPUT}\""
     sbatch -W \
