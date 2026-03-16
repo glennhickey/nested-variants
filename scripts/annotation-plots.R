@@ -444,6 +444,16 @@ has_repeat_classes <- any(dt$annotation == "repeats" & !dt$annotation_class %in%
 if (has_repeat_classes) {
   repeat_dt <- dt[annotation == "repeats" & !annotation_class %in% c("repeats", "_total")]
 
+  # Collapse RepeatMasker class/family (e.g. "Simple_repeat/unknown" → "Simple_repeat")
+  repeat_dt[, annotation_class := sub("/.*", "", annotation_class)]
+
+  # Re-aggregate overlap bp after collapsing subclasses
+  repeat_dt <- repeat_dt[, .(source_overlap_bp = sum(source_overlap_bp),
+                             ref_overlap_bp = sum(ref_overlap_bp),
+                             source_len = source_len[1],
+                             ref_len = ref_len[1]),
+                         by = .(augref_path, annotation, annotation_class)]
+
   # Total bp per coord type (unique segments to avoid double-counting across classes)
   seg_dt <- unique(repeat_dt[, .(augref_path, source_len, ref_len)])
   total_source_bp <- as.numeric(sum(seg_dt$source_len))
