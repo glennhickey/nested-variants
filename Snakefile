@@ -91,6 +91,8 @@ def annotation_outputs():
             f"{OUT_DIR}/{OUT_NAME}.annot-cooccur.png",
             f"{OUT_DIR}/{OUT_NAME}.annot-stats.tsv",
         ]
+        if config.get("annot_repeats", ""):
+            outputs.append(f"{OUT_DIR}/{OUT_NAME}.annot-repeats.png")
         if config.get("annot_pclai", ""):
             outputs.append(f"{OUT_DIR}/{OUT_NAME}.annot-ancestry.png")
             outputs.append(f"{OUT_DIR}/{OUT_NAME}.annot-pclai-summary.png")
