@@ -194,6 +194,28 @@ if (length(only_a) > 0) cat("  Warning: samples only in A:", paste(only_a, colla
 if (length(only_b) > 0) cat("  Warning: samples only in B:", paste(only_b, collapse = ", "), "\n")
 
 # ---------------------------------------------------------------------------
+# Restrict to shared contigs so caller-specific contig sets don't inflate X-only
+# ---------------------------------------------------------------------------
+chroms_a <- unique(vcf_a_data$dt$CHROM)
+chroms_b <- unique(vcf_b_data$dt$CHROM)
+shared_chroms <- intersect(chroms_a, chroms_b)
+only_a_chroms <- setdiff(chroms_a, shared_chroms)
+only_b_chroms <- setdiff(chroms_b, shared_chroms)
+if (length(only_a_chroms) > 0) {
+  n_drop_a <- nrow(vcf_a_data$dt[CHROM %in% only_a_chroms])
+  cat("Dropping", length(only_a_chroms), "contigs (", n_drop_a, "records) from",
+      label_a, "not in", label_b, "\n")
+  vcf_a_data$dt <- vcf_a_data$dt[CHROM %in% shared_chroms]
+}
+if (length(only_b_chroms) > 0) {
+  n_drop_b <- nrow(vcf_b_data$dt[CHROM %in% only_b_chroms])
+  cat("Dropping", length(only_b_chroms), "contigs (", n_drop_b, "records) from",
+      label_b, "not in", label_a, "\n")
+  vcf_b_data$dt <- vcf_b_data$dt[CHROM %in% shared_chroms]
+}
+cat("Shared contigs:", length(shared_chroms), "\n")
+
+# ---------------------------------------------------------------------------
 # Classify variants in both
 # ---------------------------------------------------------------------------
 dt_a <- classify_variants(vcf_a_data$dt)
