@@ -279,6 +279,8 @@ def vcfeval_compare_outputs():
     for filt in ["all", "pass"]:
         outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-compare.png")
         outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-compare.tsv")
+        outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-squash-compare.png")
+        outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-squash-compare.tsv")
     return outputs
 
 def pantree_outputs():
@@ -1380,6 +1382,122 @@ rule vcfeval_compare_plot:
         " --samples {params.sample_names}"
         " --label-a Call --label-b DeepVariant"
         " --title '{REF} Call vs DeepVariant (vcfeval)'"
+        " --filter {wildcards.filt}"
+        " --no-sv"
+
+rule vcfeval_per_sample_squash:
+    """Run VCF comparison per sample with genotypes squashed (het→hom).
+
+    For vcfeval: uses --squash-ploidy.
+    For aardvark: preprocesses VCFs to set all non-ref GTs to 1/1.
+    """
+    input:
+        call_vcf=f"{OUT_DIR}/{{sample}}.vcf.gz",
+        dv_vcf=f"{OUT_DIR}/{{sample}}.deepvariant.vcf.gz",
+        ref=f"{OUT_DIR}/{OUT_NAME}.fa.gz",
+        paths=f"{OUT_DIR}/{OUT_NAME}.filtered-paths.txt" if surject_filtering() else [],
+    output:
+        tp_baseline=f"{OUT_DIR}/vcfeval-squash/{{sample}}/tp-baseline.vcf.gz",
+        fp=f"{OUT_DIR}/vcfeval-squash/{{sample}}/fp.vcf.gz",
+        fn=f"{OUT_DIR}/vcfeval-squash/{{sample}}/fn.vcf.gz",
+    threads: rule_cpus("vcfeval", 64)
+    resources:
+        mem_mb=rule_mem_gb("vcfeval", 128) * 1024,
+        runtime=rule_runtime("vcfeval"),
+    params:
+        out_dir=f"{OUT_DIR}/vcfeval-squash/{{sample}}",
+        eval_tool=config.get("eval_tool", "aardvark"),
+        docker_arg=lambda wc: f"--docker {config['vcfeval_docker']}" if config.get("vcfeval_docker") else "",
+        no_docker="" if config.get("vcfeval_docker") else "--no-docker",
+        augref_prefix=f"{AUGREF}#0#",
+        min_vcfeval_len=config.get("min_vcfeval_len", 0),
+    shell:
+        "export RTG_MEM=$(({resources.mem_mb} / 1024))g"
+        " && mkdir -p {params.out_dir}"
+        " && bcftools query -f '%CHROM\\n' {input.call_vcf} | sort -u"
+        "    | sed 's/^\\(.*\\)/\\1\\t{params.augref_prefix}\\1/'"
+        "    > {params.out_dir}/rename-chrs.txt"
+        " && bcftools annotate --rename-chrs {params.out_dir}/rename-chrs.txt"
+        "    {input.call_vcf}"
+        "    | awk '/^##contig=/{{id=$0; sub(/.*ID=/, \"\", id); sub(/[,>].*/, \"\", id);"
+        "            if(seen[id]++) next}} {{print}}'"
+        "    | bgzip > {params.out_dir}/call.renamed.vcf.gz"
+        " && tabix -fp vcf {params.out_dir}/call.renamed.vcf.gz"
+        # Stage inputs to node-local scratch for fast I/O
+        " && WORK_TMPDIR=$(mktemp -d \"${{TMPDIR:-{params.out_dir}}}/vcfeval.XXXXXX\")"
+        " && trap 'rm -rf \"$WORK_TMPDIR\"' EXIT"
+        " && echo \"Staging inputs to $WORK_TMPDIR\""
+        " && cp {params.out_dir}/call.renamed.vcf.gz"
+        "       {params.out_dir}/call.renamed.vcf.gz.tbi"
+        "       {input.dv_vcf} {input.dv_vcf}.tbi"
+        "       {input.ref} {input.ref}.fai"
+        "       \"$WORK_TMPDIR/\""
+        " && {{ [ -f {input.ref}.gzi ]"
+        "       && cp {input.ref}.gzi \"$WORK_TMPDIR/\" || true; }}"
+        # Squash genotypes: for vcfeval use --squash-ploidy; for aardvark preprocess VCFs
+        " && if [ '{params.eval_tool}' = 'vcfeval' ]; then"
+        "      python3 scripts/vcfcomp.py {params.eval_tool}"
+        "        --truth $WORK_TMPDIR/call.renamed.vcf.gz"
+        "        --calls $WORK_TMPDIR/$(basename {input.dv_vcf})"
+        "        --ref $WORK_TMPDIR/$(basename {input.ref})"
+        "        --out-dir $WORK_TMPDIR"
+        "        --threads {threads}"
+        "        --min-contig-len {params.min_vcfeval_len}"
+        "        --options '--decompose --ref-overlap --squash-ploidy'"
+        "        {params.docker_arg} {params.no_docker};"
+        "    else"
+        "      bcftools +setGT $WORK_TMPDIR/call.renamed.vcf.gz"
+        "        -- -t q -n c:'1/1' -i 'GT=\"het\"'"
+        "        | bgzip > $WORK_TMPDIR/call.squash.vcf.gz"
+        "      && tabix -fp vcf $WORK_TMPDIR/call.squash.vcf.gz"
+        "      && bcftools +setGT $WORK_TMPDIR/$(basename {input.dv_vcf})"
+        "        -- -t q -n c:'1/1' -i 'GT=\"het\"'"
+        "        | bgzip > $WORK_TMPDIR/dv.squash.vcf.gz"
+        "      && tabix -fp vcf $WORK_TMPDIR/dv.squash.vcf.gz"
+        "      && python3 scripts/vcfcomp.py {params.eval_tool}"
+        "        --truth $WORK_TMPDIR/call.squash.vcf.gz"
+        "        --calls $WORK_TMPDIR/dv.squash.vcf.gz"
+        "        --ref $WORK_TMPDIR/$(basename {input.ref})"
+        "        --out-dir $WORK_TMPDIR"
+        "        --threads {threads}"
+        "        --min-contig-len {params.min_vcfeval_len}"
+        "        {params.docker_arg} {params.no_docker};"
+        "    fi"
+        # Copy results back from local scratch
+        " && for f in tp-baseline.vcf.gz tp-baseline.vcf.gz.tbi"
+        "          fp.vcf.gz fp.vcf.gz.tbi fn.vcf.gz fn.vcf.gz.tbi"
+        "          summary.txt snp_roc.tsv.gz non_snp_roc.tsv.gz weighted_roc.tsv.gz"
+        "          phasing.txt vcfeval.log progress"
+        "          query.vcf.gz query.vcf.gz.tbi truth.vcf.gz truth.vcf.gz.tbi; do"
+        "    [ -f \"$WORK_TMPDIR/$f\" ] && cp \"$WORK_TMPDIR/$f\" {params.out_dir}/;"
+        "  done"
+        " && rm -f {params.out_dir}/call.renamed.vcf.gz"
+        "    {params.out_dir}/call.renamed.vcf.gz.tbi"
+        "    {params.out_dir}/rename-chrs.txt"
+
+rule vcfeval_compare_plot_squash:
+    """Aggregate per-sample squashed vcfeval results into comparison plot"""
+    input:
+        tp_baseline=expand(f"{OUT_DIR}/vcfeval-squash/{{sample}}/tp-baseline.vcf.gz", sample=SAMPLES),
+        fp=expand(f"{OUT_DIR}/vcfeval-squash/{{sample}}/fp.vcf.gz", sample=SAMPLES),
+        fn=expand(f"{OUT_DIR}/vcfeval-squash/{{sample}}/fn.vcf.gz", sample=SAMPLES),
+    output:
+        f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash-compare.png",
+        f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash-compare.tsv",
+    params:
+        vcfeval_dirs=lambda wc, input: ",".join(
+            [f"{OUT_DIR}/vcfeval-squash/{s}" for s in SAMPLES]),
+        sample_names=",".join(SAMPLES),
+    resources:
+        mem_mb=32000,
+        runtime=120,
+    shell:
+        "Rscript scripts/vcf-compare-vcfeval.R"
+        " {OUT_DIR}/merged.call-vs-dv.{wildcards.filt}.vcfeval-squash"
+        " --vcfeval-dirs {params.vcfeval_dirs}"
+        " --samples {params.sample_names}"
+        " --label-a Call --label-b DeepVariant"
+        " --title '{REF} Call vs DeepVariant (vcfeval, squash-ploidy)'"
         " --filter {wildcards.filt}"
         " --no-sv"
 
