@@ -894,21 +894,20 @@ if (per_sample) {
         p_ps <- ggplot() +
           geom_col(data = ps_summary,
                    aes(x = variant_type, y = mean_count, fill = ref_context),
-                   position = position_dodge(width = 0.7), width = 0.7, alpha = 0.6) +
+                   width = 0.7, alpha = 0.6) +
           geom_errorbar(data = ps_summary,
-                        aes(x = variant_type, ymin = min_count, ymax = max_count,
-                            group = ref_context),
-                        position = position_dodge(width = 0.7), width = 0.3) +
+                        aes(x = variant_type, ymin = min_count, ymax = max_count),
+                        width = 0.3) +
           geom_point(data = ps_counts,
                      aes(x = variant_type, y = count, color = ref_context),
-                     position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.7),
+                     position = position_jitter(width = 0.15),
                      size = 1.5, alpha = 0.8) +
           scale_fill_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
                             name = NULL) +
           scale_color_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
                              name = NULL) +
           scale_y_continuous(labels = scales::comma) +
-          facet_wrap(~ size_class, scales = "free") +
+          facet_grid(ref_context ~ size_class, scales = "free") +
           labs(title = title,
                subtitle = paste0("Per-Sample Variant Counts ", mode_label, filter_label,
                                  " (N=", n_samples, " samples, bars=mean)"),
@@ -924,12 +923,11 @@ if (per_sample) {
         # Boxplot for large sample counts
         p_ps <- ggplot(ps_counts,
                        aes(x = variant_type, y = count, fill = ref_context)) +
-          geom_boxplot(position = position_dodge(width = 0.7), width = 0.6,
-                       outlier.size = 1) +
+          geom_boxplot(width = 0.6, outlier.size = 1) +
           scale_fill_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
                             name = NULL) +
           scale_y_continuous(labels = scales::comma) +
-          facet_wrap(~ size_class, scales = "free") +
+          facet_grid(ref_context ~ size_class, scales = "free") +
           labs(title = title,
                subtitle = paste0("Per-Sample Variant Counts ", mode_label, filter_label,
                                  " (N=", n_samples, " samples)"),
