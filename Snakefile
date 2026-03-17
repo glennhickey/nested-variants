@@ -299,7 +299,45 @@ def vcfeval_compare_outputs():
         outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-compare.tsv")
         outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-squash.vcfeval-compare.png")
         outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-squash.vcfeval-compare.tsv")
+        outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.chromsplit.tsv")
+        outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.chromsplit.png")
+        outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.chromsplit-top.png")
+        outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-squash.chromsplit.tsv")
+        outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-squash.chromsplit.png")
+        outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-squash.chromsplit-top.png")
     return outputs
+
+def merge_chromsplit_tsv(input_files, sample_names, output_file):
+    """Pivot wide chromsplit TSVs to long format with sample column.
+
+    Each per-sample chromsplit.tsv has contigs as columns and metrics as rows.
+    This merges them into one TSV with columns:
+      sample, contig, SNP_FP, SNP_FN, INDEL_FP, INDEL_FN, [SV cols], total_errors
+    """
+    with open(output_file, "w") as out:
+        header_written = False
+        for sample, f in zip(sample_names, input_files):
+            with open(f) as fh:
+                rows = [line.strip().split("\t") for line in fh]
+            col_header = rows[0]  # ['type', '_total_', 'contig1', ...]
+            data = {r[0]: r[1:] for r in rows[1:]}
+            metrics = [r[0] for r in rows[1:] if r[0] != "ERRORS"]
+            contigs = col_header[1:]
+            if not header_written:
+                cols = (["sample", "contig"]
+                        + [m.replace("-", "_") for m in metrics]
+                        + ["total_errors"])
+                out.write("\t".join(cols) + "\n")
+                header_written = True
+            for i, contig in enumerate(contigs):
+                if contig == "_total_":
+                    continue
+                values = [int(data.get(m, ["0"] * len(contigs))[i])
+                          for m in metrics]
+                total = sum(values)
+                out.write("\t".join(
+                    [sample, contig] + [str(v) for v in values]
+                    + [str(total)]) + "\n")
 
 def pantree_outputs():
     """Return pantree comparison outputs when pantree_vcf is configured."""
@@ -1545,6 +1583,84 @@ rule vcfeval_compare_plot_squash:
         " --label-a Call --label-b DeepVariant"
         " --title '{REF} Call vs DeepVariant (vcfeval, squash-ploidy)'"
         " --no-sv"
+
+rule vcfeval_chromsplit:
+    """Per-contig FP/FN breakdown from vcfeval/aardvark output"""
+    input:
+        fp=f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}/fp.vcf.gz",
+        fn=f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}/fn.vcf.gz",
+    output:
+        f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}/chromsplit.tsv",
+    params:
+        out_dir=f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}",
+        subcommand="aardvark-breakdown" if config.get("eval_tool", "aardvark") == "aardvark" else "vcfeval-breakdown",
+    shell:
+        "python3 scripts/vcfcomp.py {params.subcommand}"
+        " --dir {params.out_dir} > {output}"
+
+rule vcfeval_chromsplit_squash:
+    """Per-contig FP/FN breakdown from squashed vcfeval/aardvark output"""
+    input:
+        fp=f"{OUT_DIR}/vcfeval-squash/{{filt}}/{{sample}}/fp.vcf.gz",
+        fn=f"{OUT_DIR}/vcfeval-squash/{{filt}}/{{sample}}/fn.vcf.gz",
+    output:
+        f"{OUT_DIR}/vcfeval-squash/{{filt}}/{{sample}}/chromsplit.tsv",
+    params:
+        out_dir=f"{OUT_DIR}/vcfeval-squash/{{filt}}/{{sample}}",
+        subcommand="aardvark-breakdown" if config.get("eval_tool", "aardvark") == "aardvark" else "vcfeval-breakdown",
+    shell:
+        "python3 scripts/vcfcomp.py {params.subcommand}"
+        " --dir {params.out_dir} > {output}"
+
+rule vcfeval_chromsplit_merge:
+    """Merge per-sample chromsplit breakdowns into a single long-format TSV"""
+    input:
+        expand(f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}/chromsplit.tsv",
+               sample=SAMPLES, allow_missing=True),
+    output:
+        f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.chromsplit.tsv",
+    run:
+        merge_chromsplit_tsv(input, SAMPLES, output[0])
+
+rule vcfeval_chromsplit_squash_merge:
+    """Merge per-sample squashed chromsplit breakdowns into a single long-format TSV"""
+    input:
+        expand(f"{OUT_DIR}/vcfeval-squash/{{filt}}/{{sample}}/chromsplit.tsv",
+               sample=SAMPLES, allow_missing=True),
+    output:
+        f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash.chromsplit.tsv",
+    run:
+        merge_chromsplit_tsv(input, SAMPLES, output[0])
+
+rule vcfeval_chromsplit_plot:
+    """Per-contig FP/FN scatter and top-discordant bar chart"""
+    input:
+        f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.chromsplit.tsv",
+    output:
+        f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.chromsplit.png",
+        f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.chromsplit-top.png",
+    params:
+        strip_prefix=f"{AUGREF}#0#",
+    shell:
+        "Rscript scripts/vcf-chromsplit-plot.R {input}"
+        " {OUT_DIR}/merged.call-vs-dv.{wildcards.filt}"
+        " --title '{REF} Call vs DeepVariant Per-Contig'"
+        " --strip-prefix '{params.strip_prefix}'"
+
+rule vcfeval_chromsplit_squash_plot:
+    """Per-contig FP/FN scatter and top-discordant bar chart (squash-ploidy)"""
+    input:
+        f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash.chromsplit.tsv",
+    output:
+        f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash.chromsplit.png",
+        f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash.chromsplit-top.png",
+    params:
+        strip_prefix=f"{AUGREF}#0#",
+    shell:
+        "Rscript scripts/vcf-chromsplit-plot.R {input}"
+        " {OUT_DIR}/merged.call-vs-dv.{wildcards.filt}.vcfeval-squash"
+        " --title '{REF} Call vs DeepVariant Per-Contig (squash-ploidy)'"
+        " --strip-prefix '{params.strip_prefix}'"
 
 ############################################################################
 # Pantree comparison rules (optional — only when pantree_vcf is set)
