@@ -1608,5 +1608,6 @@ rule pantree_density:
     shell:
         "Rscript scripts/pantree-density.R"
         " {input} {output}"
-        " 'Pantree Variant Density'"
+        " 'Pantree Off-Reference Variant Density'"
         " --ref {REF}"
+        " --bed '{config[refgaps_bed]}'"

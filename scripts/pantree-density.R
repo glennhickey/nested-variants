@@ -23,14 +23,22 @@ if (length(ref_idx) > 0) {
   args <- args[-c(ref_idx, ref_idx + 1)]
 }
 
+# Extract --bed flag if present (gap regions to black out)
+bed_file <- NULL
+bed_idx <- which(args == "--bed")
+if (length(bed_idx) > 0) {
+  bed_file <- args[bed_idx + 1]
+  args <- args[-c(bed_idx, bed_idx + 1)]
+}
+
 if (length(args) < 2) {
-  cat("Usage: Rscript pantree-density.R <records.tsv> <output.png> [title] [--ref REF]\n")
+  cat("Usage: Rscript pantree-density.R <records.tsv> <output.png> [title] [--ref REF] [--bed BED]\n")
   quit(status = 1)
 }
 
 input_tsv   <- args[1]
 output_file <- args[2]
-plot_title  <- if (length(args) >= 3) args[3] else "Pantree Variant Density"
+plot_title  <- if (length(args) >= 3) args[3] else "Pantree Off-Reference Variant Density"
 
 cat("Reading:", input_tsv, "\n")
 dt <- data.table::fread(input_tsv)
@@ -69,6 +77,9 @@ chrom_lengths$chromosome <- factor(chrom_lengths$chromosome, levels = chrom_leve
 # Density bins
 density_data <- compute_density_bins(dt, chrom_lengths, chrom_levels)
 
+# BED overlay (gap regions)
+bed_data <- read_bed_overlay(bed_file, chrom_levels)
+
 # Plot
-p <- plot_ideogram(density_data, chrom_lengths, bed_data = NULL, plot_title)
+p <- plot_ideogram(density_data, chrom_lengths, bed_data, plot_title)
 save_and_summarize(p, output_file, as.data.frame(dt))
