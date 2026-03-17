@@ -1,12 +1,11 @@
 #!/usr/bin/env Rscript
 
-# pantree-density.R — Chromosome density ideogram for pantree variant positions
+# pantree-density.R — Chromosome density ideogram for pantree off-reference variants
 #
 # Usage: Rscript scripts/pantree-density.R <records.tsv> <output.png> [title] [--ref REF]
 #
-# Reads a pantree records TSV (from pantree-extract.py) and plots an ideogram
-# of variant density. All variants (on- and off-reference) have valid CHROM/POS
-# coordinates on the base reference.
+# Reads a pantree records TSV (from pantree-extract.py), filters to off-reference
+# variants, and plots an ideogram of variant density on the base reference.
 
 # Source shared functions
 script_dir <- dirname(normalizePath(commandArgs(trailingOnly = FALSE)[
@@ -37,8 +36,12 @@ cat("Reading:", input_tsv, "\n")
 dt <- data.table::fread(input_tsv)
 cat("Total records:", nrow(dt), "\n")
 
+# Keep only off-reference variants (matches deconstruct density plots)
+dt <- dt[ref_context == "Off-reference"]
+cat("Off-reference records:", nrow(dt), "\n")
+
 if (nrow(dt) == 0) {
-  cat("No records — creating empty plot.\n")
+  cat("No off-reference records — creating empty plot.\n")
   file.create(output_file)
   quit(status = 0)
 }
