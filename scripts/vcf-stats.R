@@ -387,7 +387,8 @@ sv_types <- if (no_sv) character(0) else c("SV Insertion", "SV Deletion")
 type_levels <- c("SNP", "MNP", "Insertion", "Deletion", sv_types)
 type_totals <- plot_dt[, .(total = sum(count)), by = variant_type]
 total_variants <- sum(type_totals$total)
-minor_types <- type_totals[total / total_variants < 0.005, variant_type]
+minor_types <- type_totals[total / total_variants < 0.005
+                           & !variant_type %in% c("SV Insertion", "SV Deletion"), variant_type]
 if (length(minor_types) > 0) {
   cat("Dropping minor variant types from plots (<0.5%):", paste(minor_types, collapse = ", "), "\n")
   plot_dt <- plot_dt[!variant_type %in% minor_types]
@@ -410,8 +411,9 @@ if (has_tr) {
 
   p1 <- ggplot(plot_dt, aes(x = variant_type, y = count, fill = ref_context)) +
     geom_col(position = "dodge", width = 0.7) +
-    geom_col(data = tr_dt, position = "dodge", width = 0.7, alpha = 0.35,
-             fill = "white") +
+    geom_col(data = tr_dt, aes(group = ref_context),
+             position = "dodge", width = 0.7, alpha = 0.35,
+             fill = "white", show.legend = FALSE) +
     geom_text(aes(label = label),
               position = position_dodge(width = 0.7),
               vjust = -0.5, size = 3, na.rm = TRUE) +

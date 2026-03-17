@@ -122,8 +122,13 @@ def main():
             # TR
             is_repeat = "TRUE" if tr_motif not in (".", "") else "FALSE"
 
-            # Use actual allele bases for REF/ALT when available (for Ts/Tv in vcf-stats.R)
-            out_ref = ref
+            # For off-reference variants, the "reference" allele is in NR (not REF
+            # which is ".").  Write NR as REF so vcf-stats.R can compute Ts/Tv for
+            # off-ref SNPs and derive correct allele lengths.
+            if is_offref and nr not in (".", ""):
+                out_ref = nr
+            else:
+                out_ref = ref
             out_alt = alt
 
             out.write(f"{chrom}\t{pos}\t{out_ref}\t{out_alt}\t{ref_context}\t{variant_type}\t{size}\t{size_signed}\t{nonref_af:.6f}\t{is_repeat}\n")
