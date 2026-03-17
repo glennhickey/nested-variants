@@ -1137,7 +1137,7 @@ rule dv_stats:
     input:
         vcf=lambda wc: f"{OUT_DIR}/{wc.sample}.deepvariant.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/{wc.sample}.deepvariant.vcf.gz",
         annot_beds=augref_annot_beds(),
-        giab_beds=giab_strat_beds(),
+        giab_beds=augref_giab_strat_beds(),
     output:
         f"{OUT_DIR}/{{sample}}.dv.{{mode}}.{{filt}}.vcf-stats.tsv",
         f"{OUT_DIR}/{{sample}}.dv.{{mode}}.{{filt}}.variant-types.png",
@@ -1209,7 +1209,7 @@ rule merged_dv_stats:
     input:
         vcf=lambda wc: f"{OUT_DIR}/merged.deepvariant.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.deepvariant.vcf.gz",
         annot_beds=augref_annot_beds(),
-        giab_beds=giab_strat_beds(),
+        giab_beds=augref_giab_strat_beds(),
     output:
         f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.vcf-stats.tsv",
         f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.variant-types.png",
