@@ -279,8 +279,8 @@ def vcfeval_compare_outputs():
     for filt in ["all", "pass"]:
         outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-compare.png")
         outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-compare.tsv")
-        outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-squash-compare.png")
-        outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-squash-compare.tsv")
+        outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-squash.vcfeval-compare.png")
+        outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-squash.vcfeval-compare.tsv")
     return outputs
 
 def pantree_outputs():
@@ -1510,8 +1510,8 @@ rule vcfeval_compare_plot_squash:
         fp=expand(f"{OUT_DIR}/vcfeval-squash/{{filt}}/{{sample}}/fp.vcf.gz", sample=SAMPLES, allow_missing=True),
         fn=expand(f"{OUT_DIR}/vcfeval-squash/{{filt}}/{{sample}}/fn.vcf.gz", sample=SAMPLES, allow_missing=True),
     output:
-        f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash-compare.png",
-        f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash-compare.tsv",
+        f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash.vcfeval-compare.png",
+        f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash.vcfeval-compare.tsv",
     params:
         vcfeval_dirs=lambda wc, input: ",".join(
             [f"{OUT_DIR}/vcfeval-squash/{wc.filt}/{s}" for s in SAMPLES]),
