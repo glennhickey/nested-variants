@@ -71,11 +71,23 @@ def surject_filtering():
 
 # Annotation helpers
 def annotation_inputs():
-    """Return list of configured annotation BED files."""
-    return [config[k] for k in ["annot_genes", "annot_repeats", "annot_segdups", "annot_censat", "annot_pclai"] if config.get(k, "")]
+    """Return list of configured annotation BED files (excluding pclai)."""
+    return [config[k] for k in ["annot_genes", "annot_repeats", "annot_segdups", "annot_censat"] if config.get(k, "")]
 
 def annotation_names():
-    """Return clean display names for configured annotations."""
+    """Return clean display names for configured annotations (excluding pclai)."""
+    names = []
+    for k, name in [("annot_genes", "genes"), ("annot_repeats", "repeats"), ("annot_segdups", "segdups"), ("annot_censat", "censat")]:
+        if config.get(k, ""):
+            names.append(name)
+    return names
+
+def all_annotation_inputs():
+    """Return all configured annotation BED files including pclai."""
+    return [config[k] for k in ["annot_genes", "annot_repeats", "annot_segdups", "annot_censat", "annot_pclai"] if config.get(k, "")]
+
+def all_annotation_names():
+    """Return all display names for configured annotations including pclai."""
     names = []
     for k, name in [("annot_genes", "genes"), ("annot_repeats", "repeats"), ("annot_segdups", "segdups"), ("annot_censat", "censat"), ("annot_pclai", "pclai")]:
         if config.get(k, ""):
@@ -172,10 +184,16 @@ def annotation_stats_outputs(callers=None):
     return outputs
 
 def augref_annot_beds():
-    """Return augref-space annotation BED files for configured annotations."""
+    """Return augref-space annotation BED files (excluding pclai)."""
     if not annotation_inputs():
         return []
     return [f"{OUT_DIR}/{OUT_NAME}.augref-annot-{n}.bed" for n in annotation_names()]
+
+def all_augref_annot_beds():
+    """Return all augref-space annotation BED files including pclai."""
+    if not all_annotation_inputs():
+        return []
+    return [f"{OUT_DIR}/{OUT_NAME}.augref-annot-{n}.bed" for n in all_annotation_names()]
 
 def polymorphism_outputs():
     """Return segment polymorphism table output."""
@@ -659,14 +677,14 @@ rule annotation_intersect:
     """Augref segments + annotation BEDs → per-segment annotation TSV"""
     input:
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
-        annots=annotation_inputs(),
+        annots=all_annotation_inputs(),
     output:
         f"{OUT_DIR}/{OUT_NAME}.annot-per-segment.tsv",
     resources:
         mem_mb=512000,
         runtime=2880,
     params:
-        names=" ".join(annotation_names()),
+        names=" ".join(all_annotation_names()),
         group_arg="--group-by-column 6" if config.get("annot_repeats", "") or config.get("annot_pclai", "") else "",
     shell:
         "python scripts/intersect-annotations.py"
@@ -680,15 +698,15 @@ rule annotation_augref_beds:
     """Per-segment annotation TSV + annotation BEDs → augref-space BEDs"""
     input:
         seg_annot=f"{OUT_DIR}/{OUT_NAME}.annot-per-segment.tsv",
-        annots=annotation_inputs(),
+        annots=all_annotation_inputs(),
     output:
-        augref_annot_beds(),
+        all_augref_annot_beds(),
     resources:
         mem_mb=32000,
         runtime=120,
     params:
         beds=lambda wc, input: ",".join(input.annots),
-        names=",".join(annotation_names()),
+        names=",".join(all_annotation_names()),
     shell:
         "python scripts/make-augref-annotation-beds.py"
         " --per-segment-tsv {input.seg_annot}"
