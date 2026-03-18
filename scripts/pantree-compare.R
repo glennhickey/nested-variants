@@ -138,18 +138,20 @@ counts_pt   <- dt_pt[, .(count = .N), by = .(source, ref_context, variant_type)]
 counts_all  <- rbind(counts_ours, counts_pt)
 counts_all[, variant_type := factor(variant_type, levels = intersect(type_levels, unique(variant_type)))]
 
+fill_breaks <- c(paste0(ours_label, ".On-reference"), paste0(ours_label, ".Off-reference"),
+                 paste0(pantree_label, ".On-reference"), paste0(pantree_label, ".Off-reference"))
+fill_values <- setNames(
+  c("steelblue", "coral", "dodgerblue3", "tomato3"), fill_breaks)
+fill_labels <- setNames(
+  c(paste(ours_label, "On-ref"), paste(ours_label, "Off-ref"),
+    paste(pantree_label, "On-ref"), paste(pantree_label, "Off-ref")), fill_breaks)
+
 p1 <- ggplot(counts_all, aes(x = variant_type, y = count, fill = interaction(source, ref_context))) +
   geom_col(position = position_dodge(width = 0.8), width = 0.7) +
   scale_fill_manual(
-    values = setNames(
-      c("steelblue", "coral", "dodgerblue3", "tomato3"),
-      c(paste0(ours_label, ".On-reference"), paste0(ours_label, ".Off-reference"),
-        paste0(pantree_label, ".On-reference"), paste0(pantree_label, ".Off-reference"))
-    ),
-    labels = c(
-      paste(ours_label, "On-ref"), paste(ours_label, "Off-ref"),
-      paste(pantree_label, "On-ref"), paste(pantree_label, "Off-ref")
-    ),
+    breaks = fill_breaks,
+    values = fill_values,
+    labels = fill_labels,
     name = NULL
   ) +
   scale_y_continuous(labels = scales::comma) +
@@ -174,15 +176,9 @@ counts_all[, pct := 100 * count / total]
 p2 <- ggplot(counts_all, aes(x = variant_type, y = pct, fill = interaction(source, ref_context))) +
   geom_col(position = position_dodge(width = 0.8), width = 0.7) +
   scale_fill_manual(
-    values = setNames(
-      c("steelblue", "coral", "dodgerblue3", "tomato3"),
-      c(paste0(ours_label, ".On-reference"), paste0(ours_label, ".Off-reference"),
-        paste0(pantree_label, ".On-reference"), paste0(pantree_label, ".Off-reference"))
-    ),
-    labels = c(
-      paste(ours_label, "On-ref"), paste(ours_label, "Off-ref"),
-      paste(pantree_label, "On-ref"), paste(pantree_label, "Off-ref")
-    ),
+    breaks = fill_breaks,
+    values = fill_values,
+    labels = fill_labels,
     name = NULL
   ) +
   scale_y_continuous(labels = function(x) paste0(x, "%")) +

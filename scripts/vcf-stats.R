@@ -53,6 +53,7 @@ tsv_input  <- FALSE
 dump_records <- FALSE
 records_only <- FALSE
 segs_file    <- NULL
+segs_strip_prefix <- NULL
 
 i <- 3
 while (i <= length(args)) {
@@ -100,6 +101,9 @@ while (i <= length(args)) {
     i <- i + 1
   } else if (args[i] == "--segs" && i + 1 <= length(args)) {
     segs_file <- args[i + 1]
+    i <- i + 2
+  } else if (args[i] == "--segs-strip-prefix" && i + 1 <= length(args)) {
+    segs_strip_prefix <- args[i + 1]
     i <- i + 2
   } else {
     i <- i + 1
@@ -656,8 +660,18 @@ if (!is.null(giab_strat_beds_arg)) {
                      col.names = c("augref_path", "ref_path", "ref_start", "ref_end"))
     # Keep one representative region per augref contig
     segs_dt <- unique(segs_dt, by = "augref_path")
-    # Build reference BED coords: augref_<ref_path> to match augref GIAB BEDs
-    segs_dt[, ref_chrom := paste0("augref_", ref_path)]
+    if (!is.null(segs_strip_prefix)) {
+      # Strip prefix from augref_path to match VCF CHROM (for vg call VCFs
+      # which use plain locus names like 'chr1_5_alt')
+      segs_dt[, augref_path := sub(paste0("^", segs_strip_prefix), "", augref_path)]
+      # Strip corresponding prefix from ref_path to match call-space GIAB BEDs
+      ref_prefix <- sub("^augref_", "", segs_strip_prefix)
+      segs_dt[, ref_chrom := sub(paste0("^", ref_prefix), "", ref_path)]
+      cat("Stripped segs prefix:", segs_strip_prefix, "->", ref_prefix, "\n")
+    } else {
+      # Default: augref_<ref_path> to match augref GIAB BEDs
+      segs_dt[, ref_chrom := paste0("augref_", ref_path)]
+    }
   }
 
   # Build variant BED for intersection
@@ -962,7 +976,13 @@ if (per_sample) {
             segs_dt <- fread(segs_file, select = c(4, 5, 6, 7),
                              col.names = c("augref_path", "ref_path", "ref_start", "ref_end"))
             segs_dt <- unique(segs_dt, by = "augref_path")
-            segs_dt[, ref_chrom := paste0("augref_", ref_path)]
+            if (!is.null(segs_strip_prefix)) {
+              segs_dt[, augref_path := sub(paste0("^", segs_strip_prefix), "", augref_path)]
+              ref_prefix <- sub("^augref_", "", segs_strip_prefix)
+              segs_dt[, ref_chrom := sub(paste0("^", ref_prefix), "", ref_path)]
+            } else {
+              segs_dt[, ref_chrom := paste0("augref_", ref_path)]
+            }
           }
           ps_offref_idx <- which(gt_dt$ref_context == "Off-reference")
           if (length(ps_offref_idx) > 0) {

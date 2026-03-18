@@ -1237,6 +1237,7 @@ rule call_stats:
     """Per-sample call VCF → variant stats + plots (one mode/filter combo)"""
     input:
         vcf=lambda wc: f"{OUT_DIR}/{wc.sample}.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/{wc.sample}.vcf.gz",
+        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
         annot_beds=call_annot_beds(),
         giab_beds=call_giab_strat_beds(),
     output:
@@ -1264,6 +1265,7 @@ rule call_stats:
     shell:
         "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{wildcards.sample}.call.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Call ({wildcards.sample})'"
+        " --segs {input.segs} --segs-strip-prefix '{AUGREF}#0#'"
         " {params.annot_arg} {params.giab_arg}"
 
 rule dv_stats:
@@ -1303,6 +1305,7 @@ rule merged_call_stats:
     """Merged call VCF → variant stats + plots (one mode/filter combo, includes AF spectrum)"""
     input:
         vcf=lambda wc: f"{OUT_DIR}/merged.call.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.call.vcf.gz",
+        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
         annot_beds=call_annot_beds(),
         giab_beds=call_giab_strat_beds(),
     output:
@@ -1336,6 +1339,7 @@ rule merged_call_stats:
     shell:
         "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.call.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged Call'"
+        " --segs {input.segs} --segs-strip-prefix '{AUGREF}#0#'"
         " {params.annot_arg} {params.giab_arg} --per-sample"
 
 rule merged_dv_stats:
