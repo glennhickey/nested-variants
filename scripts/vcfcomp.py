@@ -340,7 +340,6 @@ def truvari_chromsplit(truvari_outdir):
 
     fn_vcf = os.path.join(truvari_outdir, 'fn.vcf.gz')
     fn_vcf_file = pysam.VariantFile(fn_vcf, 'r')
-    contigs = set(['_total_'])
     for var in fn_vcf_file.fetch():
         contigs.add(var.contig)
         fn[var.contig] += 1
@@ -462,7 +461,6 @@ def vcfeval_chromsplit(truvari_outdir):
 
     fn_vcf = os.path.join(truvari_outdir, 'fn.vcf.gz')
     fn_vcf_file = pysam.VariantFile(fn_vcf, 'r')
-    contigs = set(['_total_'])
     for var in fn_vcf_file.fetch():
         contigs.add(var.contig)
         if is_snp(var):
@@ -622,7 +620,6 @@ def aardvark_chromsplit(aardvark_outdir):
 
     fn_vcf = os.path.join(aardvark_outdir, 'truth.vcf.gz')
     fn_vcf_file = pysam.VariantFile(fn_vcf, 'r')
-    contigs = set(['_total_'])
     for var in fn_vcf_file.fetch():
         assert len(var.samples.values()) == 1
         sample = var.samples.values()[0]

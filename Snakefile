@@ -324,9 +324,17 @@ def vcfeval_compare_outputs():
         outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.chromsplit.tsv")
         outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.chromsplit.png")
         outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.chromsplit-top.png")
+        if annotation_inputs():
+            outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.chromsplit-annot.png")
+        if giab_strat_configured():
+            outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.chromsplit-giab.png")
         outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-squash.chromsplit.tsv")
         outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-squash.chromsplit.png")
         outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-squash.chromsplit-top.png")
+        if annotation_inputs():
+            outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-squash.chromsplit-annot.png")
+        if giab_strat_configured():
+            outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-squash.chromsplit-giab.png")
     return outputs
 
 def merge_chromsplit_tsv(input_files, sample_names, output_file):
@@ -1272,6 +1280,7 @@ rule dv_stats:
     """Per-sample DeepVariant VCF → variant stats + plots (one mode/filter combo)"""
     input:
         vcf=lambda wc: f"{OUT_DIR}/{wc.sample}.deepvariant.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/{wc.sample}.deepvariant.vcf.gz",
+        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
         annot_beds=augref_annot_beds(),
         giab_beds=augref_giab_strat_beds(),
     output:
@@ -1299,6 +1308,7 @@ rule dv_stats:
     shell:
         "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{wildcards.sample}.dv.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} DeepVariant ({wildcards.sample})'"
+        " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --no-sv"
 
 rule merged_call_stats:
@@ -1346,6 +1356,7 @@ rule merged_dv_stats:
     """Merged DeepVariant VCF → variant stats + plots (one mode/filter combo, includes AF spectrum)"""
     input:
         vcf=lambda wc: f"{OUT_DIR}/merged.deepvariant.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.deepvariant.vcf.gz",
+        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
         annot_beds=augref_annot_beds(),
         giab_beds=augref_giab_strat_beds(),
     output:
@@ -1379,6 +1390,7 @@ rule merged_dv_stats:
     shell:
         "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.dv.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged DeepVariant'"
+        " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample --no-sv"
 
 ############################################################################
@@ -1729,32 +1741,58 @@ rule vcfeval_chromsplit_squash_merge:
 rule vcfeval_chromsplit_plot:
     """Per-contig FP/FN scatter and top-discordant bar chart"""
     input:
-        f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.chromsplit.tsv",
+        tsv=f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.chromsplit.tsv",
+        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
+        annot=f"{OUT_DIR}/{OUT_NAME}.annot-per-segment.tsv" if annotation_inputs() else [],
+        giab_beds=giab_strat_beds(),
     output:
         f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.chromsplit.png",
         f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.chromsplit-top.png",
+        *([ f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.chromsplit-annot.png"]
+          if annotation_inputs() else []),
+        *([ f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.chromsplit-giab.png"]
+          if giab_strat_configured() else []),
     params:
         strip_prefix=f"{AUGREF}#0#",
+        annot_arg=lambda wc, input: f"--annot {input.annot}" if annotation_inputs() else "",
+        giab_arg=lambda wc, input: (
+            f"--giab-beds {','.join(input.giab_beds)} --giab-names {','.join(GIAB_STRAT_DISPLAY)}"
+            if giab_strat_configured() else ""),
     shell:
-        "Rscript scripts/vcf-chromsplit-plot.R {input}"
+        "Rscript scripts/vcf-chromsplit-plot.R {input.tsv}"
         " {OUT_DIR}/merged.call-vs-dv.{wildcards.filt}"
         " --title '{REF} Call vs DeepVariant Per-Contig'"
         " --strip-prefix '{params.strip_prefix}'"
+        " --segs {input.segs}"
+        " {params.annot_arg} {params.giab_arg}"
 
 rule vcfeval_chromsplit_squash_plot:
     """Per-contig FP/FN scatter and top-discordant bar chart (squash-ploidy)"""
     input:
-        f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash.chromsplit.tsv",
+        tsv=f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash.chromsplit.tsv",
+        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
+        annot=f"{OUT_DIR}/{OUT_NAME}.annot-per-segment.tsv" if annotation_inputs() else [],
+        giab_beds=giab_strat_beds(),
     output:
         f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash.chromsplit.png",
         f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash.chromsplit-top.png",
+        *([ f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash.chromsplit-annot.png"]
+          if annotation_inputs() else []),
+        *([ f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash.chromsplit-giab.png"]
+          if giab_strat_configured() else []),
     params:
         strip_prefix=f"{AUGREF}#0#",
+        annot_arg=lambda wc, input: f"--annot {input.annot}" if annotation_inputs() else "",
+        giab_arg=lambda wc, input: (
+            f"--giab-beds {','.join(input.giab_beds)} --giab-names {','.join(GIAB_STRAT_DISPLAY)}"
+            if giab_strat_configured() else ""),
     shell:
-        "Rscript scripts/vcf-chromsplit-plot.R {input}"
+        "Rscript scripts/vcf-chromsplit-plot.R {input.tsv}"
         " {OUT_DIR}/merged.call-vs-dv.{wildcards.filt}.vcfeval-squash"
         " --title '{REF} Call vs DeepVariant Per-Contig (squash-ploidy)'"
         " --strip-prefix '{params.strip_prefix}'"
+        " --segs {input.segs}"
+        " {params.annot_arg} {params.giab_arg}"
 
 ############################################################################
 # Pantree comparison rules (optional — only when pantree_vcf is set)

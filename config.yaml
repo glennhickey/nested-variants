@@ -19,7 +19,7 @@ min_augref_len: 50
 min_surject_len: 1000
 
 # Minimum contig length for vcfeval/aardvark comparison (0 = use all eval contigs)
-min_vcfeval_len: 100000
+min_vcfeval_len: 0
 
 # VCF comparison tool: "vcfeval" (rtg) or "aardvark"
 eval_tool: aardvark
