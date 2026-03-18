@@ -9,6 +9,7 @@ Usage:
         --panels "Segment Lengths:path/a.png" "Density:path/b.png" ...
 
 Missing panel files are silently skipped (grid contracts).
+Requires: Pillow (pip install Pillow)
 """
 
 import argparse

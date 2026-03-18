@@ -195,6 +195,7 @@ def all_augref_annot_beds():
         return []
     return [f"{OUT_DIR}/{OUT_NAME}.augref-annot-{n}.bed" for n in all_annotation_names()]
 
+
 def polymorphism_outputs():
     """Return segment polymorphism table output."""
     return [f"{OUT_DIR}/{OUT_NAME}.segment-polymorphism.tsv"]
@@ -218,6 +219,27 @@ def augref_giab_strat_beds():
     if not giab_strat_configured():
         return []
     return [f"{OUT_DIR}/{OUT_NAME}.augref-giab-{n}.bed" for n in GIAB_STRAT_NAMES]
+
+def call_giab_strat_beds():
+    """Return 3 call-space GIAB partition BED paths (CHM13#0# prefix stripped).
+
+    vg call uses the locus name (e.g. 'chr1') as CHROM, stripping the graph
+    path prefix (REF#0#).  Source GIAB BEDs use graph path names
+    (e.g. 'CHM13#0#chr1'), so we need a stripped copy.
+    """
+    if not giab_strat_configured():
+        return []
+    return [f"{OUT_DIR}/{OUT_NAME}.call-giab-{n}.bed" for n in GIAB_STRAT_NAMES]
+
+def call_annot_beds():
+    """Return call-space annotation BED files (augref_REF#0# prefix stripped).
+
+    vg call uses plain chr names while augref annotation BEDs use augref path
+    names (e.g. 'augref_CHM13#0#chr1').
+    """
+    if not annotation_inputs():
+        return []
+    return [f"{OUT_DIR}/{OUT_NAME}.call-annot-{n}.bed" for n in annotation_names()]
 
 def giab_strat_stats_outputs(callers=None):
     """Return GIAB strat plot/TSV outputs for each stats rule when configured."""
@@ -362,6 +384,8 @@ def summary_figure_outputs():
     if SAMPLES:
         outputs.append(f"{OUT_DIR}/3.call-summary.png")
         outputs.append(f"{OUT_DIR}/4.deepvariant-summary.png")
+    if config.get("pantree_vcf", ""):
+        outputs.append(f"{OUT_DIR}/5.pantree-summary.png")
     return outputs
 
 ############################################################################
@@ -786,6 +810,46 @@ rule giab_strat_augref:
         done
         """
 
+rule giab_strat_call_space:
+    """GIAB partition BEDs → call-space BEDs (strip REF#0# prefix for vg call VCFs)"""
+    input:
+        beds=giab_strat_beds(),
+    output:
+        call_giab_strat_beds(),
+    params:
+        in_str=lambda wc, input: " ".join(input.beds),
+        out_str=lambda wc, output: " ".join(output),
+        prefix=f"{REF}#0#",
+    shell:
+        r"""
+        IN=({params.in_str})
+        OUT=({params.out_str})
+        for i in "${{!IN[@]}}"; do
+            awk -v prefix="{params.prefix}" 'BEGIN{{OFS="\t"}} {{sub("^"prefix, "", $1); print}}' "${{IN[$i]}}" \
+              | LC_ALL=C sort -k1,1 -k2,2n > "${{OUT[$i]}}"
+        done
+        """
+
+rule annot_beds_call_space:
+    """Augref annotation BEDs → call-space BEDs (strip augref_REF#0# prefix)"""
+    input:
+        beds=augref_annot_beds(),
+    output:
+        call_annot_beds(),
+    params:
+        in_str=lambda wc, input: " ".join(input.beds),
+        out_str=lambda wc, output: " ".join(output),
+        prefix=f"augref_{REF}#0#",
+    shell:
+        r"""
+        IN=({params.in_str})
+        OUT=({params.out_str})
+        for i in "${{!IN[@]}}"; do
+            awk -v prefix="{params.prefix}" 'BEGIN{{OFS="\t"}} {{sub("^"prefix, "", $1); print}}' "${{IN[$i]}}" \
+              | LC_ALL=C sort -k1,1 -k2,2n > "${{OUT[$i]}}"
+        done
+        """
+
 rule annotation_plots:
     """Per-segment annotation TSV → overlap plots + stats"""
     input:
@@ -1173,8 +1237,8 @@ rule call_stats:
     """Per-sample call VCF → variant stats + plots (one mode/filter combo)"""
     input:
         vcf=lambda wc: f"{OUT_DIR}/{wc.sample}.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/{wc.sample}.vcf.gz",
-        annot_beds=augref_annot_beds(),
-        giab_beds=giab_strat_beds(),
+        annot_beds=call_annot_beds(),
+        giab_beds=call_giab_strat_beds(),
     output:
         f"{OUT_DIR}/{{sample}}.call.{{mode}}.{{filt}}.vcf-stats.tsv",
         f"{OUT_DIR}/{{sample}}.call.{{mode}}.{{filt}}.variant-types.png",
@@ -1239,8 +1303,8 @@ rule merged_call_stats:
     """Merged call VCF → variant stats + plots (one mode/filter combo, includes AF spectrum)"""
     input:
         vcf=lambda wc: f"{OUT_DIR}/merged.call.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.call.vcf.gz",
-        annot_beds=augref_annot_beds(),
-        giab_beds=giab_strat_beds(),
+        annot_beds=call_annot_beds(),
+        giab_beds=call_giab_strat_beds(),
     output:
         f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.vcf-stats.tsv",
         f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.variant-types.png",
@@ -1348,9 +1412,10 @@ rule vcfeval_per_sample:
     When filt=pass, both VCFs are pre-filtered to PASS before comparison
     (aardvark/vcfeval strip FILTER, so post-hoc filtering doesn't work).
 
-    vg call strips the augref prefix from contig names but DeepVariant keeps it.
-    The reference FASTA also uses the full augref prefix.  Restore the prefix on
-    the call VCF so all three inputs share the same contig namespace.
+    vg call emits plain locus names (e.g. 'chr1') as CHROM while DeepVariant
+    uses the full augref path (e.g. 'augref_CHM13#0#chr1').  The rename step
+    restores the prefix on the call VCF so all inputs share the same namespace.
+    It is idempotent: only renames CHROMs that lack the prefix.
     """
     input:
         call_vcf=f"{OUT_DIR}/{{sample}}.vcf.gz",
@@ -1373,17 +1438,22 @@ rule vcfeval_per_sample:
         augref_prefix=f"{AUGREF}#0#",
         min_vcfeval_len=config.get("min_vcfeval_len", 0),
     shell:
-        # Build contig rename map: stripped_name → augref_prefix#0#name
+        # Build contig rename map: only rename CHROMs missing the augref prefix
+        # (idempotent: works with both old vg [plain names] and fixed vg [augref names])
         "export RTG_MEM=$(({resources.mem_mb} / 1024))g"
         " && mkdir -p {params.out_dir}"
         " && bcftools query -f '%CHROM\\n' {input.call_vcf} | sort -u"
-        "    | sed 's/^\\(.*\\)/\\1\\t{params.augref_prefix}\\1/'"
+        "    | sed -n '/^{params.augref_prefix}/!s/^\\(.*\\)/\\1\\t{params.augref_prefix}\\1/p'"
         "    > {params.out_dir}/rename-chrs.txt"
-        # Rename chroms; optionally pre-filter to PASS
-        " && bcftools annotate --rename-chrs {params.out_dir}/rename-chrs.txt"
-        "    {input.call_vcf}"
-        "    | awk '/^##contig=/{{id=$0; sub(/.*ID=/, \"\", id); sub(/[,>].*/, \"\", id);"
-        "            if(seen[id]++) next}} {{print}}'"
+        # Rename chroms (no-op if rename file is empty); optionally pre-filter to PASS
+        " && if [ -s {params.out_dir}/rename-chrs.txt ]; then"
+        "      bcftools annotate --rename-chrs {params.out_dir}/rename-chrs.txt"
+        "        {input.call_vcf}"
+        "        | awk '/^##contig=/{{id=$0; sub(/.*ID=/, \"\", id); sub(/[,>].*/, \"\", id);"
+        "                if(seen[id]++) next}} {{print}}';"
+        "    else"
+        "      bcftools view {input.call_vcf};"
+        "    fi"
         "    | if [ '{wildcards.filt}' = 'pass' ]; then"
         "        bcftools view -f PASS 2>/dev/null;"
         "      else cat; fi"
@@ -1490,16 +1560,22 @@ rule vcfeval_per_sample_squash:
         augref_prefix=f"{AUGREF}#0#",
         min_vcfeval_len=config.get("min_vcfeval_len", 0),
     shell:
+        # Build contig rename map: only rename CHROMs missing the augref prefix
+        # (idempotent: works with both old vg [plain names] and fixed vg [augref names])
         "export RTG_MEM=$(({resources.mem_mb} / 1024))g"
         " && mkdir -p {params.out_dir}"
         " && bcftools query -f '%CHROM\\n' {input.call_vcf} | sort -u"
-        "    | sed 's/^\\(.*\\)/\\1\\t{params.augref_prefix}\\1/'"
+        "    | sed -n '/^{params.augref_prefix}/!s/^\\(.*\\)/\\1\\t{params.augref_prefix}\\1/p'"
         "    > {params.out_dir}/rename-chrs.txt"
-        # Rename chroms; optionally pre-filter to PASS
-        " && bcftools annotate --rename-chrs {params.out_dir}/rename-chrs.txt"
-        "    {input.call_vcf}"
-        "    | awk '/^##contig=/{{id=$0; sub(/.*ID=/, \"\", id); sub(/[,>].*/, \"\", id);"
-        "            if(seen[id]++) next}} {{print}}'"
+        # Rename chroms (no-op if rename file is empty); optionally pre-filter to PASS
+        " && if [ -s {params.out_dir}/rename-chrs.txt ]; then"
+        "      bcftools annotate --rename-chrs {params.out_dir}/rename-chrs.txt"
+        "        {input.call_vcf}"
+        "        | awk '/^##contig=/{{id=$0; sub(/.*ID=/, \"\", id); sub(/[,>].*/, \"\", id);"
+        "                if(seen[id]++) next}} {{print}}';"
+        "    else"
+        "      bcftools view {input.call_vcf};"
+        "    fi"
         "    | if [ '{wildcards.filt}' = 'pass' ]; then"
         "        bcftools view -f PASS 2>/dev/null;"
         "      else cat; fi"
@@ -1771,7 +1847,6 @@ rule summary_augref:
         ideogram=f"{OUT_DIR}/{OUT_NAME}.offref-segs.png",
         annot_summary=[f"{OUT_DIR}/{OUT_NAME}.annot-summary.png"] if annotation_inputs() else [],
         annot_repeats=[f"{OUT_DIR}/{OUT_NAME}.annot-repeats.png"] if config.get("annot_repeats", "") else [],
-        giab_strat=[f"{OUT_DIR}/{OUT_NAME}.sites.giab-strat.png"] if giab_strat_configured() else [],
     output:
         f"{OUT_DIR}/1.augref-summary.png",
     params:
@@ -1780,7 +1855,6 @@ rule summary_augref:
              f"'Density Ideogram:{input.ideogram}'"]
             + ([f"'Annotation Overlap:{input.annot_summary[0]}'"] if input.annot_summary else [])
             + ([f"'Repeat Classes:{input.annot_repeats[0]}'"] if input.annot_repeats else [])
-            + ([f"'GIAB Stratification:{input.giab_strat[0]}'"] if input.giab_strat else [])
         ),
     shell:
         "python3 scripts/compose-summary.py"
@@ -1823,6 +1897,7 @@ rule summary_call:
         per_sample=f"{OUT_DIR}/merged.call.sites.pass.per-sample-types.png",
         giab_strat=[f"{OUT_DIR}/merged.call.sites.pass.giab-strat.png"] if giab_strat_configured() else [],
         giab_per_sample=[f"{OUT_DIR}/merged.call.sites.pass.per-sample-giab-strat.png"] if giab_strat_configured() else [],
+        annot_snp=[f"{OUT_DIR}/merged.call.annot-snp-tstv.pass.png"] if annotation_inputs() else [],
     output:
         f"{OUT_DIR}/3.call-summary.png",
     params:
@@ -1831,6 +1906,7 @@ rule summary_call:
              f"'Per-Sample Types (PASS):{input.per_sample}'"]
             + ([f"'GIAB Stratification:{input.giab_strat[0]}'"] if input.giab_strat else [])
             + ([f"'Per-Sample GIAB:{input.giab_per_sample[0]}'"] if input.giab_per_sample else [])
+            + ([f"'SNP Ts/Tv by Annotation:{input.annot_snp[0]}'"] if input.annot_snp else [])
         ),
     shell:
         "python3 scripts/compose-summary.py"
@@ -1845,18 +1921,18 @@ rule summary_deepvariant:
         dv_types=f"{OUT_DIR}/merged.dv.sites.pass.variant-types.png",
         dv_per_sample=f"{OUT_DIR}/merged.dv.sites.pass.per-sample-types.png",
         vcfeval=f"{OUT_DIR}/merged.call-vs-dv.pass.vcfeval-compare.png",
-        vcfeval_squash=f"{OUT_DIR}/merged.call-vs-dv.pass.vcfeval-squash.vcfeval-compare.png",
         chromsplit=f"{OUT_DIR}/merged.call-vs-dv.pass.chromsplit.png",
         dv_giab=[f"{OUT_DIR}/merged.dv.sites.pass.giab-strat.png"] if giab_strat_configured() else [],
+        annot_snp=[f"{OUT_DIR}/merged.deepvariant.annot-snp-tstv.pass.png"] if annotation_inputs() else [],
     output:
         f"{OUT_DIR}/4.deepvariant-summary.png",
     params:
         panels=lambda wc, input: " ".join(
             [f"'DV Variant Types (PASS):{input.dv_types}'",
              f"'DV Per-Sample Types (PASS):{input.dv_per_sample}'",
-             f"'Call vs DV (vcfeval):{input.vcfeval}'",
-             f"'Call vs DV (squash-ploidy):{input.vcfeval_squash}'"]
+             f"'Call vs DV (vcfeval):{input.vcfeval}'"]
             + ([f"'DV GIAB Stratification:{input.dv_giab[0]}'"] if input.dv_giab else [])
+            + ([f"'DV SNP Ts/Tv by Annotation:{input.annot_snp[0]}'"] if input.annot_snp else [])
             + ([f"'Per-Contig Concordance:{input.chromsplit}'"])
         ),
     shell:
@@ -1865,3 +1941,27 @@ rule summary_deepvariant:
         " --title 'DeepVariant + Comparison (PASS)'"
         " --cols 2"
         " --panels {params.panels}"
+
+rule summary_pantree:
+    """Compose pantree comparison summary figure"""
+    input:
+        variant_types=f"{OUT_DIR}/pantree.variant-types.png",
+        pantree_types=f"{OUT_DIR}/{OUT_NAME}.pantree-types.png",
+        pantree_pct=f"{OUT_DIR}/{OUT_NAME}.pantree-types-pct.png",
+        size_dist=f"{OUT_DIR}/{OUT_NAME}.pantree-size-dist.png",
+        af=f"{OUT_DIR}/{OUT_NAME}.pantree-af.png",
+        density=f"{OUT_DIR}/pantree.density.png",
+    output:
+        f"{OUT_DIR}/5.pantree-summary.png",
+    shell:
+        "python3 scripts/compose-summary.py"
+        " --output {output}"
+        " --title 'Pantree Comparison'"
+        " --cols 2"
+        " --panels"
+        " 'Pantree Variant Types:{input.variant_types}'"
+        " 'Type Comparison:{input.pantree_types}'"
+        " 'Type Comparison (pct):{input.pantree_pct}'"
+        " 'Size Distribution:{input.size_dist}'"
+        " 'AF Spectrum:{input.af}'"
+        " 'Density Ideogram:{input.density}'"
