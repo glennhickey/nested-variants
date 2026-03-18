@@ -353,6 +353,17 @@ def pantree_outputs():
         f"{OUT_DIR}/{OUT_NAME}.pantree-compare.tsv",
     ]
 
+def summary_figure_outputs():
+    """Return numbered summary figure outputs based on pipeline scope."""
+    outputs = [
+        f"{OUT_DIR}/1.augref-summary.png",
+        f"{OUT_DIR}/2.deconstruct-summary.png",
+    ]
+    if SAMPLES:
+        outputs.append(f"{OUT_DIR}/3.call-summary.png")
+        outputs.append(f"{OUT_DIR}/4.deepvariant-summary.png")
+    return outputs
+
 ############################################################################
 # Target rules
 ############################################################################
@@ -383,6 +394,7 @@ rule all:
         *vcfeval_compare_outputs(),
         *polymorphism_outputs(),
         *pantree_outputs(),
+        *summary_figure_outputs(),
         # per-sample genotyping outputs
         expand("{out}/{s}.vcf.gz", out=OUT_DIR, s=SAMPLES),
         expand("{out}/{s}.call-offref.png", out=OUT_DIR, s=SAMPLES),
@@ -474,6 +486,8 @@ rule graph_only:
         *per_sample_stats_outputs(["deconstruct"]),
         *polymorphism_outputs(),
         *pantree_outputs(),
+        f"{OUT_DIR}/1.augref-summary.png",
+        f"{OUT_DIR}/2.deconstruct-summary.png",
 
 rule genotype_all:
     """Genotype all samples (vg call) + merge"""
@@ -1745,3 +1759,109 @@ rule pantree_density:
         " 'Pantree Off-Reference Variant Density'"
         " --ref {REF}"
         " --bed '{config[refgaps_bed]}'"
+
+############################################################################
+# Summary figures — numbered multi-panel composites for quick overview
+############################################################################
+
+rule summary_augref:
+    """Compose augref segment summary figure"""
+    input:
+        length_hist=f"{OUT_DIR}/{OUT_NAME}.augref-length-hist.png",
+        ideogram=f"{OUT_DIR}/{OUT_NAME}.offref-segs.png",
+        annot_summary=[f"{OUT_DIR}/{OUT_NAME}.annot-summary.png"] if annotation_inputs() else [],
+        annot_repeats=[f"{OUT_DIR}/{OUT_NAME}.annot-repeats.png"] if config.get("annot_repeats", "") else [],
+        giab_strat=[f"{OUT_DIR}/{OUT_NAME}.sites.giab-strat.png"] if giab_strat_configured() else [],
+    output:
+        f"{OUT_DIR}/1.augref-summary.png",
+    params:
+        panels=lambda wc, input: " ".join(
+            [f"'Segment Lengths:{input.length_hist}'",
+             f"'Density Ideogram:{input.ideogram}'"]
+            + ([f"'Annotation Overlap:{input.annot_summary[0]}'"] if input.annot_summary else [])
+            + ([f"'Repeat Classes:{input.annot_repeats[0]}'"] if input.annot_repeats else [])
+            + ([f"'GIAB Stratification:{input.giab_strat[0]}'"] if input.giab_strat else [])
+        ),
+    shell:
+        "python3 scripts/compose-summary.py"
+        " --output {output}"
+        " --title 'Augref Segment Summary'"
+        " --cols 2"
+        " --panels {params.panels}"
+
+rule summary_deconstruct:
+    """Compose deconstruct variant catalog summary figure"""
+    input:
+        variant_types=f"{OUT_DIR}/{OUT_NAME}.sites.variant-types.png",
+        size_dist=f"{OUT_DIR}/{OUT_NAME}.sites.size-dist-log.png",
+        af_spectrum=f"{OUT_DIR}/{OUT_NAME}.sites.af-spectrum.png",
+        per_sample=f"{OUT_DIR}/{OUT_NAME}.sites.per-sample-types.png",
+        annot_snp=[f"{OUT_DIR}/{OUT_NAME}.annot-snp-tstv.all.png"] if annotation_inputs() else [],
+        giab_strat=[f"{OUT_DIR}/{OUT_NAME}.sites.giab-strat.png"] if giab_strat_configured() else [],
+    output:
+        f"{OUT_DIR}/2.deconstruct-summary.png",
+    params:
+        panels=lambda wc, input: " ".join(
+            [f"'Variant Types:{input.variant_types}'",
+             f"'Size Distribution:{input.size_dist}'",
+             f"'AF Spectrum:{input.af_spectrum}'",
+             f"'Per-Sample Types:{input.per_sample}'"]
+            + ([f"'SNP Ts/Tv by Annotation:{input.annot_snp[0]}'"] if input.annot_snp else [])
+            + ([f"'GIAB Stratification:{input.giab_strat[0]}'"] if input.giab_strat else [])
+        ),
+    shell:
+        "python3 scripts/compose-summary.py"
+        " --output {output}"
+        " --title 'Deconstruct Variant Catalog'"
+        " --cols 2"
+        " --panels {params.panels}"
+
+rule summary_call:
+    """Compose vg call genotyping summary figure"""
+    input:
+        variant_types=f"{OUT_DIR}/merged.call.sites.pass.variant-types.png",
+        per_sample=f"{OUT_DIR}/merged.call.sites.pass.per-sample-types.png",
+        giab_strat=[f"{OUT_DIR}/merged.call.sites.pass.giab-strat.png"] if giab_strat_configured() else [],
+        giab_per_sample=[f"{OUT_DIR}/merged.call.sites.pass.per-sample-giab-strat.png"] if giab_strat_configured() else [],
+    output:
+        f"{OUT_DIR}/3.call-summary.png",
+    params:
+        panels=lambda wc, input: " ".join(
+            [f"'Variant Types (PASS):{input.variant_types}'",
+             f"'Per-Sample Types (PASS):{input.per_sample}'"]
+            + ([f"'GIAB Stratification:{input.giab_strat[0]}'"] if input.giab_strat else [])
+            + ([f"'Per-Sample GIAB:{input.giab_per_sample[0]}'"] if input.giab_per_sample else [])
+        ),
+    shell:
+        "python3 scripts/compose-summary.py"
+        " --output {output}"
+        " --title 'vg call Genotyping (PASS)'"
+        " --cols 2"
+        " --panels {params.panels}"
+
+rule summary_deepvariant:
+    """Compose deepvariant + comparison summary figure"""
+    input:
+        dv_types=f"{OUT_DIR}/merged.dv.sites.pass.variant-types.png",
+        dv_per_sample=f"{OUT_DIR}/merged.dv.sites.pass.per-sample-types.png",
+        vcfeval=f"{OUT_DIR}/merged.call-vs-dv.pass.vcfeval-compare.png",
+        vcfeval_squash=f"{OUT_DIR}/merged.call-vs-dv.pass.vcfeval-squash.vcfeval-compare.png",
+        chromsplit=f"{OUT_DIR}/merged.call-vs-dv.pass.chromsplit.png",
+        dv_giab=[f"{OUT_DIR}/merged.dv.sites.pass.giab-strat.png"] if giab_strat_configured() else [],
+    output:
+        f"{OUT_DIR}/4.deepvariant-summary.png",
+    params:
+        panels=lambda wc, input: " ".join(
+            [f"'DV Variant Types (PASS):{input.dv_types}'",
+             f"'DV Per-Sample Types (PASS):{input.dv_per_sample}'",
+             f"'Call vs DV (vcfeval):{input.vcfeval}'",
+             f"'Call vs DV (squash-ploidy):{input.vcfeval_squash}'"]
+            + ([f"'DV GIAB Stratification:{input.dv_giab[0]}'"] if input.dv_giab else [])
+            + ([f"'Per-Contig Concordance:{input.chromsplit}'"])
+        ),
+    shell:
+        "python3 scripts/compose-summary.py"
+        " --output {output}"
+        " --title 'DeepVariant + Comparison (PASS)'"
+        " --cols 2"
+        " --panels {params.panels}"
