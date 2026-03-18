@@ -72,7 +72,7 @@ snakemake --cores 4 graph_only \
 snakemake --cores 4 graph_only \
   --config vg=yeast-test/chrI.vg ref=S288C \
            out_dir=yeast-test/output out_name=chrI.nested \
-           mem_gb=4 pantree_vcf=pantree-sample.vcf
+           mem_gb=4 pantree_vcf=yeast-test/pantree-chrI.vcf
 
 # Full pipeline: genotype + DeepVariant + merge + vcfeval for both samples
 snakemake --cores 4 all \

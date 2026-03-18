@@ -58,6 +58,34 @@ if command -v bcftools >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/../data/test.vcf.gz"
 fi
 
 ############################################################################
+# 4. pantree-extract.py on yeast test VCF
+############################################################################
+PANTREE_VCF="$SCRIPT_DIR/../yeast-test/pantree-chrI.vcf"
+if command -v bcftools >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1 && [ -f "$PANTREE_VCF" ]; then
+    echo ""
+    echo "=== pantree-extract.py test ==="
+    PTDIR=$(mktemp -d)
+    if python3 "$SCRIPT_DIR/pantree-extract.py" --vcf "$PANTREE_VCF" --output "$PTDIR/pantree.records.tsv" 2>&1; then
+        # Verify output has chrI chromosomes (not chr1)
+        if head -2 "$PTDIR/pantree.records.tsv" | grep -q "^chrI"; then
+            echo "  PASS  pantree-extract.py (chrI records)"
+        else
+            echo "  FAIL  pantree-extract.py (expected chrI in output)"
+            FAIL=1
+        fi
+        # Verify no chr1 records leaked through
+        if grep -q "^chr1[^I]" "$PTDIR/pantree.records.tsv" 2>/dev/null; then
+            echo "  FAIL  pantree-extract.py (unexpected chr1 records)"
+            FAIL=1
+        fi
+    else
+        echo "  FAIL  pantree-extract.py (non-zero exit)"
+        FAIL=1
+    fi
+    rm -rf "$PTDIR"
+fi
+
+############################################################################
 echo ""
 if [ "$FAIL" -eq 0 ]; then
     echo "All tests passed."
