@@ -212,6 +212,18 @@ if (nrow(dt) == 0) {
   quit(status = 0)
 }
 
+# Strip augref prefix from VCF CHROM when --segs-strip-prefix is given.
+# This handles vg call VCFs where CHROM retains the graph path prefix
+# (e.g. augref_CHM13#0#chr1 instead of chr1).  When the prefix is already
+# stripped the sub() is a no-op.
+if (!is.null(segs_strip_prefix) && nzchar(segs_strip_prefix)) {
+  n_stripped <- sum(grepl(paste0("^", segs_strip_prefix), dt$CHROM))
+  if (n_stripped > 0) {
+    dt[, CHROM := sub(paste0("^", segs_strip_prefix), "", CHROM)]
+    cat("Stripped", n_stripped, "CHROM prefixes:", segs_strip_prefix, "\n")
+  }
+}
+
 # ---------------------------------------------------------------------------
 # Classify variants (per-site, no multi-allelic splitting)
 # For multi-allelic sites: SV > Indel > SNP (use largest allele)
