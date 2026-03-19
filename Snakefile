@@ -325,6 +325,8 @@ def vcfeval_compare_outputs():
         outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.chromsplit.png")
         outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.chromsplit-top.png")
         outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.chromsplit-concordant.png")
+        outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.chromsplit-top-onref.png")
+        outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.chromsplit-concordant-onref.png")
         if annotation_inputs():
             outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.chromsplit-annot.png")
         if giab_strat_configured():
@@ -333,6 +335,8 @@ def vcfeval_compare_outputs():
         outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-squash.chromsplit.png")
         outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-squash.chromsplit-top.png")
         outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-squash.chromsplit-concordant.png")
+        outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-squash.chromsplit-top-onref.png")
+        outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-squash.chromsplit-concordant-onref.png")
         if annotation_inputs():
             outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-squash.chromsplit-annot.png")
         if giab_strat_configured():
@@ -395,6 +399,7 @@ def summary_figure_outputs():
         outputs.append(f"{OUT_DIR}/3.call-summary.png")
         outputs.append(f"{OUT_DIR}/4.deepvariant-summary.png")
         outputs.append(f"{OUT_DIR}/5.concordance-summary.png")
+        outputs.append(f"{OUT_DIR}/5b.concordance-onref-summary.png")
     if config.get("pantree_vcf", ""):
         outputs.append(f"{OUT_DIR}/6.pantree-summary.png")
     return outputs
@@ -1754,6 +1759,8 @@ rule vcfeval_chromsplit_plot:
         f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.chromsplit.png",
         f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.chromsplit-top.png",
         f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.chromsplit-concordant.png",
+        f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.chromsplit-top-onref.png",
+        f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.chromsplit-concordant-onref.png",
         *([ f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.chromsplit-annot.png"]
           if annotation_inputs() else []),
         *([ f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.chromsplit-giab.png"]
@@ -1785,6 +1792,8 @@ rule vcfeval_chromsplit_squash_plot:
         f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash.chromsplit.png",
         f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash.chromsplit-top.png",
         f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash.chromsplit-concordant.png",
+        f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash.chromsplit-top-onref.png",
+        f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash.chromsplit-concordant-onref.png",
         *([ f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash.chromsplit-annot.png"]
           if annotation_inputs() else []),
         *([ f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash.chromsplit-giab.png"]
@@ -2012,9 +2021,25 @@ rule summary_concordance:
     shell:
         "python3 scripts/compose-summary.py"
         " --output {output}"
-        " --title 'Call vs DeepVariant Concordance (PASS)'"
+        " --title 'Call vs DeepVariant Concordance — Off-Ref (PASS)'"
         " --cols 2"
         " --panels {params.panels}"
+
+rule summary_concordance_onref:
+    """Compose on-reference concordance summary figure"""
+    input:
+        discordant=f"{OUT_DIR}/merged.call-vs-dv.pass.chromsplit-top-onref.png",
+        concordant=f"{OUT_DIR}/merged.call-vs-dv.pass.chromsplit-concordant-onref.png",
+    output:
+        f"{OUT_DIR}/5b.concordance-onref-summary.png",
+    shell:
+        "python3 scripts/compose-summary.py"
+        " --output {output}"
+        " --title 'Call vs DeepVariant Concordance — On-Ref (PASS)'"
+        " --cols 2"
+        " --panels"
+        " 'Top Discordant On-Ref:{input.discordant}'"
+        " 'Top Concordant On-Ref:{input.concordant}'"
 
 rule summary_pantree:
     """Compose pantree comparison summary figure"""

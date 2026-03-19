@@ -270,6 +270,76 @@ if (nrow(top_conc) > 0) {
 rm(agg, dt_bar)
 
 # ---------------------------------------------------------------------------
+# Plot 4 & 5: Top discordant / concordant on-ref contigs (stacked bar)
+# ---------------------------------------------------------------------------
+if (!is.null(offref_contigs)) {
+  dt_onref <- dt[!contig %in% offref_contigs]
+  cat("On-ref contigs:", uniqueN(dt_onref$contig), "\n")
+
+  agg_on <- dt_onref[, .(SNP_FP = sum(SNP_FP), SNP_FN = sum(SNP_FN),
+                          INDEL_FP = sum(INDEL_FP), INDEL_FN = sum(INDEL_FN),
+                          SNP_TP = sum(SNP_TP), INDEL_TP = sum(INDEL_TP),
+                          total_errors = sum(total_errors), total_tp = sum(total_tp)),
+                     by = contig]
+
+  # --- On-ref Discordant ---
+  setorder(agg_on, -total_errors)
+  n_show_on <- min(30, nrow(agg_on))
+  top_disc_on <- agg_on[1:n_show_on]
+
+  bar_disc_on <- melt(top_disc_on, id.vars = "contig",
+                       measure.vars = bar_measures,
+                       variable.name = "error_type", value.name = "count")
+  bar_disc_on[, contig := factor(contig, levels = rev(top_disc_on$contig))]
+
+  p_disc_on <- ggplot(bar_disc_on, aes(x = contig, y = count, fill = error_type)) +
+    geom_col() +
+    coord_flip() +
+    scale_fill_manual(values = all_colors, labels = all_labels, name = NULL) +
+    scale_y_continuous(labels = comma) +
+    labs(title = title,
+         subtitle = paste0("Top ", n_show_on, " most discordant on-ref contigs",
+                           if (n_samples > 1) " (summed across samples)" else ""),
+         x = NULL, y = "Variant Count") +
+    base_theme
+
+  bar_height_on <- max(6, n_show_on * 0.25)
+  save_png(p_disc_on, paste0(prefix, ".chromsplit-top-onref.png"), width = 10, height = bar_height_on)
+
+  # --- On-ref Concordant ---
+  setorder(agg_on, -total_tp)
+  top_conc_on <- agg_on[total_tp > 0][1:min(30, sum(agg_on$total_tp > 0))]
+
+  if (nrow(top_conc_on) > 0) {
+    n_show_on_c <- nrow(top_conc_on)
+    bar_conc_on <- melt(top_conc_on, id.vars = "contig",
+                         measure.vars = bar_measures,
+                         variable.name = "error_type", value.name = "count")
+    bar_conc_on[, contig := factor(contig, levels = rev(top_conc_on$contig))]
+
+    p_conc_on <- ggplot(bar_conc_on, aes(x = contig, y = count, fill = error_type)) +
+      geom_col() +
+      coord_flip() +
+      scale_fill_manual(values = all_colors, labels = all_labels, name = NULL) +
+      scale_y_continuous(labels = comma) +
+      labs(title = title,
+           subtitle = paste0("Top ", n_show_on_c, " most concordant on-ref contigs",
+                             if (n_samples > 1) " (summed across samples)" else ""),
+           x = NULL, y = "Variant Count") +
+      base_theme
+
+    bar_height_on_c <- max(6, n_show_on_c * 0.25)
+    save_png(p_conc_on, paste0(prefix, ".chromsplit-concordant-onref.png"), width = 10, height = bar_height_on_c)
+  } else {
+    file.create(paste0(prefix, ".chromsplit-concordant-onref.png"))
+  }
+  rm(agg_on, dt_onref)
+} else {
+  file.create(paste0(prefix, ".chromsplit-top-onref.png"))
+  file.create(paste0(prefix, ".chromsplit-concordant-onref.png"))
+}
+
+# ---------------------------------------------------------------------------
 # Annotation / GIAB stratification (off-ref contigs only, SNPs only)
 # ---------------------------------------------------------------------------
 if (!is.null(segs_file)) {
