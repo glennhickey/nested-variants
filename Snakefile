@@ -324,6 +324,7 @@ def vcfeval_compare_outputs():
         outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.chromsplit.tsv")
         outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.chromsplit.png")
         outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.chromsplit-top.png")
+        outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.chromsplit-concordant.png")
         if annotation_inputs():
             outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.chromsplit-annot.png")
         if giab_strat_configured():
@@ -331,6 +332,7 @@ def vcfeval_compare_outputs():
         outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-squash.chromsplit.tsv")
         outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-squash.chromsplit.png")
         outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-squash.chromsplit-top.png")
+        outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-squash.chromsplit-concordant.png")
         if annotation_inputs():
             outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{filt}.vcfeval-squash.chromsplit-annot.png")
         if giab_strat_configured():
@@ -364,7 +366,7 @@ def merge_chromsplit_tsv(input_files, sample_names, output_file):
                     continue
                 values = [int(data.get(m, ["0"] * len(contigs))[i])
                           for m in metrics]
-                total = sum(values)
+                total = sum(v for m, v in zip(metrics, values) if "TP" not in m)
                 out.write("\t".join(
                     [sample, contig] + [str(v) for v in values]
                     + [str(total)]) + "\n")
@@ -1692,10 +1694,11 @@ rule vcfeval_compare_plot_squash:
         " --no-sv"
 
 rule vcfeval_chromsplit:
-    """Per-contig FP/FN breakdown from vcfeval/aardvark output"""
+    """Per-contig FP/FN/TP breakdown from vcfeval/aardvark output"""
     input:
         fp=f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}/fp.vcf.gz",
         fn=f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}/fn.vcf.gz",
+        tp=f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}/tp-baseline.vcf.gz",
     output:
         f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}/chromsplit.tsv",
     params:
@@ -1706,10 +1709,11 @@ rule vcfeval_chromsplit:
         " --dir {params.out_dir} > {output}"
 
 rule vcfeval_chromsplit_squash:
-    """Per-contig FP/FN breakdown from squashed vcfeval/aardvark output"""
+    """Per-contig FP/FN/TP breakdown from squashed vcfeval/aardvark output"""
     input:
         fp=f"{OUT_DIR}/vcfeval-squash/{{filt}}/{{sample}}/fp.vcf.gz",
         fn=f"{OUT_DIR}/vcfeval-squash/{{filt}}/{{sample}}/fn.vcf.gz",
+        tp=f"{OUT_DIR}/vcfeval-squash/{{filt}}/{{sample}}/tp-baseline.vcf.gz",
     output:
         f"{OUT_DIR}/vcfeval-squash/{{filt}}/{{sample}}/chromsplit.tsv",
     params:
@@ -1749,6 +1753,7 @@ rule vcfeval_chromsplit_plot:
     output:
         f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.chromsplit.png",
         f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.chromsplit-top.png",
+        f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.chromsplit-concordant.png",
         *([ f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.chromsplit-annot.png"]
           if annotation_inputs() else []),
         *([ f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.chromsplit-giab.png"]
@@ -1770,7 +1775,7 @@ rule vcfeval_chromsplit_plot:
         " {params.annot_arg} {params.giab_arg}"
 
 rule vcfeval_chromsplit_squash_plot:
-    """Per-contig FP/FN scatter and top-discordant bar chart (squash-ploidy)"""
+    """Per-contig FP/FN/TP scatter and top bar charts (squash-ploidy)"""
     input:
         tsv=f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash.chromsplit.tsv",
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
@@ -1779,6 +1784,7 @@ rule vcfeval_chromsplit_squash_plot:
     output:
         f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash.chromsplit.png",
         f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash.chromsplit-top.png",
+        f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash.chromsplit-concordant.png",
         *([ f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash.chromsplit-annot.png"]
           if annotation_inputs() else []),
         *([ f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash.chromsplit-giab.png"]
@@ -1990,18 +1996,18 @@ rule summary_deepvariant:
 rule summary_concordance:
     """Compose call-vs-DV concordance stratification summary figure"""
     input:
-        chromsplit_top=f"{OUT_DIR}/merged.call-vs-dv.pass.chromsplit-top.png",
+        discordant=f"{OUT_DIR}/merged.call-vs-dv.pass.chromsplit-top.png",
+        concordant=f"{OUT_DIR}/merged.call-vs-dv.pass.chromsplit-concordant.png",
         annot=f"{OUT_DIR}/merged.call-vs-dv.pass.chromsplit-annot.png" if annotation_inputs() else [],
         giab=f"{OUT_DIR}/merged.call-vs-dv.pass.chromsplit-giab.png" if giab_strat_configured() else [],
-        scatter=f"{OUT_DIR}/merged.call-vs-dv.pass.chromsplit.png",
     output:
         f"{OUT_DIR}/5.concordance-summary.png",
     params:
         panels=lambda wc, input: " ".join(
-            [f"'Top Discordant Contigs:{input.chromsplit_top}'"]
-            + ([f"'FP/FN by Annotation:{input.annot}'"] if input.annot else [])
-            + ([f"'FP/FN by GIAB Region:{input.giab}'"] if input.giab else [])
-            + ([f"'Per-Contig FP vs FN:{input.scatter}'"])
+            [f"'Top Discordant Off-Ref:{input.discordant}'",
+             f"'Top Concordant Off-Ref:{input.concordant}'"]
+            + ([f"'TP/FP/FN by Annotation:{input.annot}'"] if input.annot else [])
+            + ([f"'TP/FP/FN by GIAB Region:{input.giab}'"] if input.giab else [])
         ),
     shell:
         "python3 scripts/compose-summary.py"

@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 
-# vcf-chromsplit-plot.R — Per-contig FP/FN scatter and top-discordant bar chart
+# vcf-chromsplit-plot.R — Per-contig concordance/discordance plots
 #
 # Usage: Rscript scripts/vcf-chromsplit-plot.R <chromsplit.tsv> <output_prefix>
 #          [--title TITLE] [--strip-prefix PREFIX]
@@ -9,10 +9,11 @@
 #
 # Reads the merged long-format chromsplit TSV (from vcfeval_chromsplit_merge)
 # and produces:
-#   {prefix}.chromsplit.png       — FP vs FN scatter per contig, faceted by SNP/Indel
-#   {prefix}.chromsplit-top.png   — Top 30 most discordant contigs (stacked bar)
-#   {prefix}.chromsplit-annot.png — SNP FP/FN by annotation (off-ref, when --annot)
-#   {prefix}.chromsplit-giab.png  — SNP FP/FN by GIAB region (off-ref, when --giab-beds)
+#   {prefix}.chromsplit.png           — FP vs FN scatter per contig
+#   {prefix}.chromsplit-top.png       — Top 30 most discordant off-ref contigs
+#   {prefix}.chromsplit-concordant.png — Top 30 most concordant off-ref contigs
+#   {prefix}.chromsplit-annot.png     — SNP TP/FP/FN by annotation (off-ref, when --annot)
+#   {prefix}.chromsplit-giab.png      — SNP TP/FP/FN by GIAB region (off-ref, when --giab-beds)
 
 suppressPackageStartupMessages({
   library(data.table)
@@ -90,6 +91,7 @@ if (nrow(dt) == 0) {
   cat("No data — creating empty outputs.\n")
   file.create(paste0(prefix, ".chromsplit.png"))
   file.create(paste0(prefix, ".chromsplit-top.png"))
+  file.create(paste0(prefix, ".chromsplit-concordant.png"))
   if (!is.null(annot_file)) file.create(paste0(prefix, ".chromsplit-annot.png"))
   if (!is.null(giab_beds_arg)) file.create(paste0(prefix, ".chromsplit-giab.png"))
   quit(status = 0)
@@ -113,15 +115,17 @@ if (has_sv) {
   dt[, INDEL_FN := INDEL_FN + SV_INDEL_FN]
 }
 
-# ---------------------------------------------------------------------------
-# Plot 1: FP vs FN scatter, faceted by variant type
-# ---------------------------------------------------------------------------
-# Melt to long: one block for SNP, one for Indel
-snp_dt <- dt[, .(sample, contig, FP = SNP_FP, FN = SNP_FN)]
-snp_dt[, type := "SNP"]
-indel_dt <- dt[, .(sample, contig, FP = INDEL_FP, FN = INDEL_FN)]
-indel_dt[, type := "Indel"]
-scatter_dt <- rbind(snp_dt, indel_dt)
+# TP columns (may not exist in older TSVs)
+has_tp <- "SNP_TP" %in% names(dt)
+if (has_tp && has_sv) {
+  dt[, SNP_TP := SNP_TP + SV_SNP_TP]
+  dt[, INDEL_TP := INDEL_TP + SV_INDEL_TP]
+}
+if (!has_tp) {
+  dt[, SNP_TP := 0L]
+  dt[, INDEL_TP := 0L]
+}
+dt[, total_tp := SNP_TP + INDEL_TP]
 
 base_theme <- theme_minimal() +
   theme(
@@ -130,6 +134,25 @@ base_theme <- theme_minimal() +
     panel.background = element_rect(fill = "white", color = NA),
     plot.background = element_rect(fill = "white", color = NA)
   )
+
+# Color/label palettes
+all_colors <- c("SNP_TP" = "#4DAF4A", "INDEL_TP" = "#66C2A5",
+                "SNP_FP" = "#E41A1C", "SNP_FN" = "#377EB8",
+                "INDEL_FP" = "#FF7F00", "INDEL_FN" = "#984EA3")
+all_labels <- c("SNP_TP" = "SNP TP", "INDEL_TP" = "Indel TP",
+                "SNP_FP" = "SNP FP", "SNP_FN" = "SNP FN",
+                "INDEL_FP" = "Indel FP", "INDEL_FN" = "Indel FN")
+snp_colors <- c("SNP_TP" = "#4DAF4A", "SNP_FP" = "#E41A1C", "SNP_FN" = "#377EB8")
+snp_labels <- c("SNP_TP" = "SNP TP", "SNP_FP" = "SNP FP", "SNP_FN" = "SNP FN")
+
+# ---------------------------------------------------------------------------
+# Plot 1: FP vs FN scatter, faceted by variant type
+# ---------------------------------------------------------------------------
+snp_dt <- dt[, .(sample, contig, FP = SNP_FP, FN = SNP_FN)]
+snp_dt[, type := "SNP"]
+indel_dt <- dt[, .(sample, contig, FP = INDEL_FP, FN = INDEL_FN)]
+indel_dt[, type := "Indel"]
+scatter_dt <- rbind(snp_dt, indel_dt)
 
 p_scatter <- ggplot(scatter_dt, aes(x = FP, y = FN)) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed",
@@ -154,54 +177,18 @@ if (n_samples > 1) {
 }
 
 save_png(p_scatter, paste0(prefix, ".chromsplit.png"), width = 10, height = 5)
+rm(snp_dt, indel_dt, scatter_dt)
 
 # ---------------------------------------------------------------------------
-# Plot 2: Top most-discordant contigs (stacked bar)
+# Identify off-ref contigs (requires --segs)
 # ---------------------------------------------------------------------------
-# Aggregate across samples
-agg <- dt[, .(SNP_FP = sum(SNP_FP), SNP_FN = sum(SNP_FN),
-              INDEL_FP = sum(INDEL_FP), INDEL_FN = sum(INDEL_FN),
-              total_errors = sum(total_errors)),
-          by = contig]
-setorder(agg, -total_errors)
-
-n_show <- min(30, nrow(agg))
-top <- agg[1:n_show]
-
-bar_dt <- melt(top, id.vars = c("contig", "total_errors"),
-               measure.vars = c("SNP_FP", "SNP_FN", "INDEL_FP", "INDEL_FN"),
-               variable.name = "error_type", value.name = "count")
-bar_dt[, contig := factor(contig, levels = rev(top$contig))]
-
-error_colors <- c("SNP_FP" = "#E41A1C", "SNP_FN" = "#377EB8",
-                   "INDEL_FP" = "#FF7F00", "INDEL_FN" = "#4DAF4A")
-error_labels <- c("SNP_FP" = "SNP FP", "SNP_FN" = "SNP FN",
-                   "INDEL_FP" = "Indel FP", "INDEL_FN" = "Indel FN")
-
-p_bar <- ggplot(bar_dt, aes(x = contig, y = count, fill = error_type)) +
-  geom_col() +
-  coord_flip() +
-  scale_fill_manual(values = error_colors, labels = error_labels, name = NULL) +
-  scale_y_continuous(labels = comma) +
-  labs(title = title,
-       subtitle = paste0("Top ", n_show, " most discordant contigs",
-                         if (n_samples > 1) " (summed across samples)" else ""),
-       x = NULL, y = "Error Count") +
-  base_theme
-
-bar_height <- max(6, n_show * 0.25)
-save_png(p_bar, paste0(prefix, ".chromsplit-top.png"), width = 10, height = bar_height)
-
-# ---------------------------------------------------------------------------
-# Annotation / GIAB stratification (off-ref contigs only, SNPs only)
-# ---------------------------------------------------------------------------
+offref_contigs <- NULL
 if (!is.null(segs_file)) {
   cat("Reading augref segments:", segs_file, "\n")
   segs <- fread(segs_file, select = c(4, 5, 6, 7),
                 col.names = c("augref_path", "ref_path", "ref_start", "ref_end"))
   segs <- unique(segs, by = "augref_path")
 
-  # Strip prefix to match chromsplit contig names
   if (!is.null(strip_prefix) && nzchar(strip_prefix)) {
     segs[, contig := sub(paste0("^", strip_prefix), "", augref_path)]
   } else {
@@ -209,11 +196,86 @@ if (!is.null(segs_file)) {
   }
 
   offref_contigs <- unique(segs$contig)
-  dt_offref <- dt[contig %in% offref_contigs]
   cat("Off-ref contigs in chromsplit:", length(intersect(unique(dt$contig), offref_contigs)),
       "of", n_contigs, "\n")
+}
 
-  # --- Annotation-stratified FP/FN bars ---
+# ---------------------------------------------------------------------------
+# Plot 2 & 3: Top discordant / concordant off-ref contigs (stacked bar)
+# ---------------------------------------------------------------------------
+# Use off-ref subset if segs available, otherwise all contigs
+dt_bar <- if (!is.null(offref_contigs)) dt[contig %in% offref_contigs] else dt
+offref_label <- if (!is.null(offref_contigs)) " off-ref" else ""
+
+agg <- dt_bar[, .(SNP_FP = sum(SNP_FP), SNP_FN = sum(SNP_FN),
+                   INDEL_FP = sum(INDEL_FP), INDEL_FN = sum(INDEL_FN),
+                   SNP_TP = sum(SNP_TP), INDEL_TP = sum(INDEL_TP),
+                   total_errors = sum(total_errors), total_tp = sum(total_tp)),
+              by = contig]
+
+bar_measures <- c("SNP_TP", "INDEL_TP", "SNP_FP", "SNP_FN", "INDEL_FP", "INDEL_FN")
+
+# --- Discordant ---
+setorder(agg, -total_errors)
+n_show <- min(30, nrow(agg))
+top_disc <- agg[1:n_show]
+
+bar_disc <- melt(top_disc, id.vars = "contig",
+                 measure.vars = bar_measures,
+                 variable.name = "error_type", value.name = "count")
+bar_disc[, contig := factor(contig, levels = rev(top_disc$contig))]
+
+p_disc <- ggplot(bar_disc, aes(x = contig, y = count, fill = error_type)) +
+  geom_col() +
+  coord_flip() +
+  scale_fill_manual(values = all_colors, labels = all_labels, name = NULL) +
+  scale_y_continuous(labels = comma) +
+  labs(title = title,
+       subtitle = paste0("Top ", n_show, " most discordant", offref_label, " contigs",
+                         if (n_samples > 1) " (summed across samples)" else ""),
+       x = NULL, y = "Variant Count") +
+  base_theme
+
+bar_height <- max(6, n_show * 0.25)
+save_png(p_disc, paste0(prefix, ".chromsplit-top.png"), width = 10, height = bar_height)
+
+# --- Concordant ---
+setorder(agg, -total_tp)
+top_conc <- agg[total_tp > 0][1:min(30, sum(agg$total_tp > 0))]
+
+if (nrow(top_conc) > 0) {
+  n_show_c <- nrow(top_conc)
+  bar_conc <- melt(top_conc, id.vars = "contig",
+                   measure.vars = bar_measures,
+                   variable.name = "error_type", value.name = "count")
+  bar_conc[, contig := factor(contig, levels = rev(top_conc$contig))]
+
+  p_conc <- ggplot(bar_conc, aes(x = contig, y = count, fill = error_type)) +
+    geom_col() +
+    coord_flip() +
+    scale_fill_manual(values = all_colors, labels = all_labels, name = NULL) +
+    scale_y_continuous(labels = comma) +
+    labs(title = title,
+         subtitle = paste0("Top ", n_show_c, " most concordant", offref_label, " contigs",
+                           if (n_samples > 1) " (summed across samples)" else ""),
+         x = NULL, y = "Variant Count") +
+    base_theme
+
+  bar_height_c <- max(6, n_show_c * 0.25)
+  save_png(p_conc, paste0(prefix, ".chromsplit-concordant.png"), width = 10, height = bar_height_c)
+} else {
+  cat("No TP data — creating empty concordant plot.\n")
+  file.create(paste0(prefix, ".chromsplit-concordant.png"))
+}
+rm(agg, dt_bar)
+
+# ---------------------------------------------------------------------------
+# Annotation / GIAB stratification (off-ref contigs only, SNPs only)
+# ---------------------------------------------------------------------------
+if (!is.null(segs_file)) {
+  dt_offref <- dt[contig %in% offref_contigs]
+
+  # --- Annotation-stratified TP/FP/FN bars ---
   if (!is.null(annot_file)) {
     cat("Reading annotations:", annot_file, "\n")
     annot <- fread(annot_file)
@@ -221,6 +283,9 @@ if (!is.null(segs_file)) {
     # Use _total aggregated rows for grouped annotations (e.g., repeats)
     annot_agg <- annot[annotation_class == "_total" |
                        !annotation %in% annot[annotation_class == "_total"]$annotation]
+
+    # Filter out pclai
+    annot_agg <- annot_agg[annotation != "pclai"]
 
     # Classify by reference-position overlap
     contig_annots <- annot_agg[ref_overlap_frac > 0, .(augref_path, annotation)]
@@ -238,21 +303,20 @@ if (!is.null(segs_file)) {
     rm(annot, annot_agg, contig_annots)
 
     if (nrow(dt_annot) > 0) {
-      annot_sum <- dt_annot[, .(SNP_FP = sum(SNP_FP), SNP_FN = sum(SNP_FN)),
+      annot_sum <- dt_annot[, .(SNP_TP = sum(SNP_TP), SNP_FP = sum(SNP_FP),
+                                SNP_FN = sum(SNP_FN)),
                             by = annotation]
       rm(dt_annot)
       annot_bar <- melt(annot_sum, id.vars = "annotation",
-                        measure.vars = c("SNP_FP", "SNP_FN"),
+                        measure.vars = c("SNP_TP", "SNP_FP", "SNP_FN"),
                         variable.name = "error_type", value.name = "count")
 
       p_annot <- ggplot(annot_bar, aes(x = annotation, y = count, fill = error_type)) +
         geom_col(position = "dodge", width = 0.7) +
-        scale_fill_manual(values = c("SNP_FP" = "#E41A1C", "SNP_FN" = "#377EB8"),
-                          labels = c("SNP_FP" = "SNP FP", "SNP_FN" = "SNP FN"),
-                          name = NULL) +
+        scale_fill_manual(values = snp_colors, labels = snp_labels, name = NULL) +
         scale_y_continuous(labels = comma) +
         labs(title = title,
-             subtitle = paste0("SNP FP/FN by Annotation (off-ref contigs",
+             subtitle = paste0("SNP TP/FP/FN by Annotation (off-ref contigs",
                                if (n_samples > 1) paste0(", ", n_samples, " samples") else "",
                                ")"),
              x = "Annotation", y = "SNP Count") +
@@ -265,7 +329,7 @@ if (!is.null(segs_file)) {
     }
   }
 
-  # --- GIAB-stratified FP/FN bars ---
+  # --- GIAB-stratified TP/FP/FN bars ---
   if (!is.null(giab_beds_arg)) {
     giab_bed_files <- strsplit(giab_beds_arg, ",")[[1]]
     giab_names <- if (!is.null(giab_names_arg)) {
@@ -308,24 +372,20 @@ if (!is.null(segs_file)) {
     if (nrow(contig_giab) > 0) {
       dt_giab <- merge(dt_offref, contig_giab, by = "contig", allow.cartesian = TRUE)
 
-      giab_sum <- dt_giab[, .(SNP_FP = sum(SNP_FP), SNP_FN = sum(SNP_FN)),
+      giab_sum <- dt_giab[, .(SNP_TP = sum(SNP_TP), SNP_FP = sum(SNP_FP),
+                              SNP_FN = sum(SNP_FN)),
                           by = giab_region]
       giab_bar <- melt(giab_sum, id.vars = "giab_region",
-                       measure.vars = c("SNP_FP", "SNP_FN"),
+                       measure.vars = c("SNP_TP", "SNP_FP", "SNP_FN"),
                        variable.name = "error_type", value.name = "count")
       giab_bar[, giab_region := factor(giab_region, levels = giab_names)]
 
-      region_colors <- c("Easy" = "forestgreen", "Segdup" = "firebrick",
-                         "Other Difficult" = "darkorange")
-
       p_giab <- ggplot(giab_bar, aes(x = giab_region, y = count, fill = error_type)) +
         geom_col(position = "dodge", width = 0.7) +
-        scale_fill_manual(values = c("SNP_FP" = "#E41A1C", "SNP_FN" = "#377EB8"),
-                          labels = c("SNP_FP" = "SNP FP", "SNP_FN" = "SNP FN"),
-                          name = NULL) +
+        scale_fill_manual(values = snp_colors, labels = snp_labels, name = NULL) +
         scale_y_continuous(labels = comma) +
         labs(title = title,
-             subtitle = paste0("SNP FP/FN by GIAB Region (off-ref contigs",
+             subtitle = paste0("SNP TP/FP/FN by GIAB Region (off-ref contigs",
                                if (n_samples > 1) paste0(", ", n_samples, " samples") else "",
                                ")"),
              x = "GIAB Region", y = "SNP Count") +

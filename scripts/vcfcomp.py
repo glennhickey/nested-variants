@@ -441,15 +441,17 @@ def vcfeval_chromsplit(truvari_outdir):
     snp_fn = defaultdict(int)
     indel_fp = defaultdict(int)
     indel_fn = defaultdict(int)
+    snp_tp = defaultdict(int)
+    indel_tp = defaultdict(int)
 
     def is_snp(var):
         """ note: this isn't very sophisticated and may differe from hap.py's sense quite a bit """
         return all(len(a) == len(var.alleles[0]) for a in var.alleles)
-    
+
     fp_vcf = os.path.join(truvari_outdir, 'fp.vcf.gz')
     fp_vcf_file = pysam.VariantFile(fp_vcf, 'r')
     contigs = set(['_total_'])
-    for var in fp_vcf_file.fetch():        
+    for var in fp_vcf_file.fetch():
         contigs.add(var.contig)
         if is_snp(var):
             snp_fp[var.contig] += 1
@@ -471,15 +473,31 @@ def vcfeval_chromsplit(truvari_outdir):
             indel_fn['_total_'] += 1
     fn_vcf_file.close()
 
+    tp_vcf_path = os.path.join(truvari_outdir, 'tp-baseline.vcf.gz')
+    if os.path.isfile(tp_vcf_path):
+        tp_vcf_file = pysam.VariantFile(tp_vcf_path, 'r')
+        for var in tp_vcf_file.fetch():
+            contigs.add(var.contig)
+            if is_snp(var):
+                snp_tp[var.contig] += 1
+                snp_tp['_total_'] += 1
+            else:
+                indel_tp[var.contig] += 1
+                indel_tp['_total_'] += 1
+        tp_vcf_file.close()
+
     output_table = [['type'] + sorted(contigs)]
-    output_table += [['ERRORS'], ['SNP-FP'], ['SNP-FN'], ['INDEL-FP'], ['INDEL-FN']]
+    output_table += [['ERRORS'], ['SNP-FP'], ['SNP-FN'], ['INDEL-FP'], ['INDEL-FN'],
+                     ['SNP-TP'], ['INDEL-TP']]
     for contig in sorted(contigs):
-        output_table[-5].append(str(snp_fp[contig] + snp_fn[contig] + indel_fp[contig] + indel_fn[contig]))
-        output_table[-4].append(str(snp_fp[contig]))
-        output_table[-3].append(str(snp_fn[contig]))
-        output_table[-2].append(str(indel_fp[contig]))
-        output_table[-1].append(str(indel_fn[contig]))
-    
+        output_table[-7].append(str(snp_fp[contig] + snp_fn[contig] + indel_fp[contig] + indel_fn[contig]))
+        output_table[-6].append(str(snp_fp[contig]))
+        output_table[-5].append(str(snp_fn[contig]))
+        output_table[-4].append(str(indel_fp[contig]))
+        output_table[-3].append(str(indel_fn[contig]))
+        output_table[-2].append(str(snp_tp[contig]))
+        output_table[-1].append(str(indel_tp[contig]))
+
     return output_table
 
 def aardvark(truth_vcf,
@@ -584,25 +602,29 @@ def aardvark_chromsplit(aardvark_outdir):
     snp_fn = defaultdict(int)
     indel_fp = defaultdict(int)
     indel_fn = defaultdict(int)
+    snp_tp = defaultdict(int)
+    indel_tp = defaultdict(int)
     sv_snp_fp = defaultdict(int)
     sv_snp_fn = defaultdict(int)
     sv_indel_fp = defaultdict(int)
     sv_indel_fn = defaultdict(int)
-    
+    sv_snp_tp = defaultdict(int)
+    sv_indel_tp = defaultdict(int)
+
     def is_snp(var):
         """ note: this isn't very sophisticated and may differe from hap.py's sense quite a bit """
         return all(len(a) == len(var.alleles[0]) for a in var.alleles)
     def is_sv(var):
         """ this either """
         return any(len(a) >= 50 for a in var.alleles)
-    
+
     fp_vcf = os.path.join(aardvark_outdir, 'query.vcf.gz')
     fp_vcf_file = pysam.VariantFile(fp_vcf, 'r')
     contigs = set(['_total_'])
     for var in fp_vcf_file.fetch():
         assert len(var.samples.values()) == 1
         sample = var.samples.values()[0]
-        if sample['BD'] == 'FP':            
+        if sample['BD'] == 'FP':
             contigs.add(var.contig)
             if is_sv(var):
                 snp_dict = sv_snp_fp
@@ -623,7 +645,7 @@ def aardvark_chromsplit(aardvark_outdir):
     for var in fn_vcf_file.fetch():
         assert len(var.samples.values()) == 1
         sample = var.samples.values()[0]
-        if sample['BD'] == 'FN':            
+        if sample['BD'] == 'FN':
             contigs.add(var.contig)
             if is_sv(var):
                 snp_dict = sv_snp_fn
@@ -637,23 +659,43 @@ def aardvark_chromsplit(aardvark_outdir):
             else:
                 indel_dict[var.contig] += 1
                 indel_dict['_total_'] += 1
+        elif sample['BD'] == 'TP':
+            contigs.add(var.contig)
+            if is_sv(var):
+                snp_dict = sv_snp_tp
+                indel_dict = sv_indel_tp
+            else:
+                snp_dict = snp_tp
+                indel_dict = indel_tp
+            if is_snp(var):
+                snp_dict[var.contig] += 1
+                snp_dict['_total_'] += 1
+            else:
+                indel_dict[var.contig] += 1
+                indel_dict['_total_'] += 1
     fn_vcf_file.close()
 
     output_table = [['type'] + sorted(contigs)]
     output_table += [['ERRORS'], ['SNP-FP'], ['SNP-FN'], ['INDEL-FP'], ['INDEL-FN'],
-                     ['SV-SNP-FP'], ['SV-SNP-FN'], ['SV-INDEL-FP'], ['SV-INDEL-FN']]
+                     ['SNP-TP'], ['INDEL-TP'],
+                     ['SV-SNP-FP'], ['SV-SNP-FN'], ['SV-INDEL-FP'], ['SV-INDEL-FN'],
+                     ['SV-SNP-TP'], ['SV-INDEL-TP']]
     for contig in sorted(contigs):
-        output_table[-9].append(str(snp_fp[contig] + snp_fn[contig] + indel_fp[contig] + indel_fn[contig] +
-                                    sv_snp_fp[contig] + sv_snp_fn[contig] + sv_indel_fp[contig] + sv_indel_fn[contig]))
-        output_table[-8].append(str(snp_fp[contig]))
-        output_table[-7].append(str(snp_fn[contig]))
-        output_table[-6].append(str(indel_fp[contig]))
-        output_table[-5].append(str(indel_fn[contig]))
-        output_table[-4].append(str(sv_snp_fp[contig]))
-        output_table[-3].append(str(sv_snp_fn[contig]))
-        output_table[-2].append(str(sv_indel_fp[contig]))
-        output_table[-1].append(str(sv_indel_fn[contig]))        
-    
+        output_table[-13].append(str(snp_fp[contig] + snp_fn[contig] + indel_fp[contig] + indel_fn[contig] +
+                                     sv_snp_fp[contig] + sv_snp_fn[contig] + sv_indel_fp[contig] + sv_indel_fn[contig]))
+        output_table[-12].append(str(snp_fp[contig]))
+        output_table[-11].append(str(snp_fn[contig]))
+        output_table[-10].append(str(indel_fp[contig]))
+        output_table[-9].append(str(indel_fn[contig]))
+        output_table[-8].append(str(snp_tp[contig]))
+        output_table[-7].append(str(indel_tp[contig]))
+        output_table[-6].append(str(sv_snp_fp[contig]))
+        output_table[-5].append(str(sv_snp_fn[contig]))
+        output_table[-4].append(str(sv_indel_fp[contig]))
+        output_table[-3].append(str(sv_indel_fn[contig]))
+        output_table[-2].append(str(sv_snp_tp[contig]))
+        output_table[-1].append(str(sv_indel_tp[contig]))
+
     return output_table
 
 def download_q100(dict_only=False):
