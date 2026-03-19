@@ -392,8 +392,9 @@ def summary_figure_outputs():
     if SAMPLES:
         outputs.append(f"{OUT_DIR}/3.call-summary.png")
         outputs.append(f"{OUT_DIR}/4.deepvariant-summary.png")
+        outputs.append(f"{OUT_DIR}/5.concordance-summary.png")
     if config.get("pantree_vcf", ""):
-        outputs.append(f"{OUT_DIR}/5.pantree-summary.png")
+        outputs.append(f"{OUT_DIR}/6.pantree-summary.png")
     return outputs
 
 ############################################################################
@@ -1967,7 +1968,6 @@ rule summary_deepvariant:
         dv_types=f"{OUT_DIR}/merged.dv.sites.pass.variant-types.png",
         dv_per_sample=f"{OUT_DIR}/merged.dv.sites.pass.per-sample-types.png",
         vcfeval=f"{OUT_DIR}/merged.call-vs-dv.pass.vcfeval-compare.png",
-        chromsplit=f"{OUT_DIR}/merged.call-vs-dv.pass.chromsplit.png",
         dv_giab=[f"{OUT_DIR}/merged.dv.sites.pass.giab-strat.png"] if giab_strat_configured() else [],
         annot_snp=[f"{OUT_DIR}/merged.deepvariant.annot-snp-tstv.pass.png"] if annotation_inputs() else [],
     output:
@@ -1979,12 +1979,34 @@ rule summary_deepvariant:
              f"'Call vs DV (vcfeval):{input.vcfeval}'"]
             + ([f"'DV GIAB Stratification:{input.dv_giab[0]}'"] if input.dv_giab else [])
             + ([f"'DV SNP Ts/Tv by Annotation:{input.annot_snp[0]}'"] if input.annot_snp else [])
-            + ([f"'Per-Contig Concordance:{input.chromsplit}'"])
         ),
     shell:
         "python3 scripts/compose-summary.py"
         " --output {output}"
         " --title 'DeepVariant + Comparison (PASS)'"
+        " --cols 2"
+        " --panels {params.panels}"
+
+rule summary_concordance:
+    """Compose call-vs-DV concordance stratification summary figure"""
+    input:
+        chromsplit_top=f"{OUT_DIR}/merged.call-vs-dv.pass.chromsplit-top.png",
+        annot=f"{OUT_DIR}/merged.call-vs-dv.pass.chromsplit-annot.png" if annotation_inputs() else [],
+        giab=f"{OUT_DIR}/merged.call-vs-dv.pass.chromsplit-giab.png" if giab_strat_configured() else [],
+        scatter=f"{OUT_DIR}/merged.call-vs-dv.pass.chromsplit.png",
+    output:
+        f"{OUT_DIR}/5.concordance-summary.png",
+    params:
+        panels=lambda wc, input: " ".join(
+            [f"'Top Discordant Contigs:{input.chromsplit_top}'"]
+            + ([f"'FP/FN by Annotation:{input.annot}'"] if input.annot else [])
+            + ([f"'FP/FN by GIAB Region:{input.giab}'"] if input.giab else [])
+            + ([f"'Per-Contig FP vs FN:{input.scatter}'"])
+        ),
+    shell:
+        "python3 scripts/compose-summary.py"
+        " --output {output}"
+        " --title 'Call vs DeepVariant Concordance (PASS)'"
         " --cols 2"
         " --panels {params.panels}"
 
@@ -1998,7 +2020,7 @@ rule summary_pantree:
         af=f"{OUT_DIR}/{OUT_NAME}.pantree-af.png",
         density=f"{OUT_DIR}/pantree.density.png",
     output:
-        f"{OUT_DIR}/5.pantree-summary.png",
+        f"{OUT_DIR}/6.pantree-summary.png",
     shell:
         "python3 scripts/compose-summary.py"
         " --output {output}"
