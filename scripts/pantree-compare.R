@@ -80,10 +80,24 @@ save_png <- function(plot, file, width = 10, height = 7) {
 cat("Reading:", ours_path, "\n")
 dt_ours <- fread(ours_path)
 dt_ours[, source := ours_label]
+cat(ours_label, "read:", nrow(dt_ours), "records,", ncol(dt_ours), "columns\n")
+cat(ours_label, "columns:", paste(names(dt_ours), collapse = ", "), "\n")
+cat(ours_label, "CHROM samples:", paste(head(unique(dt_ours$CHROM), 5), collapse = ", "), "\n")
+if ("variant_type" %in% names(dt_ours)) {
+  cat(ours_label, "variant_type counts:\n")
+  print(dt_ours[, .N, by = variant_type][order(-N)])
+}
 
 cat("Reading:", pantree_path, "\n")
 dt_pt <- fread(pantree_path)
 dt_pt[, source := pantree_label]
+cat(pantree_label, "read:", nrow(dt_pt), "records,", ncol(dt_pt), "columns\n")
+cat(pantree_label, "columns:", paste(names(dt_pt), collapse = ", "), "\n")
+cat(pantree_label, "CHROM samples:", paste(head(unique(dt_pt$CHROM), 5), collapse = ", "), "\n")
+if ("variant_type" %in% names(dt_pt)) {
+  cat(pantree_label, "variant_type counts:\n")
+  print(dt_pt[, .N, by = variant_type][order(-N)])
+}
 
 # Ensure is_repeat is logical
 for (d in list(dt_ours, dt_pt)) {
@@ -105,27 +119,56 @@ normalize_chrom <- function(x) {
 dt_ours[, base_chrom := normalize_chrom(CHROM)]
 dt_pt[, base_chrom := normalize_chrom(CHROM)]
 
+cat(ours_label, "base_chrom samples:", paste(head(unique(dt_ours$base_chrom), 5), collapse = ", "), "\n")
+cat(pantree_label, "base_chrom samples:", paste(head(unique(dt_pt$base_chrom), 5), collapse = ", "), "\n")
+
 # Restrict to shared base chromosomes so the comparison is fair
 # (e.g. pantree may exclude chrY)
 shared_chroms <- intersect(unique(dt_ours$base_chrom), unique(dt_pt$base_chrom))
 n_ours_chroms <- uniqueN(dt_ours$base_chrom)
 n_pt_chroms   <- uniqueN(dt_pt$base_chrom)
+n_ours_before <- nrow(dt_ours)
+n_pt_before   <- nrow(dt_pt)
+
+cat("Shared base chroms:", length(shared_chroms), "of", n_ours_chroms, ours_label,
+    "and", n_pt_chroms, pantree_label, "\n")
+cat("Shared chroms:", paste(sort(shared_chroms), collapse = ", "), "\n")
 
 if (length(shared_chroms) < n_ours_chroms) {
   dropped <- setdiff(unique(dt_ours$base_chrom), shared_chroms)
   cat("Dropping", length(dropped), "base chromosomes from", ours_label,
-      "not in", pantree_label, ":", paste(dropped, collapse = ", "), "\n")
+      "not in", pantree_label, ":", paste(head(dropped, 20), collapse = ", "),
+      if (length(dropped) > 20) paste("... and", length(dropped) - 20, "more") else "", "\n")
   dt_ours <- dt_ours[base_chrom %in% shared_chroms]
 }
 if (length(shared_chroms) < n_pt_chroms) {
   dropped <- setdiff(unique(dt_pt$base_chrom), shared_chroms)
   cat("Dropping", length(dropped), "base chromosomes from", pantree_label,
-      "not in", ours_label, ":", paste(dropped, collapse = ", "), "\n")
+      "not in", ours_label, ":", paste(head(dropped, 20), collapse = ", "),
+      if (length(dropped) > 20) paste("... and", length(dropped) - 20, "more") else "", "\n")
   dt_pt <- dt_pt[base_chrom %in% shared_chroms]
 }
 
-cat(ours_label, ":", nrow(dt_ours), "records\n")
-cat(pantree_label, ":", nrow(dt_pt), "records\n")
+cat(ours_label, "after filter:", nrow(dt_ours), "of", n_ours_before, "records\n")
+cat(pantree_label, "after filter:", nrow(dt_pt), "of", n_pt_before, "records\n")
+
+# Write diagnostics to file for easy inspection
+diag_path <- paste0(prefix, ".pantree-diag.txt")
+sink(diag_path)
+cat(ours_label, "read:", n_ours_before, "records\n")
+cat(pantree_label, "read:", n_pt_before, "records\n")
+cat("Shared base chroms:", length(shared_chroms), "of", n_ours_chroms, ours_label,
+    "and", n_pt_chroms, pantree_label, "\n")
+cat("Shared:", paste(sort(shared_chroms), collapse = ", "), "\n")
+cat(ours_label, "after filter:", nrow(dt_ours), "of", n_ours_before, "\n")
+cat(pantree_label, "after filter:", nrow(dt_pt), "of", n_pt_before, "\n")
+# Per-type breakdown after filtering
+cat("\n", ours_label, "variant_type counts after filter:\n")
+print(dt_ours[, .N, by = variant_type][order(-N)])
+cat("\n", pantree_label, "variant_type counts after filter:\n")
+print(dt_pt[, .N, by = variant_type][order(-N)])
+sink()
+cat("Wrote diagnostics:", diag_path, "\n")
 
 # Variant type levels
 type_levels <- c("SNP", "MNP", "Insertion", "Deletion", "SV Insertion", "SV Deletion", "Other")
@@ -138,18 +181,22 @@ counts_pt   <- dt_pt[, .(count = .N), by = .(source, ref_context, variant_type)]
 counts_all  <- rbind(counts_ours, counts_pt)
 counts_all[, variant_type := factor(variant_type, levels = intersect(type_levels, unique(variant_type)))]
 
-fill_breaks <- c(paste0(ours_label, ".On-reference"), paste0(ours_label, ".Off-reference"),
+fill_levels <- c(paste0(ours_label, ".On-reference"), paste0(ours_label, ".Off-reference"),
                  paste0(pantree_label, ".On-reference"), paste0(pantree_label, ".Off-reference"))
+# Distinct color pairs: blue shades for ours, orange/red shades for pantree
 fill_values <- setNames(
-  c("steelblue", "coral", "dodgerblue3", "tomato3"), fill_breaks)
+  c("steelblue", "skyblue", "coral", "lightsalmon"), fill_levels)
 fill_labels <- setNames(
   c(paste(ours_label, "On-ref"), paste(ours_label, "Off-ref"),
-    paste(pantree_label, "On-ref"), paste(pantree_label, "Off-ref")), fill_breaks)
+    paste(pantree_label, "On-ref"), paste(pantree_label, "Off-ref")), fill_levels)
 
-p1 <- ggplot(counts_all, aes(x = variant_type, y = count, fill = interaction(source, ref_context))) +
+# Explicit factor with our desired bar order (source-grouped, not alphabetical)
+counts_all[, fill_var := factor(
+  paste0(source, ".", ref_context), levels = fill_levels)]
+
+p1 <- ggplot(counts_all, aes(x = variant_type, y = count, fill = fill_var)) +
   geom_col(position = position_dodge(width = 0.8), width = 0.7) +
   scale_fill_manual(
-    breaks = fill_breaks,
     values = fill_values,
     labels = fill_labels,
     name = NULL
@@ -173,10 +220,9 @@ save_png(p1, paste0(prefix, ".pantree-types.png"))
 counts_all[, total := sum(count), by = source]
 counts_all[, pct := 100 * count / total]
 
-p2 <- ggplot(counts_all, aes(x = variant_type, y = pct, fill = interaction(source, ref_context))) +
+p2 <- ggplot(counts_all, aes(x = variant_type, y = pct, fill = fill_var)) +
   geom_col(position = position_dodge(width = 0.8), width = 0.7) +
   scale_fill_manual(
-    breaks = fill_breaks,
     values = fill_values,
     labels = fill_labels,
     name = NULL
@@ -220,7 +266,7 @@ if (nrow(dt_indels) > 0) {
   if (nrow(dt_size) > 0) {
     p3 <- ggplot(dt_size, aes(x = size, y = count, color = source, linetype = direction)) +
       geom_line(linewidth = 0.7) +
-      scale_color_manual(values = setNames(c("steelblue", "tomato3"), c(ours_label, pantree_label))) +
+      scale_color_manual(values = setNames(c("steelblue", "coral"), c(ours_label, pantree_label))) +
       scale_y_continuous(labels = scales::comma) +
       facet_grid(ref_context ~ size_panel, scales = "free") +
       labs(title = title, subtitle = "Indel Size Distribution",
@@ -258,7 +304,7 @@ if (has_af_ours && has_af_pt) {
 
   p4 <- ggplot(af_counts, aes(x = af_bin, y = count, color = source, linetype = ref_context)) +
     geom_line(linewidth = 0.7) + geom_point(size = 1.5) +
-    scale_color_manual(values = setNames(c("steelblue", "tomato3"), c(ours_label, pantree_label))) +
+    scale_color_manual(values = setNames(c("steelblue", "coral"), c(ours_label, pantree_label))) +
     scale_y_log10(labels = scales::comma) +
     labs(title = title, subtitle = "Allele Frequency Spectrum",
          x = "Non-reference Allele Frequency", y = "Count (log scale)") +
