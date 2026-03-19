@@ -2021,7 +2021,6 @@ rule summary_pantree:
     input:
         variant_types=f"{OUT_DIR}/pantree.variant-types.png",
         pantree_types=f"{OUT_DIR}/{OUT_NAME}.pantree-types.png",
-        pantree_pct=f"{OUT_DIR}/{OUT_NAME}.pantree-types-pct.png",
         size_dist=f"{OUT_DIR}/{OUT_NAME}.pantree-size-dist.png",
         af=f"{OUT_DIR}/{OUT_NAME}.pantree-af.png",
         density=f"{OUT_DIR}/pantree.density.png",
@@ -2035,7 +2034,6 @@ rule summary_pantree:
         " --panels"
         " 'Pantree Variant Types:{input.variant_types}'"
         " 'Type Comparison:{input.pantree_types}'"
-        " 'Type Comparison (pct):{input.pantree_pct}'"
         " 'Size Distribution:{input.size_dist}'"
         " 'AF Spectrum:{input.af}'"
         " 'Density Ideogram:{input.density}'"
