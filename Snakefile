@@ -1752,6 +1752,8 @@ rule vcfeval_chromsplit_plot:
           if annotation_inputs() else []),
         *([ f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.chromsplit-giab.png"]
           if giab_strat_configured() else []),
+    resources:
+        mem_mb=32000,
     params:
         strip_prefix=f"{AUGREF}#0#",
         annot_arg=lambda wc, input: f"--annot {input.annot}" if annotation_inputs() else "",
@@ -1780,6 +1782,8 @@ rule vcfeval_chromsplit_squash_plot:
           if annotation_inputs() else []),
         *([ f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash.chromsplit-giab.png"]
           if giab_strat_configured() else []),
+    resources:
+        mem_mb=32000,
     params:
         strip_prefix=f"{AUGREF}#0#",
         annot_arg=lambda wc, input: f"--annot {input.annot}" if annotation_inputs() else "",

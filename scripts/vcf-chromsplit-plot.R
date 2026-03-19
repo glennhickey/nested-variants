@@ -235,10 +235,12 @@ if (!is.null(segs_file)) {
     contig_annots[, augref_path := NULL]
 
     dt_annot <- merge(dt_offref, contig_annots, by = "contig", allow.cartesian = TRUE)
+    rm(annot, annot_agg, contig_annots)
 
     if (nrow(dt_annot) > 0) {
       annot_sum <- dt_annot[, .(SNP_FP = sum(SNP_FP), SNP_FN = sum(SNP_FN)),
                             by = annotation]
+      rm(dt_annot)
       annot_bar <- melt(annot_sum, id.vars = "annotation",
                         measure.vars = c("SNP_FP", "SNP_FN"),
                         variable.name = "error_type", value.name = "count")
@@ -274,10 +276,13 @@ if (!is.null(segs_file)) {
 
     cat("GIAB stratification from", length(giab_bed_files), "BEDs\n")
 
-    # Write reference-space BED (ref_path, ref_start, ref_end, contig)
+    # Write reference-space BED for contigs in chromsplit data only
+    segs_used <- segs[contig %in% unique(dt$contig)]
+    cat("GIAB BED contigs:", nrow(segs_used), "of", nrow(segs), "segs\n")
     tmp_bed <- tempfile(fileext = ".bed")
-    fwrite(segs[, .(ref_path, ref_start, ref_end, contig)],
+    fwrite(segs_used[, .(ref_path, ref_start, ref_end, contig)],
            tmp_bed, sep = "\t", col.names = FALSE)
+    rm(segs_used)
     tmp_sorted <- tempfile(fileext = ".sorted.bed")
     system(sprintf("LC_ALL=C sort -k1,1 -k2,2n '%s' > '%s'", tmp_bed, tmp_sorted))
     unlink(tmp_bed)
