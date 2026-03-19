@@ -1871,7 +1871,7 @@ rule pantree_compare:
         "Rscript scripts/pantree-compare.R"
         " --ours {input.ours} --pantree {input.pantree}"
         " --prefix {OUT_DIR}/{OUT_NAME}"
-        " --title '{REF} vs Pantree'"
+        " --title 'Deconstruct vs Pantree'"
 
 rule pantree_density:
     """Pantree records TSV → chromosome density ideogram"""
