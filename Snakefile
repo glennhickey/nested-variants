@@ -982,14 +982,10 @@ rule giraffe:
         " --local"
 
 rule call:
-    """GAM → VCF (vg call)
-    Note: unlike surject (which filters at vg level via -F), call runs vg call
-    on all contigs and filters the VCF output post-hoc via bcftools view -T.
-    This avoids changing genotyping results from restricting input paths."""
+    """GAM → VCF (vg call on all augref contigs, unfiltered)"""
     input:
         gam=f"{OUT_DIR}/{{sample}}.gam",
         gbz=f"{OUT_DIR}/{OUT_NAME}.gbz",
-        paths=f"{OUT_DIR}/{OUT_NAME}.filtered-paths.txt" if surject_filtering() else [],
     output:
         f"{OUT_DIR}/{{sample}}.vcf.gz",
     threads: rule_cpus("call", 128)
@@ -998,7 +994,6 @@ rule call:
         runtime=rule_runtime("call"),
     params:
         mem_gb=rule_mem_gb("call", 512),
-        filter_arg=lambda wc, input: f"--filter-contigs {input.paths}" if surject_filtering() else "",
     shell:
         "scripts/call.sh"
         " --gbz {input.gbz}"
@@ -1007,9 +1002,29 @@ rule call:
         " --sample {wildcards.sample}"
         " --out-dir {OUT_DIR}"
         " --out-name {wildcards.sample}.vcf.gz"
-        " {params.filter_arg}"
         " --cpus {threads} --mem {params.mem_gb}gb"
         " --local"
+
+rule filter_call_vcf:
+    """Filter call VCF to contigs >= min_surject_len (for DV comparison)"""
+    input:
+        vcf=f"{OUT_DIR}/{{sample}}.vcf.gz",
+        paths=f"{OUT_DIR}/{OUT_NAME}.filtered-paths.txt",
+    output:
+        f"{OUT_DIR}/{{sample}}.filtered.vcf.gz",
+    resources:
+        mem_mb=8000,
+        runtime=60,
+    params:
+        strip_prefix=f"{AUGREF}#0#",
+    shell:
+        "awk -v prefix='{params.strip_prefix}' -v OFS='\\t'"
+        " '{{sub(prefix, \"\"); print $0, 1, 2147483647}}'"
+        " {input.paths} > {output}.targets.tmp"
+        " && bcftools view -T {output}.targets.tmp {input.vcf}"
+        " | bgzip > {output}"
+        " && tabix -fp vcf {output}"
+        " && rm -f {output}.targets.tmp"
 
 rule surject:
     """GAM → sorted BAM"""
@@ -1443,7 +1458,7 @@ rule vcfeval_per_sample:
     It is idempotent: only renames CHROMs that lack the prefix.
     """
     input:
-        call_vcf=f"{OUT_DIR}/{{sample}}.vcf.gz",
+        call_vcf=f"{OUT_DIR}/{{sample}}.filtered.vcf.gz" if surject_filtering() else f"{OUT_DIR}/{{sample}}.vcf.gz",
         dv_vcf=f"{OUT_DIR}/{{sample}}.deepvariant.vcf.gz",
         ref=f"{OUT_DIR}/{OUT_NAME}.fa.gz",
         paths=f"{OUT_DIR}/{OUT_NAME}.filtered-paths.txt" if surject_filtering() else [],
@@ -1565,7 +1580,7 @@ rule vcfeval_per_sample_squash:
     When filt=pass, both VCFs are pre-filtered to PASS before comparison.
     """
     input:
-        call_vcf=f"{OUT_DIR}/{{sample}}.vcf.gz",
+        call_vcf=f"{OUT_DIR}/{{sample}}.filtered.vcf.gz" if surject_filtering() else f"{OUT_DIR}/{{sample}}.vcf.gz",
         dv_vcf=f"{OUT_DIR}/{{sample}}.deepvariant.vcf.gz",
         ref=f"{OUT_DIR}/{OUT_NAME}.fa.gz",
         paths=f"{OUT_DIR}/{OUT_NAME}.filtered-paths.txt" if surject_filtering() else [],
