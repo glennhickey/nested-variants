@@ -243,6 +243,8 @@ if (length(multi_idx) > 0) {
   dt[multi_idx, c("size", "size_signed") := {
     res <- vapply(seq_len(.N), function(i) {
       alts <- unlist(strsplit(ALT[i], ","))
+      alts <- alts[alts != "*"]  # drop spanning deletion alleles
+      if (length(alts) == 0) return(c(NA_real_, NA_real_))
       diffs <- nchar(alts) - ref_len[i]
       idx <- which.max(abs(diffs))
       c(abs(diffs[idx]), diffs[idx])
