@@ -72,21 +72,19 @@ cat("Per-sample types:", nrow(ps), "rows,", n_samples, "samples\n")
 # Compute mean per-sample counts for three metrics
 mean_counts <- ps[, .(mean_count = mean(count)), by = .(ref_context, variant_type)]
 
-# Define the three bar metrics
-offref_snp  <- mean_counts[ref_context == "Off-reference" & variant_type == "SNP", mean_count]
-onref_snp   <- mean_counts[ref_context == "On-reference"  & variant_type == "SNP", mean_count]
-onref_sv    <- sum(mean_counts[ref_context == "On-reference" &
-                               variant_type %in% c("SV Insertion", "SV Deletion"), mean_count])
-offref_sv   <- sum(mean_counts[ref_context == "Off-reference" &
-                               variant_type %in% c("SV Insertion", "SV Deletion"), mean_count])
+# Define bar metrics: off-ref SNPs, off-ref indels, on-ref SVs
+offref_snp   <- mean_counts[ref_context == "Off-reference" & variant_type == "SNP", mean_count]
+offref_indel <- sum(mean_counts[ref_context == "Off-reference" &
+                                variant_type %in% c("Insertion", "Deletion"), mean_count])
+onref_sv     <- sum(mean_counts[ref_context == "On-reference" &
+                                variant_type %in% c("SV Insertion", "SV Deletion"), mean_count])
 
-if (length(offref_snp) == 0) offref_snp <- 0
-if (length(onref_snp) == 0)  onref_snp  <- 0
+if (length(offref_snp) == 0)   offref_snp   <- 0
+if (length(offref_indel) == 0) offref_indel <- 0
 
 cat("Mean per sample — Off-ref SNPs:", round(offref_snp),
-    "  On-ref SNPs:", round(onref_snp),
-    "  On-ref SVs:", round(onref_sv),
-    "  Off-ref SVs:", round(offref_sv), "\n")
+    "  Off-ref Indels:", round(offref_indel),
+    "  On-ref SVs:", round(onref_sv), "\n")
 
 # ---------------------------------------------------------------------------
 # Build bar data with annotation stacking
@@ -97,24 +95,22 @@ annot_colors <- c("genes" = "forestgreen", "repeats" = "orange",
 annot_order  <- c("genes", "repeats", "segdups", "censat", "Other")
 
 # Define bar categories
-bar_cats <- c("Off-ref SNPs", "On-ref SNPs", "On-ref SVs", "Off-ref SVs")
+bar_cats <- c("Off-ref SNPs", "Off-ref Indels", "On-ref SVs")
 
 if (!is.null(annot_path) && file.exists(annot_path)) {
   annot <- fread(annot_path)
   cat("Annotation-exclusive:", nrow(annot), "rows\n")
 
-  # Compute proportions per (ref_context, variant_type_group)
   # Map variant_type to our bar categories
   annot[, bar_cat := fifelse(
     ref_context == "Off-reference" & variant_type == "SNP", "Off-ref SNPs",
-    fifelse(ref_context == "On-reference" & variant_type == "SNP", "On-ref SNPs",
+    fifelse(ref_context == "Off-reference" & variant_type %in% c("Insertion", "Deletion"), "Off-ref Indels",
     fifelse(ref_context == "On-reference" & variant_type %in% c("SV Insertion", "SV Deletion"), "On-ref SVs",
-    fifelse(ref_context == "Off-reference" & variant_type %in% c("SV Insertion", "SV Deletion"), "Off-ref SVs",
-    NA_character_))))]
+    NA_character_)))]
 
   annot <- annot[!is.na(bar_cat)]
 
-  # Aggregate by bar_cat × annotation
+  # Aggregate by bar_cat x annotation
   annot_agg <- annot[, .(count = sum(count),
                          ts = sum(ts, na.rm = TRUE),
                          tv = sum(tv, na.rm = TRUE)),
@@ -127,7 +123,7 @@ if (!is.null(annot_path) && file.exists(annot_path)) {
   # Mean per-sample count for each bar_cat
   bar_totals <- data.table(
     bar_cat = bar_cats,
-    mean_total = c(offref_snp, onref_snp, onref_sv, offref_sv))
+    mean_total = c(offref_snp, offref_indel, onref_sv))
 
   annot_agg <- merge(annot_agg, bar_totals, by = "bar_cat")
   annot_agg[, bar_value := prop * mean_total]
@@ -146,7 +142,7 @@ if (!is.null(annot_path) && file.exists(annot_path)) {
   plot_dt <- data.table(
     bar_cat = bar_cats,
     annotation = factor("Other", levels = "Other"),
-    bar_value = c(offref_snp, onref_snp, onref_sv, offref_sv),
+    bar_value = c(offref_snp, offref_indel, onref_sv),
     tstv_ratio = NA_real_)
 }
 
