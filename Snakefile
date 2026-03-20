@@ -1986,7 +1986,7 @@ rule call_summary_panel:
         " --min-sv-size {params.min_sv_size}"
         " {params.annot_arg}"
         " --output {output}"
-        " --title '{REF} vg call'"
+        " --title 'Off-reference genotyping'"
 
 rule summary_call:
     """Compose vg call genotyping summary figure"""
