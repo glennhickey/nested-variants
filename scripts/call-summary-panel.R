@@ -19,10 +19,12 @@ suppressPackageStartupMessages({
 })
 
 args <- commandArgs(trailingOnly = TRUE)
-ps_path    <- NULL
-annot_path <- NULL
-output     <- NULL
-title      <- "vg call Summary"
+ps_path     <- NULL
+annot_path  <- NULL
+vcf_path    <- NULL
+min_sv_size <- 50L
+output      <- NULL
+title       <- "vg call Summary"
 
 i <- 1
 while (i <= length(args)) {
@@ -30,6 +32,10 @@ while (i <= length(args)) {
     ps_path <- args[i + 1]; i <- i + 2
   } else if (args[i] == "--annot" && i + 1 <= length(args)) {
     annot_path <- args[i + 1]; i <- i + 2
+  } else if (args[i] == "--vcf" && i + 1 <= length(args)) {
+    vcf_path <- args[i + 1]; i <- i + 2
+  } else if (args[i] == "--min-sv-size" && i + 1 <= length(args)) {
+    min_sv_size <- as.integer(args[i + 1]); i <- i + 2
   } else if (args[i] == "--output" && i + 1 <= length(args)) {
     output <- args[i + 1]; i <- i + 2
   } else if (args[i] == "--title" && i + 1 <= length(args)) {
@@ -76,11 +82,43 @@ mean_counts <- ps[, .(mean_count = mean(count)), by = .(ref_context, variant_typ
 offref_snp   <- mean_counts[ref_context == "Off-reference" & variant_type == "SNP", mean_count]
 offref_indel <- sum(mean_counts[ref_context == "Off-reference" &
                                 variant_type %in% c("Insertion", "Deletion"), mean_count])
-onref_sv     <- sum(mean_counts[ref_context == "On-reference" &
-                                variant_type %in% c("SV Insertion", "SV Deletion"), mean_count])
 
 if (length(offref_snp) == 0)   offref_snp   <- 0
 if (length(offref_indel) == 0) offref_indel <- 0
+
+# On-ref SV count: use VCF with size threshold if --vcf given, else per-sample-types.tsv
+if (!is.null(vcf_path)) {
+  cat("Computing on-ref SVs from VCF (size >=", min_sv_size, "bp):", vcf_path, "\n")
+  # Read CHROM, REF, ALT and per-sample GTs; filter PASS; keep on-ref only
+  sv_cmd <- sprintf(
+    "bcftools view -f PASS '%s' 2>/dev/null | bcftools query -f '%%CHROM\\t%%REF\\t%%ALT[\\t%%GT]\\n' 2>/dev/null",
+    vcf_path)
+  sv_raw <- fread(cmd = sv_cmd, header = FALSE)
+  # First 3 cols are CHROM, REF, ALT; rest are sample GTs
+  sv_chrom <- sv_raw[[1]]
+  sv_ref   <- sv_raw[[2]]
+  sv_alt   <- sv_raw[[3]]
+  # On-ref: CHROM does NOT end in _NNN_alt
+  is_onref <- !grepl("_[0-9]+_alt$", sv_chrom)
+  # Size: max allele size difference
+  sv_size <- abs(nchar(sv_alt) - nchar(sv_ref))
+  is_sv <- is_onref & sv_size >= min_sv_size
+  cat("On-ref sites with size >=", min_sv_size, ":", sum(is_sv), "of", sum(is_onref), "on-ref sites\n")
+  if (sum(is_sv) > 0) {
+    gt_cols <- 4:ncol(sv_raw)
+    sample_names <- ps[, unique(sample)]
+    sv_per_sample <- vapply(gt_cols, function(col) {
+      sum(grepl("[1-9]", sv_raw[[col]][is_sv]))
+    }, numeric(1))
+    onref_sv <- mean(sv_per_sample)
+  } else {
+    onref_sv <- 0
+  }
+  cat("Mean on-ref SVs per sample (size >=", min_sv_size, "):", round(onref_sv), "\n")
+} else {
+  onref_sv <- sum(mean_counts[ref_context == "On-reference" &
+                               variant_type %in% c("SV Insertion", "SV Deletion"), mean_count])
+}
 
 cat("Mean per sample — Off-ref SNPs:", round(offref_snp),
     "  Off-ref Indels:", round(offref_indel),

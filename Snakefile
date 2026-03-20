@@ -1972,14 +1972,18 @@ rule call_summary_panel:
     """Per-sample call summary: annotation-stacked bars with Ts/Tv"""
     input:
         per_sample=f"{OUT_DIR}/merged.call.sites.pass.per-sample-types.tsv",
+        vcf=f"{OUT_DIR}/merged.call.vcf.gz",
         annot=[f"{OUT_DIR}/merged.call.sites.pass.annot-exclusive.tsv"] if annotation_inputs() else [],
     output:
         f"{OUT_DIR}/merged.call.sites.pass.call-summary-panel.png",
     params:
         annot_arg=lambda wc, input: f"--annot {input.annot[0]}" if input.annot else "",
+        min_sv_size=config.get("min_surject_len", 50),
     shell:
         "Rscript scripts/call-summary-panel.R"
         " --per-sample {input.per_sample}"
+        " --vcf {input.vcf}"
+        " --min-sv-size {params.min_sv_size}"
         " {params.annot_arg}"
         " --output {output}"
         " --title '{REF} vg call'"
