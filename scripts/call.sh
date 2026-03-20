@@ -160,7 +160,7 @@ VCF="${OUTPUT_DIR}/${OUTPUT_NAME}"
 PACK="${OUTPUT_DIR}/${OUTPUT_NAME%.vcf.gz}.pack"
 
 # Build the command to run
-CMD="set -eo pipefail; /usr/bin/time -v vg pack -x \"${GBZ}\" -g \"${GAM}\" -o \"${PACK}\" -t ${CPUS} && \\
+CMD="set -eo pipefail; /usr/bin/time -v vg pack -x \"${GBZ}\" -g \"${GAM}\" -Q 5 -o \"${PACK}\" -t ${CPUS} && \\
 /usr/bin/time -v vg call \"${GBZ}\" -k \"${PACK}\" -z -a -A -S ${REF} -s ${SAMPLE} -t ${CPUS} | bgzip > \"${VCF}\" && \\
 tabix -fp vcf \"${VCF}\""
 
