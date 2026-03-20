@@ -194,11 +194,11 @@ plot_dt[, bar_cat := factor(bar_cat, levels = rev(intersect(bar_cats, bar_keep))
 # Build the plot
 # ---------------------------------------------------------------------------
 
-# Label for each segment: Ts/Tv for SNP bars, nothing for SV bars
+# Label for each segment: Ts/Tv only for SNP bars
 plot_dt[, label := fifelse(
   !is.na(tstv_ratio) & bar_value > 0 & grepl("SNP", bar_cat),
-  paste0(scales::comma(round(bar_value)), "\nTs/Tv=", tstv_ratio),
-  fifelse(bar_value > 0, scales::comma(round(bar_value)), ""))]
+  paste0("Ts/Tv=", tstv_ratio),
+  "")]
 
 # Suppress labels for very small segments (< 5% of bar total)
 bar_totals_dt <- plot_dt[, .(total = sum(bar_value)), by = bar_cat]
