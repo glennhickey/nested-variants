@@ -1978,7 +1978,7 @@ rule call_summary_panel:
         f"{OUT_DIR}/merged.call.sites.pass.call-summary-panel.png",
     params:
         annot_arg=lambda wc, input: f"--annot {input.annot[0]}" if input.annot else "",
-        min_sv_size=config.get("min_surject_len", 50),
+        min_sv_size=config.get("min_augref_len", 50),
     shell:
         "Rscript scripts/call-summary-panel.R"
         " --per-sample {input.per_sample}"
