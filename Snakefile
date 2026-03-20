@@ -1333,7 +1333,8 @@ rule merged_call_stats:
         f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.size-dist-log.png",
         f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.af-spectrum.png",
         *([ f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.variant-types-by-annot.png",
-            f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv"]
+            f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv",
+            f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.annot-exclusive.tsv"]
           if annotation_inputs() else []),
         *([ f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.giab-strat.png",
             f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.giab-strat.tsv"]
@@ -1952,11 +1953,28 @@ rule summary_deconstruct:
         " --cols 2"
         " --panels {params.panels}"
 
+rule call_summary_panel:
+    """Per-sample call summary: annotation-stacked bars with Ts/Tv"""
+    input:
+        per_sample=f"{OUT_DIR}/merged.call.sites.pass.per-sample-types.tsv",
+        annot=[f"{OUT_DIR}/merged.call.sites.pass.annot-exclusive.tsv"] if annotation_inputs() else [],
+    output:
+        f"{OUT_DIR}/merged.call.sites.pass.call-summary-panel.png",
+    params:
+        annot_arg=lambda wc, input: f"--annot {input.annot[0]}" if input.annot else "",
+    shell:
+        "Rscript scripts/call-summary-panel.R"
+        " --per-sample {input.per_sample}"
+        " {params.annot_arg}"
+        " --output {output}"
+        " --title '{REF} vg call'"
+
 rule summary_call:
     """Compose vg call genotyping summary figure"""
     input:
         variant_types=f"{OUT_DIR}/merged.call.sites.pass.variant-types.png",
         per_sample=f"{OUT_DIR}/merged.call.sites.pass.per-sample-types.png",
+        call_panel=[f"{OUT_DIR}/merged.call.sites.pass.call-summary-panel.png"] if SAMPLES else [],
         giab_strat=[f"{OUT_DIR}/merged.call.sites.pass.giab-strat.png"] if giab_strat_configured() else [],
         giab_per_sample=[f"{OUT_DIR}/merged.call.sites.pass.per-sample-giab-strat.png"] if giab_strat_configured() else [],
         annot_snp=[f"{OUT_DIR}/merged.call.annot-snp-tstv.pass.png"] if annotation_inputs() else [],
@@ -1966,6 +1984,7 @@ rule summary_call:
         panels=lambda wc, input: " ".join(
             [f"'Variant Types (PASS):{input.variant_types}'",
              f"'Per-Sample Types (PASS):{input.per_sample}'"]
+            + ([f"'Call Summary:{input.call_panel[0]}'"] if input.call_panel else [])
             + ([f"'GIAB Stratification:{input.giab_strat[0]}'"] if input.giab_strat else [])
             + ([f"'Per-Sample GIAB:{input.giab_per_sample[0]}'"] if input.giab_per_sample else [])
             + ([f"'SNP Ts/Tv by Annotation:{input.annot_snp[0]}'"] if input.annot_snp else [])

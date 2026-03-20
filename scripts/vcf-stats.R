@@ -655,6 +655,29 @@ if (!is.null(annot_beds)) {
   }
 }
 
+# Exclusive annotation assignment for stacked-bar summary panel.
+# Each variant is assigned to exactly one annotation (priority: last in list wins).
+if (length(anames) > 0) {
+  dt[, annot_exclusive := "Other"]
+  for (k in seq_along(anames)) {
+    col <- paste0(anames[k], "_hit")
+    if (col %in% names(dt)) dt[get(col) == TRUE, annot_exclusive := anames[k]]
+  }
+  annot_excl_counts <- dt[, .(count = .N), by = .(ref_context, variant_type, annot_exclusive)]
+  # Ts/Tv per exclusive annotation for SNPs
+  if ("tstv" %in% names(dt)) {
+    annot_excl_tstv <- dt[variant_type == "SNP" & !is.na(tstv),
+                          .(ts = sum(tstv == "Ts"), tv = sum(tstv == "Tv")),
+                          by = .(ref_context, annot_exclusive)]
+    annot_excl_tstv[tv > 0, tstv_ratio := round(ts / tv, 2)]
+    annot_excl_counts <- merge(annot_excl_counts, annot_excl_tstv,
+                               by = c("ref_context", "annot_exclusive"), all.x = TRUE)
+  }
+  excl_path <- paste0(prefix, ".annot-exclusive.tsv")
+  fwrite(annot_excl_counts, excl_path, sep = "\t")
+  cat("Wrote exclusive annotation summary:", excl_path, "\n")
+}
+
 # ---------------------------------------------------------------------------
 # Plot 5: GIAB genome stratification (standalone, when --giab-strat-beds)
 # ---------------------------------------------------------------------------
