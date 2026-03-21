@@ -870,12 +870,16 @@ if (per_sample) {
       multi_idx_gt <- which(is_multi_gt)
       if (length(multi_idx_gt) > 0) {
         gt_dt[multi_idx_gt, c("size", "size_signed") := {
-          res <- sapply(seq_len(.N), function(i) {
+          res <- vapply(seq_len(.N), function(i) {
             alts <- unlist(strsplit(ALT[i], ","))
+            alts <- alts[!is.na(alts) & nzchar(alts) & alts != "*" & alts != "."]
+            if (length(alts) == 0) return(c(NA_real_, NA_real_))
             diffs <- nchar(alts) - ref_len[i]
             idx <- which.max(abs(diffs))
+            if (length(idx) == 0) return(c(NA_real_, NA_real_))
             c(abs(diffs[idx]), diffs[idx])
-          })
+          }, numeric(2))
+          if (is.null(dim(res))) res <- matrix(res, nrow = 2)
           list(res[1,], res[2,])
         }]
       }
