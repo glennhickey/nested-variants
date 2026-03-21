@@ -659,7 +659,7 @@ if (!is.null(annot_beds)) {
 
 # Exclusive annotation assignment for stacked-bar summary panel.
 # Each variant is assigned to exactly one annotation (priority: last in list wins).
-if (length(anames) > 0) {
+if (exists("anames") && length(anames) > 0) {
   dt[, annot_exclusive := "Other"]
   for (k in seq_along(anames)) {
     col <- paste0(anames[k], "_hit")
