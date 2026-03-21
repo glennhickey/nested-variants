@@ -100,8 +100,13 @@ if (!is.null(vcf_path)) {
   sv_alt   <- sv_raw[[3]]
   # On-ref: CHROM does NOT end in _NNN_alt
   is_onref <- !grepl("_[0-9]+_alt$", sv_chrom)
-  # Size: max allele size difference
-  sv_size <- abs(nchar(sv_alt) - nchar(sv_ref))
+  # Size: max allele size difference (handle multi-allelic comma-separated ALTs)
+  sv_size <- vapply(seq_along(sv_alt), function(i) {
+    alts <- unlist(strsplit(sv_alt[i], ","))
+    alts <- alts[alts != "*" & alts != "."]
+    if (length(alts) == 0) return(0L)
+    max(abs(nchar(alts) - nchar(sv_ref[i])))
+  }, integer(1))
   is_sv <- is_onref & sv_size >= min_sv_size
   cat("On-ref sites with size >=", min_sv_size, ":", sum(is_sv), "of", sum(is_onref), "on-ref sites\n")
   if (sum(is_sv) > 0) {
