@@ -95,7 +95,7 @@ if (!is.null(vcf_path)) {
     vcf_path)
   sv_raw <- fread(cmd = sv_cmd, header = FALSE)
   if (nrow(sv_raw) == 0) {
-    onref_sv <- 0
+    onref_sv_ins <- 0; onref_sv_del <- 0
     cat("No indels found in VCF\n")
   } else {
   sv_chrom <- sv_raw[[1]]
@@ -103,42 +103,44 @@ if (!is.null(vcf_path)) {
   sv_alt   <- sv_raw[[3]]
   # On-ref: CHROM does NOT end in _NNN_alt
   is_onref <- !grepl("_[0-9]+_alt$", sv_chrom)
-  # Fast path: biallelic (no comma) — compute size directly
+  # Fast path: biallelic (no comma) — compute signed size directly
   is_multi <- grepl(",", sv_alt, fixed = TRUE)
-  sv_size <- integer(length(sv_alt))
-  sv_size[!is_multi] <- abs(nchar(sv_alt[!is_multi]) - nchar(sv_ref[!is_multi]))
-  # Slow path: multi-allelic only
+  sv_size_signed <- integer(length(sv_alt))
+  sv_size_signed[!is_multi] <- nchar(sv_alt[!is_multi]) - nchar(sv_ref[!is_multi])
+  # Slow path: multi-allelic — use largest allele
   multi_idx <- which(is_multi)
   if (length(multi_idx) > 0) {
-    sv_size[multi_idx] <- vapply(multi_idx, function(i) {
+    sv_size_signed[multi_idx] <- vapply(multi_idx, function(i) {
       alts <- unlist(strsplit(sv_alt[i], ","))
-      alts <- alts[alts != "*" & alts != "."]
+      alts <- alts[!is.na(alts) & nzchar(alts) & alts != "*" & alts != "."]
       if (length(alts) == 0) return(0L)
-      max(abs(nchar(alts) - nchar(sv_ref[i])))
+      diffs <- nchar(alts) - nchar(sv_ref[i])
+      diffs[which.max(abs(diffs))]
     }, integer(1))
   }
+  sv_size <- abs(sv_size_signed)
   is_sv <- is_onref & sv_size >= min_sv_size
-  cat("On-ref sites with size >=", min_sv_size, ":", sum(is_sv), "of", sum(is_onref), "on-ref sites\n")
-  if (sum(is_sv) > 0) {
-    gt_cols <- 4:ncol(sv_raw)
-    sample_names <- ps[, unique(sample)]
-    sv_per_sample <- vapply(gt_cols, function(col) {
-      sum(grepl("[1-9]", sv_raw[[col]][is_sv]))
-    }, numeric(1))
-    onref_sv <- mean(sv_per_sample)
-  } else {
-    onref_sv <- 0
-  }
-  cat("Mean on-ref SVs per sample (size >=", min_sv_size, "):", round(onref_sv), "\n")
+  is_sv_ins <- is_sv & sv_size_signed > 0
+  is_sv_del <- is_sv & sv_size_signed < 0
+  cat("On-ref SVs >=", min_sv_size, "bp:", sum(is_sv), "(", sum(is_sv_ins), "ins,", sum(is_sv_del), "del )\n")
+  gt_cols <- 4:ncol(sv_raw)
+  if (sum(is_sv_ins) > 0) {
+    onref_sv_ins <- mean(vapply(gt_cols, function(col) sum(grepl("[1-9]", sv_raw[[col]][is_sv_ins])), numeric(1)))
+  } else { onref_sv_ins <- 0 }
+  if (sum(is_sv_del) > 0) {
+    onref_sv_del <- mean(vapply(gt_cols, function(col) sum(grepl("[1-9]", sv_raw[[col]][is_sv_del])), numeric(1)))
+  } else { onref_sv_del <- 0 }
+  cat("Mean per sample — On-ref SV Ins:", round(onref_sv_ins), "  On-ref SV Del:", round(onref_sv_del), "\n")
   } # end else (sv_raw has rows)
 } else {
-  onref_sv <- sum(mean_counts[ref_context == "On-reference" &
-                               variant_type %in% c("SV Insertion", "SV Deletion"), mean_count])
+  onref_sv_ins <- sum(mean_counts[ref_context == "On-reference" & variant_type == "SV Insertion", mean_count])
+  onref_sv_del <- sum(mean_counts[ref_context == "On-reference" & variant_type == "SV Deletion", mean_count])
 }
 
 cat("Mean per sample — Off-ref SNPs:", round(offref_snp),
     "  Off-ref Indels:", round(offref_indel),
-    "  On-ref SVs:", round(onref_sv), "\n")
+    "  On-ref SV Ins:", round(onref_sv_ins),
+    "  On-ref SV Del:", round(onref_sv_del), "\n")
 
 # ---------------------------------------------------------------------------
 # Build bar data with annotation stacking
@@ -149,7 +151,7 @@ annot_colors <- c("genes" = "forestgreen", "repeats" = "orange",
 annot_order  <- c("genes", "repeats", "segdups", "censat", "Other")
 
 # Define bar categories
-bar_cats <- c("Off-ref SNPs", "Off-ref Indels", "On-ref SVs")
+bar_cats <- c("Off-ref SNPs", "Off-ref Indels", "On-ref SV Ins", "On-ref SV Del")
 
 if (!is.null(annot_path) && file.exists(annot_path)) {
   annot <- fread(annot_path)
@@ -159,8 +161,9 @@ if (!is.null(annot_path) && file.exists(annot_path)) {
   annot[, bar_cat := fifelse(
     ref_context == "Off-reference" & variant_type == "SNP", "Off-ref SNPs",
     fifelse(ref_context == "Off-reference" & variant_type %in% c("Insertion", "Deletion"), "Off-ref Indels",
-    fifelse(ref_context == "On-reference" & variant_type %in% c("SV Insertion", "SV Deletion"), "On-ref SVs",
-    NA_character_)))]
+    fifelse(ref_context == "On-reference" & variant_type == "SV Insertion", "On-ref SV Ins",
+    fifelse(ref_context == "On-reference" & variant_type == "SV Deletion", "On-ref SV Del",
+    NA_character_))))]
 
   annot <- annot[!is.na(bar_cat)]
 
@@ -177,7 +180,7 @@ if (!is.null(annot_path) && file.exists(annot_path)) {
   # Mean per-sample count for each bar_cat
   bar_totals <- data.table(
     bar_cat = bar_cats,
-    mean_total = c(offref_snp, offref_indel, onref_sv))
+    mean_total = c(offref_snp, offref_indel, onref_sv_ins, onref_sv_del))
 
   annot_agg <- merge(annot_agg, bar_totals, by = "bar_cat")
   annot_agg[, bar_value := prop * mean_total]
@@ -196,7 +199,7 @@ if (!is.null(annot_path) && file.exists(annot_path)) {
   plot_dt <- data.table(
     bar_cat = bar_cats,
     annotation = factor("Other", levels = "Other"),
-    bar_value = c(offref_snp, offref_indel, onref_sv),
+    bar_value = c(offref_snp, offref_indel, onref_sv_ins, onref_sv_del),
     tstv_ratio = NA_real_)
 }
 
