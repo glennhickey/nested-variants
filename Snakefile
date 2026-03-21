@@ -1976,6 +1976,9 @@ rule call_summary_panel:
         annot=[f"{OUT_DIR}/merged.call.sites.pass.annot-exclusive.tsv"] if annotation_inputs() else [],
     output:
         f"{OUT_DIR}/merged.call.sites.pass.call-summary-panel.png",
+    resources:
+        mem_mb=32000,
+        runtime=120,
     params:
         annot_arg=lambda wc, input: f"--annot {input.annot[0]}" if input.annot else "",
         min_sv_size=config.get("min_augref_len", 50),

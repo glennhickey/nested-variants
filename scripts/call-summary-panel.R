@@ -89,24 +89,34 @@ if (length(offref_indel) == 0) offref_indel <- 0
 # On-ref SV count: use VCF with size threshold if --vcf given, else per-sample-types.tsv
 if (!is.null(vcf_path)) {
   cat("Computing on-ref SVs from VCF (size >=", min_sv_size, "bp):", vcf_path, "\n")
-  # Read CHROM, REF, ALT and per-sample GTs; filter PASS; keep on-ref only
+  # Pre-filter to indels only (skip SNPs/MNPs) and PASS, then read CHROM/REF/ALT/GTs
   sv_cmd <- sprintf(
-    "bcftools view -f PASS '%s' 2>/dev/null | bcftools query -f '%%CHROM\\t%%REF\\t%%ALT[\\t%%GT]\\n' 2>/dev/null",
+    "bcftools view -f PASS -v indels '%s' 2>/dev/null | bcftools query -f '%%CHROM\\t%%REF\\t%%ALT[\\t%%GT]\\n' 2>/dev/null",
     vcf_path)
   sv_raw <- fread(cmd = sv_cmd, header = FALSE)
-  # First 3 cols are CHROM, REF, ALT; rest are sample GTs
+  if (nrow(sv_raw) == 0) {
+    onref_sv <- 0
+    cat("No indels found in VCF\n")
+  } else {
   sv_chrom <- sv_raw[[1]]
   sv_ref   <- sv_raw[[2]]
   sv_alt   <- sv_raw[[3]]
   # On-ref: CHROM does NOT end in _NNN_alt
   is_onref <- !grepl("_[0-9]+_alt$", sv_chrom)
-  # Size: max allele size difference (handle multi-allelic comma-separated ALTs)
-  sv_size <- vapply(seq_along(sv_alt), function(i) {
-    alts <- unlist(strsplit(sv_alt[i], ","))
-    alts <- alts[alts != "*" & alts != "."]
-    if (length(alts) == 0) return(0L)
-    max(abs(nchar(alts) - nchar(sv_ref[i])))
-  }, integer(1))
+  # Fast path: biallelic (no comma) — compute size directly
+  is_multi <- grepl(",", sv_alt, fixed = TRUE)
+  sv_size <- integer(length(sv_alt))
+  sv_size[!is_multi] <- abs(nchar(sv_alt[!is_multi]) - nchar(sv_ref[!is_multi]))
+  # Slow path: multi-allelic only
+  multi_idx <- which(is_multi)
+  if (length(multi_idx) > 0) {
+    sv_size[multi_idx] <- vapply(multi_idx, function(i) {
+      alts <- unlist(strsplit(sv_alt[i], ","))
+      alts <- alts[alts != "*" & alts != "."]
+      if (length(alts) == 0) return(0L)
+      max(abs(nchar(alts) - nchar(sv_ref[i])))
+    }, integer(1))
+  }
   is_sv <- is_onref & sv_size >= min_sv_size
   cat("On-ref sites with size >=", min_sv_size, ":", sum(is_sv), "of", sum(is_onref), "on-ref sites\n")
   if (sum(is_sv) > 0) {
@@ -120,6 +130,7 @@ if (!is.null(vcf_path)) {
     onref_sv <- 0
   }
   cat("Mean on-ref SVs per sample (size >=", min_sv_size, "):", round(onref_sv), "\n")
+  } # end else (sv_raw has rows)
 } else {
   onref_sv <- sum(mean_counts[ref_context == "On-reference" &
                                variant_type %in% c("SV Insertion", "SV Deletion"), mean_count])
