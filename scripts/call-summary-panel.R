@@ -117,7 +117,9 @@ if (!is.null(vcf_path)) {
       alts <- alts[!is.na(alts) & nzchar(alts) & alts != "*" & alts != "."]
       if (length(alts) == 0) return(0L)
       diffs <- nchar(alts) - nchar(sv_ref[i])
-      diffs[which.max(abs(diffs))]
+      idx <- which.max(abs(diffs))
+      if (length(idx) == 0) return(0L)
+      diffs[idx]
     }, integer(1))
   }
   sv_size <- abs(sv_size_signed)
