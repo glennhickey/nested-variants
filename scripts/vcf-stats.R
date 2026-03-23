@@ -738,11 +738,13 @@ if (!is.null(giab_strat_beds_arg)) {
     }
   }
 
-  # Write variant BED and sort
+  # Write variant BED and sort (filter invalid records: start must be < end, both >= 0)
   tmp_bed <- tempfile(fileext = ".sorted.bed")
   tmp_unsorted_giab <- tempfile(fileext = ".bed")
-  fwrite(dt[, .(giab_chrom, giab_start, giab_end)],
-         tmp_unsorted_giab, sep = "\t", col.names = FALSE)
+  valid_bed <- dt[giab_start >= 0 & giab_end > giab_start, .(giab_chrom, giab_start, giab_end)]
+  n_invalid <- nrow(dt) - nrow(valid_bed)
+  if (n_invalid > 0) cat("Skipping", n_invalid, "variants with invalid BED coordinates for GIAB\n")
+  fwrite(valid_bed, tmp_unsorted_giab, sep = "\t", col.names = FALSE)
   system(sprintf("LC_ALL=C sort -k1,1 -k2,2n '%s' > '%s'", tmp_unsorted_giab, tmp_bed))
   unlink(tmp_unsorted_giab)
 
@@ -1045,8 +1047,10 @@ if (per_sample) {
         # Write variant BED from gt_dt
         tmp_bed_ps <- tempfile(fileext = ".sorted.bed")
         tmp_unsorted_ps <- tempfile(fileext = ".bed")
-        fwrite(gt_dt[, .(giab_chrom, giab_start, giab_end)],
-               tmp_unsorted_ps, sep = "\t", col.names = FALSE)
+        valid_bed_ps <- gt_dt[giab_start >= 0 & giab_end > giab_start, .(giab_chrom, giab_start, giab_end)]
+        n_invalid_ps <- nrow(gt_dt) - nrow(valid_bed_ps)
+        if (n_invalid_ps > 0) cat("Skipping", n_invalid_ps, "per-sample variants with invalid BED coords\n")
+        fwrite(valid_bed_ps, tmp_unsorted_ps, sep = "\t", col.names = FALSE)
         system(sprintf("LC_ALL=C sort -k1,1 -k2,2n '%s' > '%s'", tmp_unsorted_ps, tmp_bed_ps))
         unlink(tmp_unsorted_ps)
 
