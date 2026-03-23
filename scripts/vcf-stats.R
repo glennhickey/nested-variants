@@ -795,7 +795,7 @@ if (!is.null(giab_strat_beds_arg)) {
       geom_col(position = "dodge", width = 0.7) +
       scale_fill_manual(values = region_colors, name = "GIAB Region") +
       scale_y_continuous(labels = scales::comma) +
-      facet_wrap(~ ref_context) +
+      facet_wrap(~ ref_context, scales = "free_y") +
       labs(title = title,
            subtitle = paste0("GIAB Genome Stratification ", mode_label, filter_label),
            x = "Variant Type", y = "Count") +
@@ -1151,7 +1151,7 @@ if (per_sample) {
               scale_fill_manual(values = region_colors_ps, name = "GIAB Region") +
               scale_color_manual(values = region_colors_ps, name = "GIAB Region") +
               scale_y_continuous(labels = scales::comma) +
-              facet_wrap(~ ref_context) +
+              facet_wrap(~ ref_context, scales = "free_y") +
               labs(title = title,
                    subtitle = paste0("Per-Sample GIAB Stratification ", mode_label, filter_label,
                                      " (N=", n_samples, " samples, bars=mean)"),
@@ -1170,7 +1170,7 @@ if (per_sample) {
                            outlier.size = 1) +
               scale_fill_manual(values = region_colors_ps, name = "GIAB Region") +
               scale_y_continuous(labels = scales::comma) +
-              facet_wrap(~ ref_context) +
+              facet_wrap(~ ref_context, scales = "free_y") +
               labs(title = title,
                    subtitle = paste0("Per-Sample GIAB Stratification ", mode_label, filter_label,
                                      " (N=", n_samples, " samples)"),
