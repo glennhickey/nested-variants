@@ -438,6 +438,7 @@ rule all:
         # per-sample genotyping outputs
         expand("{out}/{s}.vcf.gz", out=OUT_DIR, s=SAMPLES),
         expand("{out}/{s}.call-offref.png", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.contig-depth.png", out=OUT_DIR, s=SAMPLES),
         expand("{out}/{s}.call.sites.{filt}.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.call.sites.{filt}.variant-types.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.call.sites.{filt}.size-dist.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
@@ -987,7 +988,8 @@ rule call:
         gam=f"{OUT_DIR}/{{sample}}.gam",
         gbz=f"{OUT_DIR}/{OUT_NAME}.gbz",
     output:
-        f"{OUT_DIR}/{{sample}}.vcf.gz",
+        vcf=f"{OUT_DIR}/{{sample}}.vcf.gz",
+        pack=f"{OUT_DIR}/{{sample}}.pack",
     threads: rule_cpus("call", 128)
     resources:
         mem_mb=rule_mem_gb("call", 512) * 1024,
@@ -1004,6 +1006,38 @@ rule call:
         " --out-name {wildcards.sample}.vcf.gz"
         " --cpus {threads} --mem {params.mem_gb}gb"
         " --local"
+
+rule contig_depth:
+    """Pack + GBZ → per-contig mean depth TSV"""
+    input:
+        pack=f"{OUT_DIR}/{{sample}}.pack",
+        gbz=f"{OUT_DIR}/{OUT_NAME}.gbz",
+    output:
+        f"{OUT_DIR}/{{sample}}.contig-depth.tsv",
+    threads: 4
+    resources:
+        mem_mb=16000,
+        runtime=60,
+    shell:
+        "vg depth -k {input.pack} -b 1000000000 -t {threads} {input.gbz}"
+        " > {output}"
+
+rule contig_depth_plot:
+    """Per-sample augref contig depth scatter plot"""
+    input:
+        depth=f"{OUT_DIR}/{{sample}}.contig-depth.tsv",
+        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
+    output:
+        f"{OUT_DIR}/{{sample}}.contig-depth.png",
+    resources:
+        mem_mb=4000,
+        runtime=30,
+    shell:
+        "Rscript scripts/contig-depth-plot.R"
+        " --depth {input.depth}"
+        " --segs {input.segs}"
+        " --sample {wildcards.sample}"
+        " --output {output}"
 
 rule filter_call_vcf:
     """Filter call VCF to contigs >= min_surject_len (for DV comparison)"""
