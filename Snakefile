@@ -1040,6 +1040,40 @@ rule contig_depth_plot:
         " --sample {wildcards.sample}"
         " --output {output}"
 
+rule bam_contig_depth:
+    """Surjected BAM → per-contig depth TSV (samtools coverage)"""
+    input:
+        f"{OUT_DIR}/{{sample}}.bam",
+    output:
+        f"{OUT_DIR}/{{sample}}.bam-depth.tsv",
+    resources:
+        mem_mb=4000,
+        runtime=60,
+    shell:
+        "samtools coverage {input} > {output}"
+
+rule contig_depth_summary:
+    """Averaged pack + BAM depth across all samples → two-panel scatter"""
+    input:
+        pack_depths=expand("{out}/{s}.contig-depth.tsv", out=OUT_DIR, s=SAMPLES),
+        bam_depths=expand("{out}/{s}.bam-depth.tsv", out=OUT_DIR, s=SAMPLES),
+        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
+    output:
+        f"{OUT_DIR}/contig-depth-summary.png",
+    resources:
+        mem_mb=8000,
+        runtime=30,
+    params:
+        pack_arg=lambda wc, input: "--pack-depths " + ",".join(input.pack_depths),
+        bam_arg=lambda wc, input: "--bam-depths " + ",".join(input.bam_depths),
+    shell:
+        "Rscript scripts/contig-depth-summary.R"
+        " {params.pack_arg}"
+        " {params.bam_arg}"
+        " --segs {input.segs}"
+        " --output {output}"
+        " --title '{REF} Augref Contig Read Depth'"
+
 rule filter_call_vcf:
     """Filter call VCF to contigs >= min_surject_len (for DV comparison)"""
     input:
@@ -2118,21 +2152,13 @@ rule summary_concordance_onref:
         " 'Top Concordant On-Ref:{input.concordant}'"
 
 rule summary_coverage:
-    """Compose per-sample augref contig depth summary figure"""
+    """Averaged contig depth summary: pack vs BAM"""
     input:
-        expand("{out}/{s}.contig-depth.png", out=OUT_DIR, s=SAMPLES),
+        f"{OUT_DIR}/contig-depth-summary.png",
     output:
         f"{OUT_DIR}/5c.coverage-summary.png",
-    params:
-        panels=lambda wc, input: " ".join(
-            [f"'{{s}}:{p}'" for s, p in zip(SAMPLES, input)]
-        ),
     shell:
-        "python3 scripts/compose-summary.py"
-        " --output {output}"
-        " --title 'Augref Contig Read Depth'"
-        " --cols 2"
-        " --panels {params.panels}"
+        "cp {input} {output}"
 
 rule summary_pantree:
     """Compose pantree comparison summary figure"""
