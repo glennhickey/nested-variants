@@ -1017,8 +1017,8 @@ rule contig_depth:
         f"{OUT_DIR}/{{sample}}.contig-depth.tsv",
     threads: 4
     resources:
-        mem_mb=16000,
-        runtime=60,
+        mem_mb=256000,
+        runtime=120,
     shell:
         "vg depth -k {input.pack} -b 1000000000 -t {threads} {input.gbz}"
         " > {output}"
