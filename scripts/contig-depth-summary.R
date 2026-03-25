@@ -23,6 +23,7 @@ bam_paths  <- NULL
 segs_path  <- NULL
 output     <- NULL
 title      <- "Augref Contig Read Depth"
+depth_cap  <- 60
 
 i <- 1
 while (i <= length(args)) {
@@ -36,6 +37,8 @@ while (i <= length(args)) {
     output <- args[i + 1]; i <- i + 2
   } else if (args[i] == "--title" && i + 1 <= length(args)) {
     title <- args[i + 1]; i <- i + 2
+  } else if (args[i] == "--depth-cap" && i + 1 <= length(args)) {
+    depth_cap <- as.numeric(args[i + 1]); i <- i + 2
   } else {
     i <- i + 1
   }
@@ -181,7 +184,10 @@ base_theme <- theme_minimal() +
     strip.text = element_text(face = "bold", size = 10)
   )
 
-# --- Panel 1: Scatter plots (length vs depth) ---
+source_colors <- c("Graph (vg pack)" = "steelblue", "Linear (surject)" = "coral")
+sub_label <- paste0("Mean across ", n_samples, " samples  |  dashed = backbone")
+
+# --- Row 1: Uncapped scatter (length vs depth) ---
 p_scatter <- ggplot(plot_dt, aes(x = length, y = mean_depth)) +
   geom_point(aes(shape = covered), alpha = 0.6, size = 1.5, color = "steelblue") +
   scale_shape_manual(values = c("TRUE" = 16, "FALSE" = 4),
@@ -192,59 +198,73 @@ p_scatter <- ggplot(plot_dt, aes(x = length, y = mean_depth)) +
   facet_wrap(~ source, scales = "free_y") +
   scale_x_log10(labels = scales::comma) +
   scale_y_continuous(labels = scales::comma) +
-  labs(title = "Contig Length vs Mean Depth",
-       subtitle = paste0("Mean across ", n_samples, " samples  |  dashed = backbone"),
+  labs(title = "Contig Length vs Mean Depth (uncapped)",
+       subtitle = sub_label,
        x = "Contig Length (bp)", y = "Mean Read Depth") +
   base_theme
 
-# --- Panels 2 & 3: Cumulative coverage curves ---
-# Build cumulative data: for each depth threshold x, count contigs/bases with depth >= x
-source_colors <- c("Graph (vg pack)" = "steelblue", "Linear (surject)" = "coral")
+# --- Row 2: Capped scatter (depth clamped to depth_cap) ---
+plot_dt[, capped_depth := pmin(mean_depth, depth_cap)]
+ref_lines_capped <- copy(ref_lines)
+ref_lines_capped[, ref_depth := pmin(ref_depth, depth_cap)]
 
-# Generate thresholds from 0 to max depth
-max_depth <- max(plot_dt$mean_depth, na.rm = TRUE)
-thresholds <- seq(0, ceiling(max_depth), by = max(0.5, round(max_depth / 100, 1)))
+p_scatter_cap <- ggplot(plot_dt, aes(x = length, y = capped_depth)) +
+  geom_point(aes(shape = covered), alpha = 0.6, size = 1.5, color = "steelblue") +
+  scale_shape_manual(values = c("TRUE" = 16, "FALSE" = 4),
+                     labels = c("TRUE" = "Covered", "FALSE" = "No reads"),
+                     name = NULL) +
+  geom_hline(data = ref_lines_capped, aes(yintercept = ref_depth),
+             linetype = "dashed", color = "grey40") +
+  facet_wrap(~ source, scales = "free_y") +
+  scale_x_log10(labels = scales::comma) +
+  scale_y_continuous(labels = scales::comma) +
+  labs(title = paste0("Contig Length vs Mean Depth (capped at ", depth_cap, "x)"),
+       subtitle = sub_label,
+       x = "Contig Length (bp)", y = "Mean Read Depth") +
+  base_theme
+
+# --- Row 3: Cumulative coverage curves (capped) ---
+thresholds <- seq(0, depth_cap, by = max(0.5, round(depth_cap / 100, 1)))
 
 cum_data <- rbindlist(lapply(thresholds, function(thresh) {
-  plot_dt[, .(n_contigs = sum(mean_depth >= thresh),
-              n_bases = sum(length[mean_depth >= thresh])),
+  plot_dt[, .(n_contigs = sum(capped_depth >= thresh),
+              n_bases = sum(length[capped_depth >= thresh])),
           by = source][, threshold := thresh]
 }))
 
-# Contigs >= x
 p_contigs <- ggplot(cum_data, aes(x = threshold, y = n_contigs, color = source)) +
   geom_line(linewidth = 0.8) +
   scale_color_manual(values = source_colors, name = NULL) +
   scale_x_continuous(labels = scales::comma) +
   scale_y_continuous(labels = scales::comma) +
-  labs(title = "Contigs with Depth >= x",
+  labs(title = paste0("Contigs with Depth >= x (cap ", depth_cap, "x)"),
        x = "Depth Threshold (x)", y = "Number of Contigs") +
   base_theme +
   theme(legend.position = "bottom")
 
-# Bases >= x
 p_bases <- ggplot(cum_data, aes(x = threshold, y = n_bases, color = source)) +
   geom_line(linewidth = 0.8) +
   scale_color_manual(values = source_colors, name = NULL) +
   scale_x_continuous(labels = scales::comma) +
   scale_y_continuous(labels = scales::comma) +
-  labs(title = "Bases with Depth >= x",
+  labs(title = paste0("Bases with Depth >= x (cap ", depth_cap, "x)"),
        x = "Depth Threshold (x)", y = "Number of Bases (bp)") +
   base_theme +
   theme(legend.position = "bottom")
 
-# --- Arrange 2x2 grid ---
-# Use gridExtra if available, otherwise save scatter only
+# --- Arrange 3x2 grid ---
 if (requireNamespace("gridExtra", quietly = TRUE)) {
   g <- gridExtra::arrangeGrob(
-    p_scatter, gridExtra::arrangeGrob(p_contigs, p_bases, ncol = 2),
-    nrow = 2, heights = c(1, 1),
+    p_scatter,
+    p_scatter_cap,
+    gridExtra::arrangeGrob(p_contigs, p_bases, ncol = 2),
+    nrow = 3, heights = c(1, 1, 1),
     top = grid::textGrob(title, gp = grid::gpar(fontsize = 14, fontface = "bold"))
   )
   # Use grid.draw for grobs (print() just dumps text description)
   tryCatch({
     if (requireNamespace("ragg", quietly = TRUE)) {
-      ragg::agg_png(output, width = 12, height = 9, units = "in", res = 300)
+      ragg::agg_png(output, width = 12, height = 13, units = "in", res = 300)
     } else {
       grDevices::png(output, width = 12 * 300, height = 9 * 300, res = 300, type = "cairo")
     }

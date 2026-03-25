@@ -1072,6 +1072,7 @@ rule contig_depth_summary:
         " {params.bam_arg}"
         " --segs {input.segs}"
         " --output {output}"
+        " --depth-cap 60"
         " --title '{REF} Augref Contig Read Depth'"
 
 rule filter_call_vcf:
