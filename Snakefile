@@ -1020,7 +1020,7 @@ rule contig_depth:
         mem_mb=256000,
         runtime=120,
     shell:
-        "vg depth -k {input.pack} -b 1000000000 -t {threads} {input.gbz}"
+        "vg depth -k {input.pack} -b 1000000000 -P {AUGREF} -t {threads} {input.gbz}"
         " > {output}"
 
 rule contig_depth_plot:
