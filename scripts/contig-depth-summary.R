@@ -18,12 +18,14 @@ suppressPackageStartupMessages({
 })
 
 args <- commandArgs(trailingOnly = TRUE)
-pack_paths <- NULL
-bam_paths  <- NULL
-segs_path  <- NULL
-output     <- NULL
-title      <- "Augref Contig Read Depth"
-depth_cap  <- 60
+pack_paths      <- NULL
+bam_paths       <- NULL
+bam_q5_paths    <- NULL
+segs_path       <- NULL
+output          <- NULL
+title           <- "Augref Contig Read Depth"
+depth_cap       <- 60
+min_surject_len <- 0
 
 i <- 1
 while (i <= length(args)) {
@@ -31,6 +33,8 @@ while (i <= length(args)) {
     pack_paths <- strsplit(args[i + 1], ",")[[1]]; i <- i + 2
   } else if (args[i] == "--bam-depths" && i + 1 <= length(args)) {
     bam_paths <- strsplit(args[i + 1], ",")[[1]]; i <- i + 2
+  } else if (args[i] == "--bam-q5-depths" && i + 1 <= length(args)) {
+    bam_q5_paths <- strsplit(args[i + 1], ",")[[1]]; i <- i + 2
   } else if (args[i] == "--segs" && i + 1 <= length(args)) {
     segs_path <- args[i + 1]; i <- i + 2
   } else if (args[i] == "--output" && i + 1 <= length(args)) {
@@ -39,6 +43,8 @@ while (i <= length(args)) {
     title <- args[i + 1]; i <- i + 2
   } else if (args[i] == "--depth-cap" && i + 1 <= length(args)) {
     depth_cap <- as.numeric(args[i + 1]); i <- i + 2
+  } else if (args[i] == "--min-surject-len" && i + 1 <= length(args)) {
+    min_surject_len <- as.integer(args[i + 1]); i <- i + 2
   } else {
     i <- i + 1
   }
@@ -154,6 +160,17 @@ if (!is.null(bam_paths) && length(bam_paths) > 0) {
   panels[["bam"]] <- list(dt = bam_merged, ref_depth = ref_depth_bam, n_covered = n_covered_bam)
 }
 
+# ---------------------------------------------------------------------------
+# Read BAM Q5 depths (MAPQ >= 5 filtered)
+# ---------------------------------------------------------------------------
+if (!is.null(bam_q5_paths) && length(bam_q5_paths) > 0) {
+  bam_q5_avg <- read_bam_depths(bam_q5_paths)
+  bam_q5_merged <- merge(segs, bam_q5_avg, by = "augref_path", all.x = TRUE)
+  bam_q5_merged[is.na(mean_depth), mean_depth := 0]
+  n_covered_q5 <- sum(bam_q5_merged$mean_depth > 0)
+  cat("BAM Q5:", n_covered_q5, "of", nrow(bam_q5_merged), "contigs covered\n")
+}
+
 if (length(panels) == 0) {
   cat("No depth data provided.\n")
   file.create(output)
@@ -232,39 +249,93 @@ cum_data <- rbindlist(lapply(thresholds, function(thresh) {
           by = source][, threshold := thresh]
 }))
 
-p_contigs <- ggplot(cum_data, aes(x = threshold, y = n_contigs, color = source)) +
+p_contigs <- ggplot(cum_data[n_contigs > 0], aes(x = threshold, y = n_contigs, color = source)) +
   geom_line(linewidth = 0.8) +
   scale_color_manual(values = source_colors, name = NULL) +
   scale_x_continuous(labels = scales::comma) +
-  scale_y_continuous(labels = scales::comma) +
+  scale_y_log10(labels = scales::comma) +
   labs(title = paste0("Contigs with Depth >= x (cap ", depth_cap, "x)"),
-       x = "Depth Threshold (x)", y = "Number of Contigs") +
+       x = "Depth Threshold (x)", y = "Number of Contigs (log)") +
   base_theme +
   theme(legend.position = "bottom")
 
-p_bases <- ggplot(cum_data, aes(x = threshold, y = n_bases, color = source)) +
+p_bases <- ggplot(cum_data[n_bases > 0], aes(x = threshold, y = n_bases, color = source)) +
   geom_line(linewidth = 0.8) +
   scale_color_manual(values = source_colors, name = NULL) +
   scale_x_continuous(labels = scales::comma) +
-  scale_y_continuous(labels = scales::comma) +
+  scale_y_log10(labels = scales::comma) +
   labs(title = paste0("Bases with Depth >= x (cap ", depth_cap, "x)"),
-       x = "Depth Threshold (x)", y = "Number of Bases (bp)") +
+       x = "Depth Threshold (x)", y = "Number of Bases (log)") +
   base_theme +
   theme(legend.position = "bottom")
 
-# --- Arrange 3x2 grid ---
+# --- Row 4: Matched-filter comparison ---
+# Pack filtered to >= min_surject_len vs BAM with MAPQ >= 5
+matched_panels <- list()
+if (!is.null(bam_q5_paths) && length(bam_q5_paths) > 0 &&
+    !is.null(pack_paths) && length(pack_paths) > 0 && min_surject_len > 0) {
+
+  # Pack: filter to contigs >= min_surject_len
+  pack_filt <- panels[["pack"]]$dt[length >= min_surject_len]
+  pack_filt[, capped_depth := pmin(mean_depth, depth_cap)]
+  pack_filt[, source := paste0("Graph (>= ", min_surject_len, "bp)")]
+
+  # BAM Q5
+  bam_q5_merged[, capped_depth := pmin(mean_depth, depth_cap)]
+  bam_q5_merged[, source := "Linear (MAPQ >= 5)"]
+
+  matched_dt <- rbind(
+    pack_filt[, .(source, length, capped_depth)],
+    bam_q5_merged[, .(source, length, capped_depth)])
+
+  matched_colors <- setNames(c("steelblue", "coral"),
+                             c(pack_filt$source[1], bam_q5_merged$source[1]))
+
+  cum_matched <- rbindlist(lapply(thresholds, function(thresh) {
+    matched_dt[, .(n_contigs = sum(capped_depth >= thresh),
+                   n_bases = sum(length[capped_depth >= thresh])),
+               by = source][, threshold := thresh]
+  }))
+
+  p_matched_contigs <- ggplot(cum_matched[n_contigs > 0], aes(x = threshold, y = n_contigs, color = source)) +
+    geom_line(linewidth = 0.8) +
+    scale_color_manual(values = matched_colors, name = NULL) +
+    scale_x_continuous(labels = scales::comma) +
+    scale_y_log10(labels = scales::comma) +
+    labs(title = "Contigs >= x (matched filters)",
+         x = "Depth Threshold (x)", y = "Number of Contigs (log)") +
+    base_theme + theme(legend.position = "bottom")
+
+  p_matched_bases <- ggplot(cum_matched[n_bases > 0], aes(x = threshold, y = n_bases, color = source)) +
+    geom_line(linewidth = 0.8) +
+    scale_color_manual(values = matched_colors, name = NULL) +
+    scale_x_continuous(labels = scales::comma) +
+    scale_y_log10(labels = scales::comma) +
+    labs(title = "Bases >= x (matched filters)",
+         x = "Depth Threshold (x)", y = "Number of Bases (log)") +
+    base_theme + theme(legend.position = "bottom")
+
+  matched_panels <- list(gridExtra::arrangeGrob(p_matched_contigs, p_matched_bases, ncol = 2))
+  cat("Matched comparison: pack >=", min_surject_len, "bp vs BAM MAPQ>=5\n")
+}
+
+# --- Arrange grid ---
 if (requireNamespace("gridExtra", quietly = TRUE)) {
-  g <- gridExtra::arrangeGrob(
+  rows <- list(
     p_scatter,
     p_scatter_cap,
-    gridExtra::arrangeGrob(p_contigs, p_bases, ncol = 2),
-    nrow = 3, heights = c(1, 1, 1),
+    gridExtra::arrangeGrob(p_contigs, p_bases, ncol = 2))
+  if (length(matched_panels) > 0) rows <- c(rows, matched_panels)
+  n_rows <- length(rows)
+  g <- gridExtra::arrangeGrob(
+    grobs = rows,
+    nrow = n_rows, heights = rep(1, n_rows),
     top = grid::textGrob(title, gp = grid::gpar(fontsize = 14, fontface = "bold"))
   )
   # Use grid.draw for grobs (print() just dumps text description)
   tryCatch({
     if (requireNamespace("ragg", quietly = TRUE)) {
-      ragg::agg_png(output, width = 12, height = 13, units = "in", res = 300)
+      ragg::agg_png(output, width = 12, height = 4 * n_rows + 1, units = "in", res = 300)
     } else {
       grDevices::png(output, width = 12 * 300, height = 9 * 300, res = 300, type = "cairo")
     }

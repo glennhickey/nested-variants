@@ -1052,11 +1052,24 @@ rule bam_contig_depth:
     shell:
         "samtools coverage {input} > {output}"
 
+rule bam_contig_depth_q5:
+    """Surjected BAM → per-contig depth TSV with MAPQ >= 5 filter"""
+    input:
+        f"{OUT_DIR}/{{sample}}.bam",
+    output:
+        f"{OUT_DIR}/{{sample}}.bam-depth-q5.tsv",
+    resources:
+        mem_mb=4000,
+        runtime=60,
+    shell:
+        "samtools coverage -q 5 {input} > {output}"
+
 rule contig_depth_summary:
-    """Averaged pack + BAM depth across all samples → two-panel scatter"""
+    """Averaged pack + BAM depth across all samples → multi-panel summary"""
     input:
         pack_depths=expand("{out}/{s}.contig-depth.tsv", out=OUT_DIR, s=SAMPLES),
         bam_depths=expand("{out}/{s}.bam-depth.tsv", out=OUT_DIR, s=SAMPLES),
+        bam_q5_depths=expand("{out}/{s}.bam-depth-q5.tsv", out=OUT_DIR, s=SAMPLES),
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
     output:
         f"{OUT_DIR}/contig-depth-summary.png",
@@ -1066,13 +1079,17 @@ rule contig_depth_summary:
     params:
         pack_arg=lambda wc, input: "--pack-depths " + ",".join(input.pack_depths),
         bam_arg=lambda wc, input: "--bam-depths " + ",".join(input.bam_depths),
+        bam_q5_arg=lambda wc, input: "--bam-q5-depths " + ",".join(input.bam_q5_depths),
+        min_surject_len=config.get("min_surject_len", 0),
     shell:
         "Rscript scripts/contig-depth-summary.R"
         " {params.pack_arg}"
         " {params.bam_arg}"
+        " {params.bam_q5_arg}"
         " --segs {input.segs}"
         " --output {output}"
         " --depth-cap 60"
+        " --min-surject-len {params.min_surject_len}"
         " --title '{REF} Augref Contig Read Depth'"
 
 rule filter_call_vcf:
