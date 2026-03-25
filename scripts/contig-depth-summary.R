@@ -241,7 +241,21 @@ if (requireNamespace("gridExtra", quietly = TRUE)) {
     nrow = 2, heights = c(1, 1),
     top = grid::textGrob(title, gp = grid::gpar(fontsize = 14, fontface = "bold"))
   )
-  save_png(g, output, width = 12, height = 9)
+  # Use grid.draw for grobs (print() just dumps text description)
+  tryCatch({
+    if (requireNamespace("ragg", quietly = TRUE)) {
+      ragg::agg_png(output, width = 12, height = 9, units = "in", res = 300)
+    } else {
+      grDevices::png(output, width = 12 * 300, height = 9 * 300, res = 300, type = "cairo")
+    }
+    grid::grid.draw(g)
+    dev.off()
+  }, error = function(e) {
+    grDevices::png(output, width = 12 * 300, height = 9 * 300, res = 300, type = "cairo")
+    grid::grid.draw(g)
+    dev.off()
+  })
+  cat("Saved:", output, "\n")
 } else {
   # Fallback: scatter only
   p_scatter <- p_scatter + labs(title = title)
