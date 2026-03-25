@@ -401,6 +401,7 @@ def summary_figure_outputs():
         outputs.append(f"{OUT_DIR}/5.concordance-summary.png")
         outputs.append(f"{OUT_DIR}/5b.concordance-onref-summary.png")
         outputs.append(f"{OUT_DIR}/5c.coverage-summary.png")
+        outputs.append(f"{OUT_DIR}/5d.mapq-summary.png")
     if config.get("pantree_vcf", ""):
         outputs.append(f"{OUT_DIR}/6.pantree-summary.png")
     return outputs
@@ -2221,6 +2222,15 @@ rule summary_coverage:
         f"{OUT_DIR}/contig-depth-summary.png",
     output:
         f"{OUT_DIR}/5c.coverage-summary.png",
+    shell:
+        "cp {input} {output}"
+
+rule summary_mapq:
+    """MAPQ distribution summary: GAM vs BAM"""
+    input:
+        f"{OUT_DIR}/mapq-dist.png",
+    output:
+        f"{OUT_DIR}/5d.mapq-summary.png",
     shell:
         "cp {input} {output}"
 
