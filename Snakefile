@@ -1040,6 +1040,52 @@ rule contig_depth_plot:
         " --sample {wildcards.sample}"
         " --output {output}"
 
+rule gam_mapq:
+    """GAM → annotated MAPQ distribution TSV (on-ref vs off-ref)"""
+    input:
+        gam=f"{OUT_DIR}/{{sample}}.gam",
+        gbz=f"{OUT_DIR}/{OUT_NAME}.gbz",
+    output:
+        f"{OUT_DIR}/{{sample}}.gam-mapq.tsv",
+    threads: rule_cpus("gam_mapq", 16)
+    resources:
+        mem_mb=rule_mem_gb("gam_mapq", 64) * 1024,
+        runtime=rule_runtime("gam_mapq", 480),
+    shell:
+        "vg annotate -a {input.gam} -x {input.gbz} -p -m -t {threads}"
+        " | vg view -aj -"
+        " | python3 scripts/extract-mapq.py --mode gam --output {output}"
+
+rule bam_mapq:
+    """BAM → MAPQ distribution TSV (on-ref vs off-ref)"""
+    input:
+        f"{OUT_DIR}/{{sample}}.bam",
+    output:
+        f"{OUT_DIR}/{{sample}}.bam-mapq.tsv",
+    resources:
+        mem_mb=4000,
+        runtime=60,
+    shell:
+        "samtools view -F 4 {input} | cut -f3,5"
+        " | python3 scripts/extract-mapq.py --mode bam --output {output}"
+
+rule mapq_dist_plot:
+    """MAPQ distribution summary: GAM vs BAM, on-ref vs off-ref"""
+    input:
+        gam_mapq=expand("{out}/{s}.gam-mapq.tsv", out=OUT_DIR, s=SAMPLES),
+        bam_mapq=expand("{out}/{s}.bam-mapq.tsv", out=OUT_DIR, s=SAMPLES),
+    output:
+        f"{OUT_DIR}/mapq-dist.png",
+    params:
+        gam_arg=lambda wc, input: "--gam-mapq " + ",".join(input.gam_mapq),
+        bam_arg=lambda wc, input: "--bam-mapq " + ",".join(input.bam_mapq),
+    shell:
+        "Rscript scripts/mapq-dist-plot.R"
+        " {params.gam_arg}"
+        " {params.bam_arg}"
+        " --output {output}"
+        " --title '{REF} Mapping Quality Distribution'"
+
 rule bam_contig_depth:
     """Surjected BAM → per-contig depth TSV (samtools coverage)"""
     input:
