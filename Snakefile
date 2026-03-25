@@ -400,6 +400,7 @@ def summary_figure_outputs():
         outputs.append(f"{OUT_DIR}/4.deepvariant-summary.png")
         outputs.append(f"{OUT_DIR}/5.concordance-summary.png")
         outputs.append(f"{OUT_DIR}/5b.concordance-onref-summary.png")
+        outputs.append(f"{OUT_DIR}/5c.coverage-summary.png")
     if config.get("pantree_vcf", ""):
         outputs.append(f"{OUT_DIR}/6.pantree-summary.png")
     return outputs
@@ -2115,6 +2116,23 @@ rule summary_concordance_onref:
         " --panels"
         " 'Top Discordant On-Ref:{input.discordant}'"
         " 'Top Concordant On-Ref:{input.concordant}'"
+
+rule summary_coverage:
+    """Compose per-sample augref contig depth summary figure"""
+    input:
+        expand("{out}/{s}.contig-depth.png", out=OUT_DIR, s=SAMPLES),
+    output:
+        f"{OUT_DIR}/5c.coverage-summary.png",
+    params:
+        panels=lambda wc, input: " ".join(
+            [f"'{{s}}:{p}'" for s, p in zip(SAMPLES, input)]
+        ),
+    shell:
+        "python3 scripts/compose-summary.py"
+        " --output {output}"
+        " --title 'Augref Contig Read Depth'"
+        " --cols 2"
+        " --panels {params.panels}"
 
 rule summary_pantree:
     """Compose pantree comparison summary figure"""
