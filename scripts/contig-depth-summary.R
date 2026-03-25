@@ -158,7 +158,7 @@ if (length(panels) == 0) {
 }
 
 # ---------------------------------------------------------------------------
-# Build combined plot
+# Build combined 4-panel plot
 # ---------------------------------------------------------------------------
 n_samples_pack <- if (!is.null(pack_paths)) length(pack_paths) else 0
 n_samples_bam  <- if (!is.null(bam_paths))  length(bam_paths)  else 0
@@ -167,13 +167,22 @@ n_samples <- max(n_samples_pack, n_samples_bam)
 plot_dt <- rbindlist(lapply(panels, function(p) p$dt), fill = TRUE)
 plot_dt[, covered := mean_depth > 0]
 
-# Build subtitle per facet
 ref_lines <- rbindlist(lapply(names(panels), function(nm) {
   p <- panels[[nm]]
   data.table(source = p$dt$source[1], ref_depth = p$ref_depth)
 }))
 
-p <- ggplot(plot_dt, aes(x = length, y = mean_depth)) +
+base_theme <- theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 11),
+    plot.subtitle = element_text(hjust = 0.5, size = 9),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background  = element_rect(fill = "white", color = NA),
+    strip.text = element_text(face = "bold", size = 10)
+  )
+
+# --- Panel 1: Scatter plots (length vs depth) ---
+p_scatter <- ggplot(plot_dt, aes(x = length, y = mean_depth)) +
   geom_point(aes(shape = covered), alpha = 0.6, size = 1.5, color = "steelblue") +
   scale_shape_manual(values = c("TRUE" = 16, "FALSE" = 4),
                      labels = c("TRUE" = "Covered", "FALSE" = "No reads"),
@@ -183,18 +192,60 @@ p <- ggplot(plot_dt, aes(x = length, y = mean_depth)) +
   facet_wrap(~ source, scales = "free_y") +
   scale_x_log10(labels = scales::comma) +
   scale_y_continuous(labels = scales::comma) +
-  labs(title = title,
-       subtitle = paste0("Mean across ", n_samples, " samples  |  dashed line = backbone depth"),
-       x = "Contig Length (bp)",
-       y = "Mean Read Depth") +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(hjust = 0.5, face = "bold"),
-    plot.subtitle = element_text(hjust = 0.5),
-    panel.background = element_rect(fill = "white", color = NA),
-    plot.background  = element_rect(fill = "white", color = NA),
-    strip.text = element_text(face = "bold", size = 11)
-  )
+  labs(title = "Contig Length vs Mean Depth",
+       subtitle = paste0("Mean across ", n_samples, " samples  |  dashed = backbone"),
+       x = "Contig Length (bp)", y = "Mean Read Depth") +
+  base_theme
 
-save_png(p, output, width = 12, height = 5)
+# --- Panels 2 & 3: Cumulative coverage curves ---
+# Build cumulative data: for each depth threshold x, count contigs/bases with depth >= x
+source_colors <- c("Graph (vg pack)" = "steelblue", "Linear (surject)" = "coral")
+
+# Generate thresholds from 0 to max depth
+max_depth <- max(plot_dt$mean_depth, na.rm = TRUE)
+thresholds <- seq(0, ceiling(max_depth), by = max(0.5, round(max_depth / 100, 1)))
+
+cum_data <- rbindlist(lapply(thresholds, function(thresh) {
+  plot_dt[, .(n_contigs = sum(mean_depth >= thresh),
+              n_bases = sum(length[mean_depth >= thresh])),
+          by = source][, threshold := thresh]
+}))
+
+# Contigs >= x
+p_contigs <- ggplot(cum_data, aes(x = threshold, y = n_contigs, color = source)) +
+  geom_line(linewidth = 0.8) +
+  scale_color_manual(values = source_colors, name = NULL) +
+  scale_x_continuous(labels = scales::comma) +
+  scale_y_continuous(labels = scales::comma) +
+  labs(title = "Contigs with Depth >= x",
+       x = "Depth Threshold (x)", y = "Number of Contigs") +
+  base_theme +
+  theme(legend.position = "bottom")
+
+# Bases >= x
+p_bases <- ggplot(cum_data, aes(x = threshold, y = n_bases, color = source)) +
+  geom_line(linewidth = 0.8) +
+  scale_color_manual(values = source_colors, name = NULL) +
+  scale_x_continuous(labels = scales::comma) +
+  scale_y_continuous(labels = scales::comma) +
+  labs(title = "Bases with Depth >= x",
+       x = "Depth Threshold (x)", y = "Number of Bases (bp)") +
+  base_theme +
+  theme(legend.position = "bottom")
+
+# --- Arrange 2x2 grid ---
+# Use gridExtra if available, otherwise save scatter only
+if (requireNamespace("gridExtra", quietly = TRUE)) {
+  g <- gridExtra::arrangeGrob(
+    p_scatter, gridExtra::arrangeGrob(p_contigs, p_bases, ncol = 2),
+    nrow = 2, heights = c(1, 1),
+    top = grid::textGrob(title, gp = grid::gpar(fontsize = 14, fontface = "bold"))
+  )
+  save_png(g, output, width = 12, height = 9)
+} else {
+  # Fallback: scatter only
+  p_scatter <- p_scatter + labs(title = title)
+  save_png(p_scatter, output, width = 12, height = 5)
+  cat("Note: install gridExtra for cumulative panels\n")
+}
 cat("Done.\n")
