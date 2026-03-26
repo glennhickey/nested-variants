@@ -62,6 +62,11 @@ samples: {}
 # Alternatively, provide a TSV file with columns: sample, reads_index
 # samples_tsv: samples.tsv
 
+# Long-read samples (optional — uses vg giraffe -b hifi preset)
+# Same format as samples; outputs are kept separate from short-read samples.
+longread_samples: {}
+#  HG002-hifi: data/HG002.hifi.reads.idx
+
 # Resource configuration
 # Each rule has built-in defaults (see table below). Set global overrides to
 # apply the same value to all rules, or per-rule overrides for fine control.

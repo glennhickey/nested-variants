@@ -35,10 +35,14 @@ if config.get("samples_tsv"):
             config.setdefault("samples", {})[row["sample"]] = row["reads_index"]
     SAMPLES = list(config["samples"].keys())
 
+# Long-read samples (same pipeline, separate outputs, uses -b hifi for giraffe)
+LR_SAMPLES = list(config.get("longread_samples", {}).keys())
+ALL_SAMPLES = SAMPLES + LR_SAMPLES
+
 # Constrain {sample} wildcard to configured sample names only, preventing
 # ambiguity between deconstruct ({OUT_NAME}.vcf.gz) and call ({sample}.vcf.gz)
 wildcard_constraints:
-    sample="|".join(SAMPLES) if SAMPLES else "$^",
+    sample="|".join(ALL_SAMPLES) if ALL_SAMPLES else "$^",
     filt="all|pass",
     mode="sites|variants"
 
@@ -441,6 +445,10 @@ rule all:
         expand("{out}/{s}.vcf.gz", out=OUT_DIR, s=SAMPLES),
         expand("{out}/{s}.call-offref.png", out=OUT_DIR, s=SAMPLES),
         expand("{out}/{s}.contig-depth.png", out=OUT_DIR, s=SAMPLES),
+        # long-read sample outputs (giraffe -b hifi + call + depth, no DeepVariant)
+        expand("{out}/{s}.vcf.gz", out=OUT_DIR, s=LR_SAMPLES),
+        expand("{out}/{s}.call-offref.png", out=OUT_DIR, s=LR_SAMPLES),
+        expand("{out}/{s}.contig-depth.png", out=OUT_DIR, s=LR_SAMPLES),
         expand("{out}/{s}.call.sites.{filt}.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.call.sites.{filt}.variant-types.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.call.sites.{filt}.size-dist.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
@@ -959,12 +967,24 @@ rule segment_polymorphism:
 # Per-sample rules (wildcard: {sample})
 ############################################################################
 
+def _get_reads(wc):
+    """Look up reads index for a sample (short-read or long-read)."""
+    if wc.sample in config.get("samples", {}):
+        return config["samples"][wc.sample]
+    return config["longread_samples"][wc.sample]
+
+def _giraffe_preset(wc):
+    """Return --preset flag for long-read samples, empty for short-read."""
+    if wc.sample in config.get("longread_samples", {}):
+        return "--preset hifi"
+    return ""
+
 rule giraffe:
     """GBZ + reads → GAM"""
     input:
         gbz=f"{OUT_DIR}/{OUT_NAME}.gbz",
         hapl=f"{OUT_DIR}/{OUT_NAME}.hapl",
-        reads=lambda wc: config["samples"][wc.sample],
+        reads=_get_reads,
     output:
         f"{OUT_DIR}/{{sample}}.gam",
     threads: rule_cpus("giraffe", 128)
@@ -973,6 +993,7 @@ rule giraffe:
         runtime=rule_runtime("giraffe"),
     params:
         mem_gb=rule_mem_gb("giraffe", 512),
+        preset=_giraffe_preset,
     shell:
         "scripts/giraffe.sh"
         " --gbz {input.gbz}"
@@ -981,6 +1002,7 @@ rule giraffe:
         " --sample {wildcards.sample}"
         " --out-dir {OUT_DIR}"
         " --out-name {wildcards.sample}.gam"
+        " {params.preset}"
         " --cpus {threads} --mem {params.mem_gb}gb"
         " --local"
 

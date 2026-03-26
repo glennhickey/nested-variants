@@ -23,6 +23,7 @@ READS=""
 SAMPLE=""
 OUTPUT_DIR="."
 OUTPUT_NAME=""
+PRESET=""
 
 # SLURM resource defaults
 CPUS="16"
@@ -73,6 +74,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --partition)
             PARTITION="$2"
+            shift 2
+            ;;
+        --preset)
+            PRESET="$2"
             shift 2
             ;;
         --local)
@@ -204,8 +209,12 @@ done < "\${LOCAL_READS}"
 kmc -k29 -m${MEM_NUM} -okff -t${CPUS} -hp "@\${LOCAL_READS}" "\${WORK_TMPDIR}/${SAMPLE}" "\${WORK_TMPDIR}"
 
 # Run giraffe
+PRESET_ARG=""
+if [ -n "${PRESET}" ]; then
+  PRESET_ARG="-b ${PRESET}"
+fi
 # shellcheck disable=SC2086
-/usr/bin/time -v vg giraffe -p -t ${CPUS} \\
+/usr/bin/time -v vg giraffe -p -t ${CPUS} \${PRESET_ARG} \\
   -Z "\${WORK_TMPDIR}/${GBZ_BASE}" \\
   --haplotype-name "\${WORK_TMPDIR}/${HAPL_BASE}" \\
   --kff-name "\${WORK_TMPDIR}/${SAMPLE}.kff" \\
