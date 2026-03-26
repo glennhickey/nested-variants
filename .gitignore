@@ -1,5 +1,6 @@
 # Data and output directories
 data/
+!data/giab-reads/
 output/
 
 # User-specific config overrides

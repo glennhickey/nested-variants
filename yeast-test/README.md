@@ -47,6 +47,11 @@ for SAMPLE in SK1 YPS128; do
     "$(pwd)/yeast-test/${SAMPLE}_2.fq.gz" \
     > yeast-test/${SAMPLE}.reads.idx
 done
+
+# Simulate HiFi-like long reads (15 kb, single-end) from SK1
+vg sim -x yeast-test/chrI.vg -n 1000 -l 15000 -q -m SK1 -t 4 \
+  | gzip > yeast-test/SK1-hifi.fq.gz
+echo "$(pwd)/yeast-test/SK1-hifi.fq.gz" > yeast-test/SK1-hifi.reads.idx
 ```
 
 ## 2. Run the pipeline
@@ -79,12 +84,29 @@ snakemake --cores 4 all \
   --config vg=yeast-test/chrI.vg ref=S288C \
            out_dir=yeast-test/output out_name=chrI.nested \
            'samples={SK1: yeast-test/SK1.reads.idx, YPS128: yeast-test/YPS128.reads.idx}' \
-           mem_gb=4 min_vcfeval_len=1000 \
+           mem_gb=4 min_vcfeval_len=1000 min_surject_len=1000 \
            vcfeval_cpus=4 vcfeval_mem_gb=4 \
            annot_genes=yeast-test/fake-genes.bed \
            annot_repeats=yeast-test/fake-repeats.bed \
            annot_segdups=yeast-test/fake-segdups.bed \
-           annot_censat=yeast-test/fake-censat.bed
+           annot_censat=yeast-test/fake-censat.bed \
+           pantree_vcf=yeast-test/pantree-chrI.vcf \
+           giab_strat=yeast-test/fake-giab
+
+# Full pipeline with simulated long reads (uses giraffe -b hifi preset)
+snakemake --cores 4 all \
+  --config vg=yeast-test/chrI.vg ref=S288C \
+           out_dir=yeast-test/output out_name=chrI.nested \
+           'samples={SK1: yeast-test/SK1.reads.idx, YPS128: yeast-test/YPS128.reads.idx}' \
+           'longread_samples={SK1-hifi: yeast-test/SK1-hifi.reads.idx}' \
+           mem_gb=4 min_vcfeval_len=1000 min_surject_len=1000 \
+           vcfeval_cpus=4 vcfeval_mem_gb=4 \
+           annot_genes=yeast-test/fake-genes.bed \
+           annot_repeats=yeast-test/fake-repeats.bed \
+           annot_segdups=yeast-test/fake-segdups.bed \
+           annot_censat=yeast-test/fake-censat.bed \
+           pantree_vcf=yeast-test/pantree-chrI.vcf \
+           giab_strat=yeast-test/fake-giab
 ```
 
 The fake annotation BED files (`fake-genes.bed`, `fake-repeats.bed`,
