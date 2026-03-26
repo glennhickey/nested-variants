@@ -24,6 +24,8 @@ SAMPLE=""
 OUTPUT_DIR="."
 OUTPUT_NAME=""
 PATHS_FILE=""
+INTERLEAVED=true
+READ_LENGTH=""
 
 # SLURM resource defaults
 CPUS="16"
@@ -78,6 +80,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --paths-file)
             PATHS_FILE="$2"
+            shift 2
+            ;;
+        --no-interleaved)
+            INTERLEAVED=false
+            shift
+            ;;
+        --read-length)
+            READ_LENGTH="$2"
             shift 2
             ;;
         --local)
@@ -178,7 +188,9 @@ $(if [ -n "$PATHS_FILE" ]; then PATHS_BASE=$(basename "$PATHS_FILE"); echo "cp \
 
 # Surject GAM → BAM via local scratch
 # When --paths-file is provided, use -F (explicit path list) instead of -n (path prefix)
-/usr/bin/time -v vg surject -x "\${WORK_TMPDIR}/${GBZ_BASE}" $(if [ -n "$PATHS_FILE" ]; then echo "-F \${WORK_TMPDIR}/$(basename "$PATHS_FILE")"; else echo "-n ${REF}"; fi) -N ${SAMPLE} -i -b -t ${CPUS} "${GAM}" | \\
+INTERLEAVE_FLAG=$(if $INTERLEAVED; then echo "-i"; fi)
+READ_LENGTH_FLAG="$(if [ -n "${READ_LENGTH}" ]; then echo "-D ${READ_LENGTH}"; fi)"
+/usr/bin/time -v vg surject -x "\${WORK_TMPDIR}/${GBZ_BASE}" $(if [ -n "$PATHS_FILE" ]; then echo "-F \${WORK_TMPDIR}/$(basename "$PATHS_FILE")"; else echo "-n ${REF}"; fi) -N ${SAMPLE} \${INTERLEAVE_FLAG} \${READ_LENGTH_FLAG} -b -t ${CPUS} "${GAM}" | \\
 /usr/bin/time -v samtools sort -@ ${CPUS} -T "\${WORK_TMPDIR}/sort_${SAMPLE}" -o "\${WORK_TMPDIR}/${BAM_BASE}"
 mv "\${WORK_TMPDIR}/${BAM_BASE}" "${BAM}"
 /usr/bin/time -v samtools index -@ ${CPUS} "${BAM}"

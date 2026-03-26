@@ -38,6 +38,9 @@ if config.get("samples_tsv"):
 # Long-read samples (same pipeline, separate outputs, uses -b hifi for giraffe)
 LR_SAMPLES = list(config.get("longread_samples", {}).keys())
 ALL_SAMPLES = SAMPLES + LR_SAMPLES
+_overlap = set(SAMPLES) & set(LR_SAMPLES)
+if _overlap:
+    raise ValueError(f"Sample names appear in both samples and longread_samples: {_overlap}")
 
 # Constrain {sample} wildcard to configured sample names only, preventing
 # ambiguity between deconstruct ({OUT_NAME}.vcf.gz) and call ({sample}.vcf.gz)
@@ -406,6 +409,10 @@ def summary_figure_outputs():
         outputs.append(f"{OUT_DIR}/5b.concordance-onref-summary.png")
         outputs.append(f"{OUT_DIR}/5c.coverage-summary.png")
         outputs.append(f"{OUT_DIR}/5d.mapq-summary.png")
+    if LR_SAMPLES:
+        outputs.append(f"{OUT_DIR}/3lr.call-summary-longread.png")
+        outputs.append(f"{OUT_DIR}/5c-lr.coverage-summary-longread.png")
+        outputs.append(f"{OUT_DIR}/5d-lr.mapq-summary-longread.png")
     if config.get("pantree_vcf", ""):
         outputs.append(f"{OUT_DIR}/6.pantree-summary.png")
     return outputs
@@ -1072,8 +1079,8 @@ rule gam_mapq:
         f"{OUT_DIR}/{{sample}}.gam-mapq.tsv",
     threads: rule_cpus("gam_mapq", 16)
     resources:
-        mem_mb=rule_mem_gb("gam_mapq", 64) * 1024,
-        runtime=rule_runtime("gam_mapq", 480),
+        mem_mb=rule_mem_gb("gam_mapq", 256) * 1024,
+        runtime=rule_runtime("gam_mapq"),
     shell:
         "vg annotate -a {input.gam} -x {input.gbz} -p -m -t {threads}"
         " | vg view -aj -"
@@ -1197,6 +1204,7 @@ rule surject:
     params:
         mem_gb=rule_mem_gb("surject", 512),
         paths_arg=lambda wc, input: f"--paths-file {input.paths}" if surject_filtering() else "",
+        longread_args=lambda wc: "--no-interleaved --read-length long" if wc.sample in config.get("longread_samples", {}) else "",
     shell:
         "scripts/surject.sh"
         " --gbz {input.gbz}"
@@ -1206,6 +1214,7 @@ rule surject:
         " --out-dir {OUT_DIR}"
         " --out-name {wildcards.sample}.bam"
         " {params.paths_arg}"
+        " {params.longread_args}"
         " --cpus {threads} --mem {params.mem_gb}gb"
         " --local"
 
@@ -1285,6 +1294,24 @@ rule merge_call_vcfs:
         "bcftools merge {input} -Oz"
         " | bcftools +fill-tags -Oz -o {output} -- -t AF,AC,AN"
         " && tabix -p vcf {output}"
+
+rule merge_longread_call_vcfs:
+    """Merge long-read per-sample call VCFs"""
+    input:
+        expand("{out}/{s}.vcf.gz", out=OUT_DIR, s=LR_SAMPLES),
+    output:
+        f"{OUT_DIR}/merged.longread.call.vcf.gz",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
+    run:
+        if len(input) == 1:
+            shell("bcftools +fill-tags {input} -Oz -o {output} -- -t AF,AC,AN"
+                  " && tabix -p vcf {output}")
+        else:
+            shell("bcftools merge {input} -Oz"
+                  " | bcftools +fill-tags -Oz -o {output} -- -t AF,AC,AN"
+                  " && tabix -p vcf {output}")
 
 rule merge_dv_vcfs:
     """Merge per-sample DeepVariant VCFs with bcftools, add AF/AC/AN tags"""
@@ -1529,6 +1556,48 @@ rule merged_call_stats:
     shell:
         "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.call.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged Call'"
+        " --segs {input.segs} --segs-strip-prefix '{AUGREF}#0#'"
+        " {params.annot_arg} {params.giab_arg} --per-sample"
+
+rule merged_longread_call_stats:
+    """Merged long-read call VCF → variant stats + plots"""
+    input:
+        vcf=lambda wc: f"{OUT_DIR}/merged.longread.call.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.longread.call.vcf.gz",
+        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
+        annot_beds=call_annot_beds(),
+        giab_beds=call_giab_strat_beds(),
+    output:
+        f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.vcf-stats.tsv",
+        f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.variant-types.png",
+        f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.size-dist.png",
+        f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.size-dist-log.png",
+        f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.af-spectrum.png",
+        *([ f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.variant-types-by-annot.png",
+            f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv",
+            f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.annot-exclusive.tsv"]
+          if annotation_inputs() else []),
+        *([ f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.giab-strat.png",
+            f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.giab-strat.tsv"]
+          if giab_strat_configured() else []),
+        f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.per-sample-types.png",
+        f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.per-sample-types.tsv",
+        *([ f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.per-sample-giab-strat.png",
+            f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.per-sample-giab-strat.tsv"]
+          if giab_strat_configured() else []),
+    resources:
+        mem_mb=256000,
+        runtime=2880,
+    params:
+        annot_arg=lambda wc, input: (
+            f"--annot-beds {','.join(input.annot_beds)} --annot-names {','.join(annotation_names())}"
+            if annotation_inputs() else ""),
+        giab_arg=lambda wc, input: (
+            f"--giab-strat-beds {','.join(input.giab_beds)}"
+            f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
+            if giab_strat_configured() else ""),
+    shell:
+        "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.longread.call.{wildcards.mode}.{wildcards.filt}"
+        " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged Long-Read Call'"
         " --segs {input.segs} --segs-strip-prefix '{AUGREF}#0#'"
         " {params.annot_arg} {params.giab_arg} --per-sample"
 
@@ -2253,6 +2322,124 @@ rule summary_mapq:
         f"{OUT_DIR}/mapq-dist.png",
     output:
         f"{OUT_DIR}/5d.mapq-summary.png",
+    shell:
+        "cp {input} {output}"
+
+############################################################################
+# Long-read merged rules and summary figures
+############################################################################
+
+rule longread_call_summary_panel:
+    """Long-read per-sample call summary: annotation-stacked bars with Ts/Tv"""
+    input:
+        per_sample=f"{OUT_DIR}/merged.longread.call.sites.pass.per-sample-types.tsv",
+        vcf=f"{OUT_DIR}/merged.longread.call.vcf.gz",
+        annot=[f"{OUT_DIR}/merged.longread.call.sites.pass.annot-exclusive.tsv"] if annotation_inputs() else [],
+    output:
+        f"{OUT_DIR}/merged.longread.call.sites.pass.call-summary-panel.png",
+    resources:
+        mem_mb=32000,
+        runtime=120,
+    params:
+        annot_arg=lambda wc, input: f"--annot {input.annot[0]}" if input.annot else "",
+        min_sv_size=config.get("min_augref_len", 50),
+    shell:
+        "Rscript scripts/call-summary-panel.R"
+        " --per-sample {input.per_sample}"
+        " --vcf {input.vcf}"
+        " --min-sv-size {params.min_sv_size}"
+        " {params.annot_arg}"
+        " --output {output}"
+        " --title 'Off-reference genotyping (long reads)'"
+
+rule longread_contig_depth_summary:
+    """Averaged long-read pack + BAM depth → multi-panel summary"""
+    input:
+        pack_depths=expand("{out}/{s}.contig-depth.tsv", out=OUT_DIR, s=LR_SAMPLES),
+        bam_depths=expand("{out}/{s}.bam-depth.tsv", out=OUT_DIR, s=LR_SAMPLES),
+        bam_q5_depths=expand("{out}/{s}.bam-depth-q5.tsv", out=OUT_DIR, s=LR_SAMPLES),
+        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
+    output:
+        f"{OUT_DIR}/contig-depth-summary.lr.png",
+    resources:
+        mem_mb=8000,
+        runtime=30,
+    params:
+        pack_arg=lambda wc, input: "--pack-depths " + ",".join(input.pack_depths),
+        bam_arg=lambda wc, input: "--bam-depths " + ",".join(input.bam_depths),
+        bam_q5_arg=lambda wc, input: "--bam-q5-depths " + ",".join(input.bam_q5_depths),
+        min_surject_len=config.get("min_surject_len", 0),
+    shell:
+        "Rscript scripts/contig-depth-summary.R"
+        " {params.pack_arg}"
+        " {params.bam_arg}"
+        " {params.bam_q5_arg}"
+        " --segs {input.segs}"
+        " --output {output}"
+        " --depth-cap 60"
+        " --min-surject-len {params.min_surject_len}"
+        " --title '{REF} Long-Read Contig Depth'"
+
+rule longread_mapq_dist_plot:
+    """Long-read MAPQ distribution: GAM vs BAM"""
+    input:
+        gam_mapq=expand("{out}/{s}.gam-mapq.tsv", out=OUT_DIR, s=LR_SAMPLES),
+        bam_mapq=expand("{out}/{s}.bam-mapq.tsv", out=OUT_DIR, s=LR_SAMPLES),
+    output:
+        f"{OUT_DIR}/mapq-dist.lr.png",
+    resources:
+        mem_mb=8000,
+        runtime=30,
+    params:
+        gam_arg=lambda wc, input: "--gam-mapq " + ",".join(input.gam_mapq),
+        bam_arg=lambda wc, input: "--bam-mapq " + ",".join(input.bam_mapq),
+    shell:
+        "Rscript scripts/mapq-dist-plot.R"
+        " {params.gam_arg}"
+        " {params.bam_arg}"
+        " --output {output}"
+        " --title '{REF} Long-Read MAPQ Distribution'"
+
+rule summary_longread_call:
+    """Compose long-read call summary figure"""
+    input:
+        variant_types=f"{OUT_DIR}/merged.longread.call.sites.pass.variant-types.png",
+        per_sample=f"{OUT_DIR}/merged.longread.call.sites.pass.per-sample-types.png",
+        call_panel=f"{OUT_DIR}/merged.longread.call.sites.pass.call-summary-panel.png",
+        giab_strat=[f"{OUT_DIR}/merged.longread.call.sites.pass.giab-strat.png"] if giab_strat_configured() else [],
+        giab_per_sample=[f"{OUT_DIR}/merged.longread.call.sites.pass.per-sample-giab-strat.png"] if giab_strat_configured() else [],
+    output:
+        f"{OUT_DIR}/3lr.call-summary-longread.png",
+    params:
+        panels=lambda wc, input: " ".join(
+            [f"'Variant Types (PASS):{input.variant_types}'",
+             f"'Per-Sample Types (PASS):{input.per_sample}'",
+             f"'Call Summary:{input.call_panel}'"]
+            + ([f"'GIAB Stratification:{input.giab_strat[0]}'"] if input.giab_strat else [])
+            + ([f"'Per-Sample GIAB:{input.giab_per_sample[0]}'"] if input.giab_per_sample else [])
+        ),
+    shell:
+        "python3 scripts/compose-summary.py"
+        " --output {output}"
+        " --title 'Long-Read vg call Genotyping (PASS)'"
+        " --cols 2"
+        " --panels {params.panels}"
+
+rule summary_longread_coverage:
+    """Long-read contig depth summary"""
+    input:
+        f"{OUT_DIR}/contig-depth-summary.lr.png",
+    output:
+        f"{OUT_DIR}/5c-lr.coverage-summary-longread.png",
+    shell:
+        "cp {input} {output}"
+
+rule summary_longread_mapq:
+    """Long-read MAPQ distribution summary"""
+    input:
+        f"{OUT_DIR}/mapq-dist.lr.png",
+    output:
+        f"{OUT_DIR}/5d-lr.mapq-summary-longread.png",
     shell:
         "cp {input} {output}"
 

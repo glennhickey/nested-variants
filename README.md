@@ -200,7 +200,7 @@ This requires `aws`, `parallel`, `bedtools`, `wget`, `dos2unix`, and `bigBedToBe
 
 ```bash
 ANNOT=data/hprc-v2-annotations
-GIAB=/private/home/ghickey/dev/work/giab-reads
+GIAB=data/giab-reads
 snakemake --profile profiles/slurm all \
   --config \
     ref=CHM13 \
@@ -217,7 +217,9 @@ snakemake --profile profiles/slurm all \
     annot_pclai=$ANNOT/hprc-v2-pclai-grch38-chm13.bed \
     giab_strat=$ANNOT/hprc-v2-giab \
     pantree_vcf=/private/home/ghickey/dev/work/pantree/CHM13-464.MCv2.0.noY.vcf.gz \
-    "samples={HG001: $GIAB/HG001.novaseq.pcr-free.gs.paths, HG002: $GIAB/HG002.novaseq.pcr-free.gs.paths, HG003: $GIAB/HG003.novaseq.pcr-free.gs.paths, HG004: $GIAB/HG004.novaseq.pcr-free.gs.paths, HG005: $GIAB/HG005.novaseq.pcr-free.gs.paths, HG006: $GIAB/HG006.novaseq.pcr-free.gs.paths, HG007: $GIAB/HG007.novaseq.pcr-free.gs.paths, NA12891: $GIAB/NA12891.novaseq.pcr-free.gs.paths, NA12892: $GIAB/NA12892.novaseq.pcr-free.gs.paths}" --rerun-incomplete --default-resources slurm_partition=high_priority
+    "samples={HG001: $GIAB/HG001.novaseq.pcr-free.gs.paths, HG002: $GIAB/HG002.novaseq.pcr-free.gs.paths, HG003: $GIAB/HG003.novaseq.pcr-free.gs.paths, HG004: $GIAB/HG004.novaseq.pcr-free.gs.paths, HG005: $GIAB/HG005.novaseq.pcr-free.gs.paths, HG006: $GIAB/HG006.novaseq.pcr-free.gs.paths, HG007: $GIAB/HG007.novaseq.pcr-free.gs.paths, NA12891: $GIAB/NA12891.novaseq.pcr-free.gs.paths, NA12892: $GIAB/NA12892.novaseq.pcr-free.gs.paths}" \
+    "longread_samples={HG002-hifi: $GIAB/HG002.hifi-revio.ncbi.paths, HG003-hifi: $GIAB/HG003.hifi-revio.ncbi.paths, HG004-hifi: $GIAB/HG004.hifi-revio.ncbi.paths}" \
+    --rerun-incomplete --default-resources slurm_partition=high_priority
 ```
 
 ### Filtering short alt contigs
@@ -228,6 +230,7 @@ When `min_surject_len` is set (default: 0), the pipeline filters augmented refer
 
 ```bash
 ANNOT=data/hprc-v2-annotations
+GIAB=data/giab-reads
 snakemake --profile profiles/slurm all \
   --config \
     ref=GRCh38 \
@@ -243,7 +246,8 @@ snakemake --profile profiles/slurm all \
     annot_censat=$ANNOT/hprc-v2-censat-grch38-chm13.bed \
     annot_pclai=$ANNOT/hprc-v2-pclai-grch38-chm13.bed \
     giab_strat=$ANNOT/hprc-v2-giab \
-    'samples={HG002: data/HG002.reads.idx}'
+    "samples={HG001: $GIAB/HG001.novaseq.pcr-free.gs.paths, HG002: $GIAB/HG002.novaseq.pcr-free.gs.paths, HG003: $GIAB/HG003.novaseq.pcr-free.gs.paths}" \
+    "longread_samples={HG002-hifi: $GIAB/HG002.hifi-revio.ncbi.paths, HG003-hifi: $GIAB/HG003.hifi-revio.ncbi.paths, HG004-hifi: $GIAB/HG004.hifi-revio.ncbi.paths}"
 ```
 
 ### Output
