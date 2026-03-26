@@ -79,21 +79,7 @@ snakemake --cores 4 graph_only \
            out_dir=yeast-test/output out_name=chrI.nested \
            mem_gb=4 pantree_vcf=yeast-test/pantree-chrI.vcf
 
-# Full pipeline: genotype + DeepVariant + merge + vcfeval for both samples
-snakemake --cores 4 all \
-  --config vg=yeast-test/chrI.vg ref=S288C \
-           out_dir=yeast-test/output out_name=chrI.nested \
-           'samples={SK1: yeast-test/SK1.reads.idx, YPS128: yeast-test/YPS128.reads.idx}' \
-           mem_gb=4 min_vcfeval_len=1000 min_surject_len=1000 \
-           vcfeval_cpus=4 vcfeval_mem_gb=4 \
-           annot_genes=yeast-test/fake-genes.bed \
-           annot_repeats=yeast-test/fake-repeats.bed \
-           annot_segdups=yeast-test/fake-segdups.bed \
-           annot_censat=yeast-test/fake-censat.bed \
-           pantree_vcf=yeast-test/pantree-chrI.vcf \
-           giab_strat=yeast-test/fake-giab
-
-# Full pipeline with simulated long reads (uses giraffe -b hifi preset)
+# Full pipeline: genotype + DeepVariant + merge + vcfeval + long reads
 snakemake --cores 4 all \
   --config vg=yeast-test/chrI.vg ref=S288C \
            out_dir=yeast-test/output out_name=chrI.nested \
@@ -202,6 +188,26 @@ yeast-test/output/
 ├── vcfeval/YPS128/...                       # same structure
 ├── merged.call-vs-dv.vcfeval-compare.tsv    # aggregated comparison table
 ├── merged.call-vs-dv.vcfeval-compare.png    # comparison bar chart
+#
+# --- Long-read sample (SK1-hifi, when longread_samples configured) ---
+#
+├── SK1-hifi.gam                               # long-read GAM (giraffe -b hifi)
+├── SK1-hifi.bam                               # surjected BAM (-D long)
+├── SK1-hifi.vcf.gz                            # genotyped VCF (vg call)
+├── SK1-hifi.call-offref.png                   # call off-reference density
+├── SK1-hifi.call.{sites,variants}.{all,pass}.vcf-stats.tsv
+├── SK1-hifi.call.{sites,variants}.{all,pass}.variant-types.png
+├── SK1-hifi.contig-depth.tsv                  # pack depth per contig
+├── SK1-hifi.bam-depth.tsv                     # BAM depth per contig
+├── SK1-hifi.gam-mapq.tsv                      # GAM MAPQ distribution
+├── SK1-hifi.bam-mapq.tsv                      # BAM MAPQ distribution
+├── merged.longread.call.vcf.gz                # merged long-read call VCF
+├── merged.longread.call.sites.pass.vcf-stats.tsv
+├── merged.longread.call.sites.pass.variant-types.png
+├── merged.longread.call.sites.pass.call-summary-panel.png
+├── 3lr.call-summary-longread.png              # long-read call summary figure
+├── 5c-lr.coverage-summary-longread.png        # long-read coverage summary
+├── 5d-lr.mapq-summary-longread.png            # long-read MAPQ summary
 #
 # --- Pantree comparison (when pantree_vcf configured) ---
 #
