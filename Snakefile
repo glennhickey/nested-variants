@@ -1042,7 +1042,7 @@ rule contig_depth_plot:
         " --output {output}"
 
 rule gam_mapq:
-    """GAM → annotated MAPQ distribution TSV (on-ref vs off-ref)"""
+    """GAM → MAPQ distribution TSV via surjection to augref paths"""
     input:
         gam=f"{OUT_DIR}/{{sample}}.gam",
         gbz=f"{OUT_DIR}/{OUT_NAME}.gbz",
@@ -1050,12 +1050,12 @@ rule gam_mapq:
         f"{OUT_DIR}/{{sample}}.gam-mapq.tsv",
     threads: rule_cpus("gam_mapq", 16)
     resources:
-        mem_mb=rule_mem_gb("gam_mapq", 64) * 1024,
+        mem_mb=rule_mem_gb("gam_mapq", 128) * 1024,
         runtime=rule_runtime("gam_mapq", 480),
     shell:
-        "vg annotate -a {input.gam} -x {input.gbz} -p -m -t {threads}"
-        " | vg view -aj -"
-        " | python3 scripts/extract-mapq.py --mode gam --output {output}"
+        "vg surject -x {input.gbz} -n {AUGREF} -b -t {threads} {input.gam}"
+        " | samtools view -F 4 | cut -f3,5"
+        " | python3 scripts/extract-mapq.py --mode bam --output {output}"
 
 rule bam_mapq:
     """BAM → MAPQ distribution TSV (on-ref vs off-ref)"""
