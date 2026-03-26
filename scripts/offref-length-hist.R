@@ -130,11 +130,11 @@ if (cumulative) {
     geom_point(size = 1.5, alpha = 0.6) +
     scale_x_log10(labels = scales::comma,
                   breaks = scales::breaks_log(n = 10)) +
-    scale_y_continuous(labels = scales::comma) +
+    scale_y_log10(labels = scales::comma) +
     scale_color_manual(values = color_map) +
-    labs(title = "Off-Reference Interval Lengths (Cumulative Count)",
+    labs(title = "Off-Reference Segment Lengths (Cumulative Count)",
          x = "Length (log scale)",
-         y = expression("Count " >= " Length"),
+         y = "Count >= Length (log scale)",
          color = "Dataset") +
     theme_minimal()
 } else {
