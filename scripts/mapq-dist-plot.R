@@ -82,15 +82,18 @@ base_theme <- theme_minimal() +
 
 ctx_colors <- c("On-reference" = "steelblue", "Off-reference" = "coral")
 
-p <- ggplot(plot_dt, aes(x = mapq, y = count, fill = ref_context)) +
+# Compute proportions within each (source, ref_context) group
+plot_dt[, total := sum(count), by = .(source, ref_context)]
+plot_dt[, pct := 100 * count / total]
+
+p <- ggplot(plot_dt, aes(x = mapq, y = pct, fill = ref_context)) +
   geom_col(position = "dodge", width = 2) +
   scale_fill_manual(values = ctx_colors, name = NULL) +
-  scale_y_log10(labels = scales::comma) +
   facet_wrap(~ source, scales = "free_y") +
   labs(title = title,
-       subtitle = "Summed across all samples",
+       subtitle = "Proportion within each category, summed across all samples",
        x = "Mapping Quality (MAPQ)",
-       y = "Number of Reads (log)") +
+       y = "% of Reads") +
   base_theme
 
 tryCatch({
