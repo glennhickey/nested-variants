@@ -82,19 +82,24 @@ base_theme <- theme_minimal() +
 
 ctx_colors <- c("On-reference" = "steelblue", "Off-reference" = "coral")
 
-# Compute proportions within each (source, ref_context) group
+# Compute cumulative: % of reads with MAPQ >= x
 plot_dt[, total := sum(count), by = .(source, ref_context)]
-plot_dt[, pct := 100 * count / total]
+setorder(plot_dt, source, ref_context, -mapq)
+plot_dt[, cum_count := cumsum(count), by = .(source, ref_context)]
+plot_dt[, cum_pct := 100 * cum_count / total]
+setorder(plot_dt, source, ref_context, mapq)
 
-p <- ggplot(plot_dt, aes(x = mapq, y = pct, fill = ref_context)) +
-  geom_col(position = "dodge", width = 2) +
-  scale_fill_manual(values = ctx_colors, name = NULL) +
-  facet_wrap(~ source, scales = "free_y") +
+p <- ggplot(plot_dt, aes(x = mapq, y = cum_pct, color = ref_context)) +
+  geom_step(linewidth = 0.9, direction = "vh") +
+  scale_color_manual(values = ctx_colors, name = NULL) +
+  facet_wrap(~ source) +
+  scale_x_continuous(breaks = seq(0, 60, 10)) +
   labs(title = title,
-       subtitle = "Proportion within each category, summed across all samples",
-       x = "Mapping Quality (MAPQ)",
-       y = "% of Reads") +
-  base_theme
+       subtitle = "Cumulative: % of reads with MAPQ >= x",
+       x = "Mapping Quality Threshold",
+       y = "% of Reads >= Threshold") +
+  base_theme +
+  theme(legend.position = "bottom")
 
 tryCatch({
   if (requireNamespace("ragg", quietly = TRUE)) {
