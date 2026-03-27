@@ -908,6 +908,19 @@ rule annotation_plots:
         "Rscript scripts/annotation-plots.R {input} {OUT_DIR}/{OUT_NAME}"
         " --min-overlap 0.5 --title '{REF} Annotation Overlap'"
 
+rule pass_filter_vcf:
+    """VCF → PASS-only VCF (filter before merging to avoid cross-sample filter contamination)"""
+    input:
+        "{prefix}.vcf.gz",
+    output:
+        "{prefix}.pass-only.vcf.gz",
+    resources:
+        mem_mb=8000,
+        runtime=120,
+    shell:
+        "bcftools view -f PASS '{input}' -Oz -o {output}"
+        " && tabix -p vcf {output}"
+
 rule norm_vcf:
     """VCF → multi-allelic split VCF via bcftools norm (shared intermediate)"""
     input:
@@ -1344,6 +1357,70 @@ rule merge_longread_dv_vcfs:
                   " | bcftools +fill-tags -Oz -o {output} -- -t AF,AC,AN"
                   " && tabix -p vcf {output}")
 
+rule merge_call_pass_vcfs:
+    """Merge PASS-filtered per-sample call VCFs (avoids cross-sample filter contamination)"""
+    input:
+        expand("{out}/{s}.pass-only.vcf.gz", out=OUT_DIR, s=SAMPLES),
+    output:
+        f"{OUT_DIR}/merged.call.pass-prefiltered.vcf.gz",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
+    shell:
+        "bcftools merge {input} -Oz"
+        " | bcftools +fill-tags -Oz -o {output} -- -t AF,AC,AN"
+        " && tabix -p vcf {output}"
+
+rule merge_longread_call_pass_vcfs:
+    """Merge PASS-filtered long-read per-sample call VCFs"""
+    input:
+        expand("{out}/{s}.pass-only.vcf.gz", out=OUT_DIR, s=LR_SAMPLES),
+    output:
+        f"{OUT_DIR}/merged.longread.call.pass-prefiltered.vcf.gz",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
+    run:
+        if len(input) == 1:
+            shell("bcftools +fill-tags {input} -Oz -o {output} -- -t AF,AC,AN"
+                  " && tabix -p vcf {output}")
+        else:
+            shell("bcftools merge {input} -Oz"
+                  " | bcftools +fill-tags -Oz -o {output} -- -t AF,AC,AN"
+                  " && tabix -p vcf {output}")
+
+rule merge_dv_pass_vcfs:
+    """Merge PASS-filtered per-sample DeepVariant VCFs"""
+    input:
+        expand("{out}/{s}.deepvariant.pass-only.vcf.gz", out=OUT_DIR, s=SAMPLES),
+    output:
+        f"{OUT_DIR}/merged.deepvariant.pass-prefiltered.vcf.gz",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
+    shell:
+        "bcftools merge {input} -Oz"
+        " | bcftools +fill-tags -Oz -o {output} -- -t AF,AC,AN"
+        " && tabix -p vcf {output}"
+
+rule merge_longread_dv_pass_vcfs:
+    """Merge PASS-filtered long-read per-sample DeepVariant VCFs"""
+    input:
+        expand("{out}/{s}.deepvariant.pass-only.vcf.gz", out=OUT_DIR, s=LR_SAMPLES),
+    output:
+        f"{OUT_DIR}/merged.longread.deepvariant.pass-prefiltered.vcf.gz",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
+    run:
+        if len(input) == 1:
+            shell("bcftools +fill-tags {input} -Oz -o {output} -- -t AF,AC,AN"
+                  " && tabix -p vcf {output}")
+        else:
+            shell("bcftools merge {input} -Oz"
+                  " | bcftools +fill-tags -Oz -o {output} -- -t AF,AC,AN"
+                  " && tabix -p vcf {output}")
+
 rule merge_dv_vcfs:
     """Merge per-sample DeepVariant VCFs with bcftools, add AF/AC/AN tags"""
     input:
@@ -1551,7 +1628,7 @@ rule dv_stats:
 rule merged_call_stats:
     """Merged call VCF → variant stats + plots (one mode/filter combo, includes AF spectrum)"""
     input:
-        vcf=lambda wc: f"{OUT_DIR}/merged.call.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.call.vcf.gz",
+        vcf=lambda wc: f"{OUT_DIR}/merged.call.pass-prefiltered{'.normed' if wc.mode == 'variants' else ''}.vcf.gz" if wc.filt == "pass" else (f"{OUT_DIR}/merged.call.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.call.vcf.gz"),
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
         annot_beds=call_annot_beds(),
         giab_beds=call_giab_strat_beds(),
@@ -1593,7 +1670,7 @@ rule merged_call_stats:
 rule merged_longread_call_stats:
     """Merged long-read call VCF → variant stats + plots"""
     input:
-        vcf=lambda wc: f"{OUT_DIR}/merged.longread.call.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.longread.call.vcf.gz",
+        vcf=lambda wc: f"{OUT_DIR}/merged.longread.call.pass-prefiltered{'.normed' if wc.mode == 'variants' else ''}.vcf.gz" if wc.filt == "pass" else (f"{OUT_DIR}/merged.longread.call.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.longread.call.vcf.gz"),
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
         annot_beds=call_annot_beds(),
         giab_beds=call_giab_strat_beds(),
@@ -1635,7 +1712,7 @@ rule merged_longread_call_stats:
 rule merged_longread_dv_stats:
     """Merged long-read DeepVariant VCF → variant stats + plots"""
     input:
-        vcf=lambda wc: f"{OUT_DIR}/merged.longread.deepvariant.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.longread.deepvariant.vcf.gz",
+        vcf=lambda wc: f"{OUT_DIR}/merged.longread.deepvariant.pass-prefiltered{'.normed' if wc.mode == 'variants' else ''}.vcf.gz" if wc.filt == "pass" else (f"{OUT_DIR}/merged.longread.deepvariant.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.longread.deepvariant.vcf.gz"),
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
         annot_beds=augref_annot_beds(),
         giab_beds=augref_giab_strat_beds(),
@@ -1676,7 +1753,7 @@ rule merged_longread_dv_stats:
 rule merged_dv_stats:
     """Merged DeepVariant VCF → variant stats + plots (one mode/filter combo, includes AF spectrum)"""
     input:
-        vcf=lambda wc: f"{OUT_DIR}/merged.deepvariant.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.deepvariant.vcf.gz",
+        vcf=lambda wc: f"{OUT_DIR}/merged.deepvariant.pass-prefiltered{'.normed' if wc.mode == 'variants' else ''}.vcf.gz" if wc.filt == "pass" else (f"{OUT_DIR}/merged.deepvariant.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.deepvariant.vcf.gz"),
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
         annot_beds=augref_annot_beds(),
         giab_beds=augref_giab_strat_beds(),
