@@ -177,6 +177,7 @@ cp "${GBZ}" "\${WORK_TMPDIR}/${GBZ_BASE}"
 cp "${HAPL}" "\${WORK_TMPDIR}/${HAPL_BASE}"
 
 # Process reads index: download remote URLs (gs://, http://, https://) to local scratch
+# BAM files are converted to FASTQ so that kmc and giraffe see only FASTQ input.
 LOCAL_READS="\${WORK_TMPDIR}/${SAMPLE}.reads.idx"
 > "\${LOCAL_READS}"
 while IFS= read -r fq || [ -n "\$fq" ]; do
@@ -185,18 +186,28 @@ while IFS= read -r fq || [ -n "\$fq" ]; do
       FQ_BASE=\$(basename "\$fq")
       echo "Downloading \$FQ_BASE from GCS"
       gsutil cp "\$fq" "\${WORK_TMPDIR}/\$FQ_BASE"
-      echo "\${WORK_TMPDIR}/\$FQ_BASE" >> "\${LOCAL_READS}"
+      LOCAL_PATH="\${WORK_TMPDIR}/\$FQ_BASE"
       ;;
     http://*|https://*)
       FQ_BASE=\$(basename "\$fq")
       echo "Downloading \$FQ_BASE"
       curl -sL -o "\${WORK_TMPDIR}/\$FQ_BASE" "\$fq"
-      echo "\${WORK_TMPDIR}/\$FQ_BASE" >> "\${LOCAL_READS}"
+      LOCAL_PATH="\${WORK_TMPDIR}/\$FQ_BASE"
       ;;
     *)
-      echo "\$fq" >> "\${LOCAL_READS}"
+      LOCAL_PATH="\$fq"
       ;;
   esac
+  # Convert BAM to FASTQ (streaming, then compress)
+  if [[ "\$LOCAL_PATH" == *.bam ]]; then
+    FQ_OUT="\${LOCAL_PATH%.bam}.fastq.gz"
+    echo "Converting BAM to FASTQ: \$LOCAL_PATH"
+    samtools fastq -@ 4 "\$LOCAL_PATH" | gzip > "\$FQ_OUT"
+    rm -f "\$LOCAL_PATH"
+    echo "\$FQ_OUT" >> "\${LOCAL_READS}"
+  else
+    echo "\$LOCAL_PATH" >> "\${LOCAL_READS}"
+  fi
 done < "${READS}"
 
 # Build -f arguments from local reads index
@@ -206,7 +217,12 @@ while IFS= read -r fq; do
 done < "\${LOCAL_READS}"
 
 # Run kmc for haplotype-aware mapping
-kmc -k29 -m${MEM_NUM} -okff -t${CPUS} -hp "@\${LOCAL_READS}" "\${WORK_TMPDIR}/${SAMPLE}" "\${WORK_TMPDIR}"
+# Use -hp (paired headers) for short reads, skip for long-read presets (single-end)
+KMC_HP=""
+if [ -z "${PRESET}" ]; then
+  KMC_HP="-hp"
+fi
+kmc -k29 -m${MEM_NUM} -okff -t${CPUS} \${KMC_HP} "@\${LOCAL_READS}" "\${WORK_TMPDIR}/${SAMPLE}" "\${WORK_TMPDIR}"
 
 # Run giraffe
 PRESET_ARG=""
