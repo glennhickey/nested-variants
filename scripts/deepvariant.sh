@@ -24,6 +24,7 @@ SAMPLE=""
 OUTPUT_DIR="."
 OUTPUT_NAME=""
 DV_VERSION="1.9.0"
+MODEL_TYPE="WGS"
 
 # SLURM resource defaults
 CPUS="16"
@@ -59,6 +60,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --dv-version)
             DV_VERSION="$2"
+            shift 2
+            ;;
+        --model-type)
+            MODEL_TYPE="$2"
             shift 2
             ;;
         --cpus)
@@ -184,7 +189,7 @@ CMD="/usr/bin/time -v docker run \
   -v \"${DV_TMPDIR}\":/tmp \
   google/deepvariant:${DV_VERSION} \
   /opt/deepvariant/bin/run_deepvariant \
-  --model_type=WGS \
+  --model_type=${MODEL_TYPE} \
   --ref=\"${REF_ABS}\" \
   --reads=\"${BAM_ABS}\" \
   --output_vcf=\"${VCF_ABS}\" \

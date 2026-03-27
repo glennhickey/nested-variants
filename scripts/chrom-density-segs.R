@@ -79,8 +79,9 @@ if (offref) {
   vcf_data <- vcf_data[grepl("_alt$", chrom)]
   cat("Filtered to", nrow(vcf_data), "off-reference (alt contig) variants\n")
   if (nrow(vcf_data) == 0) {
-    cat("ERROR: No off-reference variants found\n")
-    quit(status = 1)
+    cat("No off-reference variants found — creating empty plot.\n")
+    file.create(output_file)
+    quit(status = 0)
   }
 }
 

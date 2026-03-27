@@ -452,10 +452,16 @@ rule all:
         expand("{out}/{s}.vcf.gz", out=OUT_DIR, s=SAMPLES),
         expand("{out}/{s}.call-offref.png", out=OUT_DIR, s=SAMPLES),
         expand("{out}/{s}.contig-depth.png", out=OUT_DIR, s=SAMPLES),
-        # long-read sample outputs (giraffe -b hifi + call + depth, no DeepVariant)
+        # long-read sample outputs (giraffe -b hifi + call + DV PACBIO + depth)
         expand("{out}/{s}.vcf.gz", out=OUT_DIR, s=LR_SAMPLES),
         expand("{out}/{s}.call-offref.png", out=OUT_DIR, s=LR_SAMPLES),
         expand("{out}/{s}.contig-depth.png", out=OUT_DIR, s=LR_SAMPLES),
+        expand("{out}/{s}.deepvariant.vcf.gz", out=OUT_DIR, s=LR_SAMPLES),
+        expand("{out}/{s}.dv-offref.png", out=OUT_DIR, s=LR_SAMPLES),
+        expand("{out}/{s}.dv.sites.{filt}.vcf-stats.tsv", out=OUT_DIR, s=LR_SAMPLES, filt=["all", "pass"]),
+        expand("{out}/{s}.dv.sites.{filt}.variant-types.png", out=OUT_DIR, s=LR_SAMPLES, filt=["all", "pass"]),
+        expand("{out}/{s}.dv.variants.{filt}.vcf-stats.tsv", out=OUT_DIR, s=LR_SAMPLES, filt=["all", "pass"]),
+        expand("{out}/{s}.dv.variants.{filt}.variant-types.png", out=OUT_DIR, s=LR_SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.call.sites.{filt}.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.call.sites.{filt}.variant-types.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.call.sites.{filt}.size-dist.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
@@ -520,6 +526,11 @@ rule all:
         f"{OUT_DIR}/merged.dv.variants.pass.size-dist.png",
         f"{OUT_DIR}/merged.dv.variants.pass.size-dist-log.png",
         f"{OUT_DIR}/merged.dv.variants.pass.af-spectrum.png",
+        # merged long-read DeepVariant outputs (when longread_samples configured)
+        *([f"{OUT_DIR}/merged.longread.deepvariant.vcf.gz",
+           f"{OUT_DIR}/merged.longread.dv.sites.pass.vcf-stats.tsv",
+           f"{OUT_DIR}/merged.longread.dv.sites.pass.variant-types.png"]
+          if LR_SAMPLES else []),
 
 rule graph_only:
     """Graph construction + deconstruct + plots (no genotyping)"""
@@ -1231,6 +1242,7 @@ rule deepvariant:
         runtime=rule_runtime("deepvariant"),
     params:
         mem_gb=rule_mem_gb("deepvariant", 1024),
+        model_type=lambda wc: "PACBIO" if wc.sample in config.get("longread_samples", {}) else "WGS",
     shell:
         "scripts/deepvariant.sh"
         " --bam {input.bam}"
@@ -1239,6 +1251,7 @@ rule deepvariant:
         " --out-dir {OUT_DIR}"
         " --out-name {wildcards.sample}.deepvariant.vcf.gz"
         " --dv-version {config[dv_version]}"
+        " --model-type {params.model_type}"
         " --cpus {threads} --mem {params.mem_gb}gb"
         " --tmpdir {resources.tmpdir}"
         " --local"
@@ -1301,6 +1314,24 @@ rule merge_longread_call_vcfs:
         expand("{out}/{s}.vcf.gz", out=OUT_DIR, s=LR_SAMPLES),
     output:
         f"{OUT_DIR}/merged.longread.call.vcf.gz",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
+    run:
+        if len(input) == 1:
+            shell("bcftools +fill-tags {input} -Oz -o {output} -- -t AF,AC,AN"
+                  " && tabix -p vcf {output}")
+        else:
+            shell("bcftools merge {input} -Oz"
+                  " | bcftools +fill-tags -Oz -o {output} -- -t AF,AC,AN"
+                  " && tabix -p vcf {output}")
+
+rule merge_longread_dv_vcfs:
+    """Merge long-read per-sample DeepVariant VCFs"""
+    input:
+        expand("{out}/{s}.deepvariant.vcf.gz", out=OUT_DIR, s=LR_SAMPLES),
+    output:
+        f"{OUT_DIR}/merged.longread.deepvariant.vcf.gz",
     resources:
         mem_mb=256000,
         runtime=2880,
@@ -1600,6 +1631,47 @@ rule merged_longread_call_stats:
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged Long-Read Call'"
         " --segs {input.segs} --segs-strip-prefix '{AUGREF}#0#'"
         " {params.annot_arg} {params.giab_arg} --per-sample"
+
+rule merged_longread_dv_stats:
+    """Merged long-read DeepVariant VCF → variant stats + plots"""
+    input:
+        vcf=lambda wc: f"{OUT_DIR}/merged.longread.deepvariant.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.longread.deepvariant.vcf.gz",
+        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
+        annot_beds=augref_annot_beds(),
+        giab_beds=augref_giab_strat_beds(),
+    output:
+        f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.vcf-stats.tsv",
+        f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.variant-types.png",
+        f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.size-dist.png",
+        f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.size-dist-log.png",
+        f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.af-spectrum.png",
+        *([ f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.variant-types-by-annot.png",
+            f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv"]
+          if annotation_inputs() else []),
+        *([ f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.giab-strat.png",
+            f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.giab-strat.tsv"]
+          if giab_strat_configured() else []),
+        f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.per-sample-types.png",
+        f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.per-sample-types.tsv",
+        *([ f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.per-sample-giab-strat.png",
+            f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.per-sample-giab-strat.tsv"]
+          if giab_strat_configured() else []),
+    resources:
+        mem_mb=256000,
+        runtime=2880,
+    params:
+        annot_arg=lambda wc, input: (
+            f"--annot-beds {','.join(input.annot_beds)} --annot-names {','.join(annotation_names())}"
+            if annotation_inputs() else ""),
+        giab_arg=lambda wc, input: (
+            f"--giab-strat-beds {','.join(input.giab_beds)}"
+            f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
+            if giab_strat_configured() else ""),
+    shell:
+        "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.longread.dv.{wildcards.mode}.{wildcards.filt}"
+        " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged Long-Read DeepVariant'"
+        " --segs {input.segs}"
+        " {params.annot_arg} {params.giab_arg} --per-sample --no-sv"
 
 rule merged_dv_stats:
     """Merged DeepVariant VCF → variant stats + plots (one mode/filter combo, includes AF spectrum)"""
