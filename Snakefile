@@ -1010,6 +1010,11 @@ def _giraffe_preset(wc):
         return "--preset hifi"
     return ""
 
+def _giraffe_mem_gb(wc):
+    """Memory for giraffe: 900 GB for long reads (HiFi index build), 512 GB for short reads."""
+    default = 900 if wc.sample in config.get("longread_samples", {}) else 512
+    return rule_mem_gb("giraffe", default)
+
 rule giraffe:
     """GBZ + reads → GAM"""
     input:
@@ -1020,10 +1025,10 @@ rule giraffe:
         f"{OUT_DIR}/{{sample}}.gam",
     threads: rule_cpus("giraffe", 128)
     resources:
-        mem_mb=rule_mem_gb("giraffe", 512) * 1024,
+        mem_mb=lambda wc: _giraffe_mem_gb(wc) * 1024,
         runtime=rule_runtime("giraffe"),
     params:
-        mem_gb=rule_mem_gb("giraffe", 512),
+        mem_gb=_giraffe_mem_gb,
         preset=_giraffe_preset,
     shell:
         "scripts/giraffe.sh"
