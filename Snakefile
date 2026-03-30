@@ -318,6 +318,26 @@ def compare_call_dv_outputs():
             outputs.append(f"{OUT_DIR}/merged.call-vs-dv.{mode}.{filt}.compare.tsv")
     return outputs
 
+def vcfeval_lr_compare_outputs():
+    """Return vcfeval-based call-vs-DV comparison outputs for long-read samples."""
+    if not LR_SAMPLES:
+        return []
+    outputs = []
+    for filt in ["all", "pass"]:
+        outputs.append(f"{OUT_DIR}/merged.lr.call-vs-dv.{filt}.vcfeval-compare.png")
+        outputs.append(f"{OUT_DIR}/merged.lr.call-vs-dv.{filt}.vcfeval-compare.tsv")
+        outputs.append(f"{OUT_DIR}/merged.lr.call-vs-dv.{filt}.chromsplit.tsv")
+        outputs.append(f"{OUT_DIR}/merged.lr.call-vs-dv.{filt}.chromsplit.png")
+        outputs.append(f"{OUT_DIR}/merged.lr.call-vs-dv.{filt}.chromsplit-top.png")
+        outputs.append(f"{OUT_DIR}/merged.lr.call-vs-dv.{filt}.chromsplit-concordant.png")
+        outputs.append(f"{OUT_DIR}/merged.lr.call-vs-dv.{filt}.chromsplit-top-onref.png")
+        outputs.append(f"{OUT_DIR}/merged.lr.call-vs-dv.{filt}.chromsplit-concordant-onref.png")
+        if annotation_inputs():
+            outputs.append(f"{OUT_DIR}/merged.lr.call-vs-dv.{filt}.chromsplit-annot.png")
+        if giab_strat_configured():
+            outputs.append(f"{OUT_DIR}/merged.lr.call-vs-dv.{filt}.chromsplit-giab.png")
+    return outputs
+
 def vcfeval_compare_outputs():
     """Return vcfeval-based call-vs-DV comparison outputs when samples are configured."""
     if not SAMPLES:
@@ -411,6 +431,9 @@ def summary_figure_outputs():
         outputs.append(f"{OUT_DIR}/5d.mapq-summary.png")
     if LR_SAMPLES:
         outputs.append(f"{OUT_DIR}/3lr.call-summary-longread.png")
+        outputs.append(f"{OUT_DIR}/4lr.deepvariant-summary-longread.png")
+        outputs.append(f"{OUT_DIR}/5lr.concordance-summary-longread.png")
+        outputs.append(f"{OUT_DIR}/5blr.concordance-onref-summary-longread.png")
         outputs.append(f"{OUT_DIR}/5c-lr.coverage-summary-longread.png")
         outputs.append(f"{OUT_DIR}/5d-lr.mapq-summary-longread.png")
     if config.get("pantree_vcf", ""):
@@ -445,6 +468,7 @@ rule all:
         *per_sample_stats_outputs(),
         *compare_call_dv_outputs(),
         *vcfeval_compare_outputs(),
+        *vcfeval_lr_compare_outputs(),
         *polymorphism_outputs(),
         *pantree_outputs(),
         *summary_figure_outputs(),
@@ -2210,6 +2234,78 @@ rule vcfeval_chromsplit_squash_plot:
         " {params.annot_arg} {params.giab_arg}"
 
 ############################################################################
+# Long-read vcfeval comparison rules (call vs DV, no squash-ploidy)
+############################################################################
+
+rule vcfeval_lr_compare_plot:
+    """Aggregate long-read per-sample vcfeval results into comparison plot"""
+    input:
+        tp_baseline=expand(f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}/tp-baseline.vcf.gz", sample=LR_SAMPLES, allow_missing=True),
+        fp=expand(f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}/fp.vcf.gz", sample=LR_SAMPLES, allow_missing=True),
+        fn=expand(f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}/fn.vcf.gz", sample=LR_SAMPLES, allow_missing=True),
+    output:
+        f"{OUT_DIR}/merged.lr.call-vs-dv.{{filt}}.vcfeval-compare.png",
+        f"{OUT_DIR}/merged.lr.call-vs-dv.{{filt}}.vcfeval-compare.tsv",
+    params:
+        vcfeval_dirs=lambda wc, input: ",".join(
+            [f"{OUT_DIR}/vcfeval/{wc.filt}/{s}" for s in LR_SAMPLES]),
+        sample_names=",".join(LR_SAMPLES),
+    resources:
+        mem_mb=32000,
+        runtime=120,
+    shell:
+        "Rscript scripts/vcf-compare-vcfeval.R"
+        " {OUT_DIR}/merged.lr.call-vs-dv.{wildcards.filt}"
+        " --vcfeval-dirs {params.vcfeval_dirs}"
+        " --samples {params.sample_names}"
+        " --label-a Call --label-b DeepVariant"
+        " --title '{REF} Long-Read Call vs DeepVariant (vcfeval)'"
+        " --no-sv"
+
+rule vcfeval_lr_chromsplit_merge:
+    """Merge long-read per-sample chromsplit breakdowns into a single long-format TSV"""
+    input:
+        expand(f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}/chromsplit.tsv",
+               sample=LR_SAMPLES, allow_missing=True),
+    output:
+        f"{OUT_DIR}/merged.lr.call-vs-dv.{{filt}}.chromsplit.tsv",
+    run:
+        merge_chromsplit_tsv(input, LR_SAMPLES, output[0])
+
+rule vcfeval_lr_chromsplit_plot:
+    """Long-read per-contig FP/FN scatter and top-discordant bar chart"""
+    input:
+        tsv=f"{OUT_DIR}/merged.lr.call-vs-dv.{{filt}}.chromsplit.tsv",
+        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
+        annot=f"{OUT_DIR}/{OUT_NAME}.annot-per-segment.tsv" if annotation_inputs() else [],
+        giab_beds=giab_strat_beds(),
+    output:
+        f"{OUT_DIR}/merged.lr.call-vs-dv.{{filt}}.chromsplit.png",
+        f"{OUT_DIR}/merged.lr.call-vs-dv.{{filt}}.chromsplit-top.png",
+        f"{OUT_DIR}/merged.lr.call-vs-dv.{{filt}}.chromsplit-concordant.png",
+        f"{OUT_DIR}/merged.lr.call-vs-dv.{{filt}}.chromsplit-top-onref.png",
+        f"{OUT_DIR}/merged.lr.call-vs-dv.{{filt}}.chromsplit-concordant-onref.png",
+        *([ f"{OUT_DIR}/merged.lr.call-vs-dv.{{filt}}.chromsplit-annot.png"]
+          if annotation_inputs() else []),
+        *([ f"{OUT_DIR}/merged.lr.call-vs-dv.{{filt}}.chromsplit-giab.png"]
+          if giab_strat_configured() else []),
+    resources:
+        mem_mb=32000,
+    params:
+        strip_prefix=f"{AUGREF}#0#",
+        annot_arg=lambda wc, input: f"--annot {input.annot}" if annotation_inputs() else "",
+        giab_arg=lambda wc, input: (
+            f"--giab-beds {','.join(input.giab_beds)} --giab-names {','.join(GIAB_STRAT_DISPLAY)}"
+            if giab_strat_configured() else ""),
+    shell:
+        "Rscript scripts/vcf-chromsplit-plot.R {input.tsv}"
+        " {OUT_DIR}/merged.lr.call-vs-dv.{wildcards.filt}"
+        " --title '{REF} Long-Read Call vs DeepVariant Per-Contig'"
+        " --strip-prefix '{params.strip_prefix}'"
+        " --segs {input.segs}"
+        " {params.annot_arg} {params.giab_arg}"
+
+############################################################################
 # Pantree comparison rules (optional — only when pantree_vcf is set)
 ############################################################################
 
@@ -2578,6 +2674,70 @@ rule summary_longread_call:
         " --title 'Long-Read vg call Genotyping (PASS)'"
         " --cols 2"
         " --panels {params.panels}"
+
+rule summary_longread_deepvariant:
+    """Compose long-read DeepVariant summary figure"""
+    input:
+        dv_types=f"{OUT_DIR}/merged.longread.dv.sites.pass.variant-types.png",
+        dv_per_sample=f"{OUT_DIR}/merged.longread.dv.sites.pass.per-sample-types.png",
+        dv_giab=[f"{OUT_DIR}/merged.longread.dv.sites.pass.giab-strat.png"] if giab_strat_configured() else [],
+        dv_per_sample_giab=[f"{OUT_DIR}/merged.longread.dv.sites.pass.per-sample-giab-strat.png"] if giab_strat_configured() else [],
+        annot_snp=[f"{OUT_DIR}/merged.longread.dv.sites.pass.variant-types-by-annot.png"] if annotation_inputs() else [],
+    output:
+        f"{OUT_DIR}/4lr.deepvariant-summary-longread.png",
+    params:
+        panels=lambda wc, input: " ".join(
+            [f"'DV Variant Types (PASS):{input.dv_types}'",
+             f"'DV Per-Sample Types (PASS):{input.dv_per_sample}'"]
+            + ([f"'DV GIAB Stratification:{input.dv_giab[0]}'"] if input.dv_giab else [])
+            + ([f"'DV Per-Sample GIAB:{input.dv_per_sample_giab[0]}'"] if input.dv_per_sample_giab else [])
+            + ([f"'DV Types by Annotation:{input.annot_snp[0]}'"] if input.annot_snp else [])
+        ),
+    shell:
+        "python3 scripts/compose-summary.py"
+        " --output {output}"
+        " --title 'Long-Read DeepVariant (PASS)'"
+        " --cols 2"
+        " --panels {params.panels}"
+
+rule summary_longread_concordance:
+    """Compose long-read call-vs-DV concordance summary figure (off-ref)"""
+    input:
+        discordant=f"{OUT_DIR}/merged.lr.call-vs-dv.pass.chromsplit-top.png",
+        concordant=f"{OUT_DIR}/merged.lr.call-vs-dv.pass.chromsplit-concordant.png",
+        annot=f"{OUT_DIR}/merged.lr.call-vs-dv.pass.chromsplit-annot.png" if annotation_inputs() else [],
+        giab=f"{OUT_DIR}/merged.lr.call-vs-dv.pass.chromsplit-giab.png" if giab_strat_configured() else [],
+    output:
+        f"{OUT_DIR}/5lr.concordance-summary-longread.png",
+    params:
+        panels=lambda wc, input: " ".join(
+            [f"'Top Discordant Off-Ref:{input.discordant}'",
+             f"'Top Concordant Off-Ref:{input.concordant}'"]
+            + ([f"'TP/FP/FN by Annotation:{input.annot}'"] if input.annot else [])
+            + ([f"'TP/FP/FN by GIAB Region:{input.giab}'"] if input.giab else [])
+        ),
+    shell:
+        "python3 scripts/compose-summary.py"
+        " --output {output}"
+        " --title 'Long-Read Call vs DeepVariant Concordance — Off-Ref (PASS)'"
+        " --cols 2"
+        " --panels {params.panels}"
+
+rule summary_longread_concordance_onref:
+    """Compose long-read on-reference concordance summary figure"""
+    input:
+        discordant=f"{OUT_DIR}/merged.lr.call-vs-dv.pass.chromsplit-top-onref.png",
+        concordant=f"{OUT_DIR}/merged.lr.call-vs-dv.pass.chromsplit-concordant-onref.png",
+    output:
+        f"{OUT_DIR}/5blr.concordance-onref-summary-longread.png",
+    shell:
+        "python3 scripts/compose-summary.py"
+        " --output {output}"
+        " --title 'Long-Read Call vs DeepVariant Concordance — On-Ref (PASS)'"
+        " --cols 2"
+        " --panels"
+        " 'Top Discordant On-Ref:{input.discordant}'"
+        " 'Top Concordant On-Ref:{input.concordant}'"
 
 rule summary_longread_coverage:
     """Long-read contig depth summary"""
