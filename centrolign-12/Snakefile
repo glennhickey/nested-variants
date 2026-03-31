@@ -1,0 +1,484 @@
+# Snakefile — chr12 augref + deconstruct + call + deepvariant analysis
+#
+# Reuses scripts from ../scripts/ without modification (except local vcf-stats.R).
+# Override VG, OUT, NAME via --config on the command line.
+#
+# Usage:
+#   source ../venv-nested-variants/bin/activate
+#   snakemake --cores 8 -np   # dry run (default: chr12.vg -> output/)
+#   snakemake --cores 8        # full run
+#
+#   # Run on a different graph:
+#   snakemake --cores 8 --config vg=chr12.subsample150.100kb_flanks.vg \
+#     out=output-flanks name=chr12-flanks
+
+import os
+
+SCRIPTS = "../scripts"
+
+REF = config.get("ref", "CHM13")
+AUGREF = f"augref_{REF}"
+VG = config.get("vg", "chr12.vg")
+OUT = config.get("out", "output")
+NAME = config.get("name", "chr12")
+MIN_AUGREF_LEN = 50
+USE_HAPL = config.get("use_hapl", True)
+
+SAMPLES = {
+    "HG00099.1": "real_HG00099.1.chr12.hifi.fastq",
+    "HG01167.1": "real_HG01167.1.chr12.hifi.fastq",
+    "NA18943.2": "real_NA18943.2.chr12.hifi.fastq",
+}
+
+
+rule all:
+    input:
+        f"{OUT}/1.augref-summary.png",
+        f"{OUT}/2.deconstruct-summary.png",
+        expand(f"{OUT}/{{s}}.call.vcf.gz", s=SAMPLES),
+        f"{OUT}/3.call-summary.png",
+        expand(f"{OUT}/{{s}}.deepvariant.vcf.gz", s=SAMPLES),
+        f"{OUT}/4.deepvariant-summary.png",
+
+
+# --- Graph construction ---
+
+rule paths:
+    """VG -> augref GFA + segment table"""
+    input:
+        VG,
+    output:
+        gfa=f"{OUT}/{NAME}.augref.gfa",
+        segs=f"{OUT}/{NAME}.augref-segs.tsv",
+    threads: 8
+    shell:
+        "vg paths -x {input} -Q {REF} -u"
+        " --min-augref-len {MIN_AUGREF_LEN}"
+        " --augref-sample {AUGREF}"
+        " --augref-segs {output.segs}"
+        " -t {threads}"
+        " | vg convert -f - > {output.gfa}"
+
+
+rule gbz:
+    """GFA -> GBZ"""
+    input:
+        f"{OUT}/{NAME}.augref.gfa",
+    output:
+        f"{OUT}/{NAME}.augref.gbz",
+    shell:
+        "vg gbwt -G {input} --gbz-format -g {output}"
+        " --set-reference {AUGREF}"
+
+
+# --- Deconstruction ---
+
+rule deconstruct:
+    """GBZ -> VCF"""
+    input:
+        f"{OUT}/{NAME}.augref.gbz",
+    output:
+        vcf=f"{OUT}/{NAME}.vcf.gz",
+        tbi=f"{OUT}/{NAME}.vcf.gz.tbi",
+    threads: 8
+    shell:
+        "vg deconstruct {input} -P {AUGREF} -a -t {threads}"
+        " | bgzip > {output.vcf}"
+        " && tabix -fp vcf {output.vcf}"
+
+
+rule fasta:
+    """GBZ -> augref reference FASTA (needed for TR annotation)"""
+    input:
+        f"{OUT}/{NAME}.augref.gbz",
+    output:
+        fa=f"{OUT}/{NAME}.fa.gz",
+        fai=f"{OUT}/{NAME}.fa.gz.fai",
+        gzi=f"{OUT}/{NAME}.fa.gz.gzi",
+    threads: 8
+    shell:
+        "{SCRIPTS}/fasta.sh"
+        " --gbz {input}"
+        " --ref {AUGREF}"
+        " --out-dir {OUT}"
+        " --out-name {NAME}.fa.gz"
+        " --cpus {threads} --mem 64gb"
+        " --local"
+
+
+rule annotate_tr:
+    """Annotate indels with tandem repeat motifs"""
+    input:
+        vcf=f"{OUT}/{NAME}.vcf.gz",
+        ref=f"{OUT}/{NAME}.fa.gz",
+    output:
+        f"{OUT}/{NAME}.tr.vcf.gz",
+    shell:
+        "python3 {SCRIPTS}/annotate-tr.py"
+        " --vcf {input.vcf} --ref {input.ref}"
+        " -o {output}"
+        " && tabix -fp vcf {output}"
+
+
+# --- Mapping and calling ---
+
+rule haplotypes:
+    """GBZ -> haplotype index for giraffe"""
+    input:
+        f"{OUT}/{NAME}.augref.gbz",
+    output:
+        f"{OUT}/{NAME}.hapl",
+    threads: 8
+    shell:
+        "{SCRIPTS}/haplotypes.sh"
+        " --gbz {input}"
+        " --ref {REF}"
+        " --out-dir {OUT}"
+        " --out-name {NAME}.hapl"
+        " --cpus {threads} --mem 32gb"
+        " --local"
+
+
+rule reads_idx:
+    """Create reads index file for giraffe"""
+    output:
+        f"{OUT}/{{sample}}.reads.idx",
+    params:
+        fastq=lambda wc: os.path.abspath(SAMPLES[wc.sample]),
+    run:
+        with open(output[0], "w") as f:
+            f.write(params.fastq + "\n")
+
+
+if USE_HAPL:
+    rule giraffe:
+        """GBZ + reads -> GAM (HiFi, with haplotype index)"""
+        input:
+            gbz=f"{OUT}/{NAME}.augref.gbz",
+            hapl=f"{OUT}/{NAME}.hapl",
+            reads=f"{OUT}/{{sample}}.reads.idx",
+        output:
+            f"{OUT}/{{sample}}.gam",
+        threads: 8
+        shell:
+            "{SCRIPTS}/giraffe.sh"
+            " --gbz {input.gbz}"
+            " --hapl {input.hapl}"
+            " --reads {input.reads}"
+            " --sample {wildcards.sample}"
+            " --out-dir {OUT}"
+            " --out-name {wildcards.sample}.gam"
+            " --preset hifi"
+            " --cpus {threads} --mem 32gb"
+            " --local"
+else:
+    rule giraffe:
+        """GBZ + reads -> GAM (HiFi, no haplotype index)"""
+        input:
+            gbz=f"{OUT}/{NAME}.augref.gbz",
+            reads=f"{OUT}/{{sample}}.reads.idx",
+        output:
+            f"{OUT}/{{sample}}.gam",
+        threads: 8
+        shell:
+            "vg giraffe -p -t {threads} -b hifi"
+            " -Z {input.gbz}"
+            " -N {wildcards.sample}"
+            " -f $(cat {input.reads})"
+            " > {output}"
+
+
+rule call:
+    """GAM -> VCF (vg call)"""
+    input:
+        gbz=f"{OUT}/{NAME}.augref.gbz",
+        gam=f"{OUT}/{{sample}}.gam",
+    output:
+        vcf=f"{OUT}/{{sample}}.call.vcf.gz",
+        pack=f"{OUT}/{{sample}}.call.pack",
+    threads: 8
+    shell:
+        "{SCRIPTS}/call.sh"
+        " --gbz {input.gbz}"
+        " --gam {input.gam}"
+        " --ref {AUGREF}"
+        " --sample {wildcards.sample}"
+        " --out-dir {OUT}"
+        " --out-name {wildcards.sample}.call.vcf.gz"
+        " --cpus {threads} --mem 32gb"
+        " --local"
+
+
+rule surject:
+    """GAM -> sorted BAM (long-read mode)"""
+    input:
+        gbz=f"{OUT}/{NAME}.augref.gbz",
+        gam=f"{OUT}/{{sample}}.gam",
+    output:
+        f"{OUT}/{{sample}}.bam",
+    threads: 8
+    shell:
+        "{SCRIPTS}/surject.sh"
+        " --gbz {input.gbz}"
+        " --gam {input.gam}"
+        " --ref {AUGREF}"
+        " --sample {wildcards.sample}"
+        " --out-dir {OUT}"
+        " --out-name {wildcards.sample}.bam"
+        " --no-interleaved --read-length long"
+        " --cpus {threads} --mem 32gb"
+        " --local"
+
+
+rule deepvariant:
+    """BAM + FASTA -> VCF (DeepVariant PACBIO model)"""
+    input:
+        bam=f"{OUT}/{{sample}}.bam",
+        ref=f"{OUT}/{NAME}.fa.gz",
+    output:
+        f"{OUT}/{{sample}}.deepvariant.vcf.gz",
+    threads: 8
+    shell:
+        "{SCRIPTS}/deepvariant.sh"
+        " --bam {input.bam}"
+        " --ref {input.ref}"
+        " --sample {wildcards.sample}"
+        " --out-dir {OUT}"
+        " --out-name {wildcards.sample}.deepvariant.vcf.gz"
+        " --model-type PACBIO"
+        " --cpus {threads} --mem 32gb"
+        " --local"
+
+
+# --- Merged call analysis ---
+
+rule pass_filter_vcf:
+    """VCF -> PASS-only VCF (filter before merging to avoid cross-sample filter contamination)"""
+    input:
+        f"{OUT}/{{prefix}}.vcf.gz",
+    output:
+        f"{OUT}/{{prefix}}.pass-only.vcf.gz",
+    shell:
+        "bcftools view -f PASS '{input}' -Oz -o {output}"
+        " && tabix -p vcf {output}"
+
+
+rule merge_call_vcfs:
+    """Merge PASS-filtered per-sample call VCFs"""
+    input:
+        expand(f"{OUT}/{{s}}.call.pass-only.vcf.gz", s=SAMPLES),
+    output:
+        f"{OUT}/merged.call.vcf.gz",
+    shell:
+        "bcftools merge {input} -Oz"
+        " | bcftools +fill-tags -Oz -o {output} -- -t AF,AC,AN"
+        " && tabix -p vcf {output}"
+
+
+rule merged_call_stats:
+    """Merged call VCF -> variant stats + plots"""
+    input:
+        vcf=f"{OUT}/merged.call.vcf.gz",
+        segs=f"{OUT}/{NAME}.augref-segs.tsv",
+    output:
+        tsv=f"{OUT}/merged.call.sites.pass.vcf-stats.tsv",
+        types=f"{OUT}/merged.call.sites.pass.variant-types.png",
+        size_dist=f"{OUT}/merged.call.sites.pass.size-dist.png",
+        size_dist_log=f"{OUT}/merged.call.sites.pass.size-dist-log.png",
+        af=f"{OUT}/merged.call.sites.pass.af-spectrum.png",
+        per_sample=f"{OUT}/merged.call.sites.pass.per-sample-types.png",
+        per_sample_tsv=f"{OUT}/merged.call.sites.pass.per-sample-types.tsv",
+    shell:
+        "Rscript vcf-stats.R"
+        " {input.vcf} {OUT}/merged.call.sites.pass"
+        " --mode sites --af-step 0.05"
+        " --title '{REF} chr12 Call'"
+        " --segs {input.segs} --segs-strip-prefix '{AUGREF}#0#'"
+        " --per-sample"
+
+
+rule call_summary_panel:
+    """Per-sample call summary: stacked bars with Ts/Tv"""
+    input:
+        per_sample=f"{OUT}/merged.call.sites.pass.per-sample-types.tsv",
+        vcf=f"{OUT}/merged.call.vcf.gz",
+    output:
+        f"{OUT}/merged.call.sites.pass.call-summary-panel.png",
+    shell:
+        "Rscript {SCRIPTS}/call-summary-panel.R"
+        " --per-sample {input.per_sample}"
+        " --vcf {input.vcf}"
+        " --min-sv-size {MIN_AUGREF_LEN}"
+        " --output {output}"
+        " --title 'Off-reference genotyping'"
+
+
+# --- Plots ---
+
+rule length_hist:
+    """Augref segments -> cumulative length histogram"""
+    input:
+        f"{OUT}/{NAME}.augref-segs.tsv",
+    output:
+        f"{OUT}/{NAME}.augref-length-hist.png",
+    shell:
+        "Rscript {SCRIPTS}/offref-length-hist.R {output} {input} TRUE"
+
+
+rule length_hist_log:
+    """Augref segments -> log-log length histogram"""
+    input:
+        f"{OUT}/{NAME}.augref-segs.tsv",
+    output:
+        f"{OUT}/{NAME}.augref-length-hist-log.png",
+    shell:
+        "Rscript {SCRIPTS}/offref-length-hist.R {output} {input} FALSE"
+
+
+rule centromere_density:
+    """Augref segments -> zoomed density along centromere reference path"""
+    input:
+        f"{OUT}/{NAME}.augref-segs.tsv",
+    output:
+        f"{OUT}/{NAME}.centromere-density.png",
+    shell:
+        "Rscript centromere-density.R"
+        " {input} {output}"
+        " 'chr12 Centromere Off-Reference Segment Density'"
+        " {MIN_AUGREF_LEN} 5"
+
+
+rule vcf_stats:
+    """VCF -> variant type plots + stats"""
+    input:
+        vcf=f"{OUT}/{NAME}.tr.vcf.gz",
+        segs=f"{OUT}/{NAME}.augref-segs.tsv",
+    output:
+        tsv=f"{OUT}/{NAME}.sites.vcf-stats.tsv",
+        types=f"{OUT}/{NAME}.sites.variant-types.png",
+        size_dist=f"{OUT}/{NAME}.sites.size-dist.png",
+        size_dist_log=f"{OUT}/{NAME}.sites.size-dist-log.png",
+        af=f"{OUT}/{NAME}.sites.af-spectrum.png",
+        per_sample=f"{OUT}/{NAME}.sites.per-sample-types.png",
+        per_sample_tsv=f"{OUT}/{NAME}.sites.per-sample-types.tsv",
+    shell:
+        "Rscript vcf-stats.R"
+        " {input.vcf} {OUT}/{NAME}.sites"
+        " --mode sites --af-step 0.05"
+        " --title '{REF} chr12 Deconstruct'"
+        " --segs {input.segs}"
+        " --per-sample --ref-sample {REF}"
+
+
+# --- Summary figures ---
+
+rule summary_augref:
+    """Compose augref segment summary (figure 1)"""
+    input:
+        hist=f"{OUT}/{NAME}.augref-length-hist.png",
+        hist_log=f"{OUT}/{NAME}.augref-length-hist-log.png",
+        density=f"{OUT}/{NAME}.centromere-density.png",
+    output:
+        f"{OUT}/1.augref-summary.png",
+    shell:
+        "python3 {SCRIPTS}/compose-summary.py"
+        " --output {output}"
+        " --title 'Augref Segment Summary'"
+        " --cols 2"
+        " --panels"
+        " 'Segment Lengths:{input.hist}'"
+        " 'Segment Lengths (log):{input.hist_log}'"
+        " 'Centromere Density:{input.density}'"
+
+
+rule summary_deconstruct:
+    """Compose deconstruct variant catalog (figure 2)"""
+    input:
+        types=f"{OUT}/{NAME}.sites.variant-types.png",
+        sizedist=f"{OUT}/{NAME}.sites.size-dist-log.png",
+        af=f"{OUT}/{NAME}.sites.af-spectrum.png",
+        per_sample=f"{OUT}/{NAME}.sites.per-sample-types.png",
+    output:
+        f"{OUT}/2.deconstruct-summary.png",
+    shell:
+        "python3 {SCRIPTS}/compose-summary.py"
+        " --output {output}"
+        " --title 'Deconstruct Variant Catalog'"
+        " --cols 2"
+        " --panels"
+        " 'Variant Types:{input.types}'"
+        " 'Size Distribution:{input.sizedist}'"
+        " 'AF Spectrum:{input.af}'"
+        " 'Per-Sample Types:{input.per_sample}'"
+
+
+rule summary_call:
+    """Compose call summary (figure 3)"""
+    input:
+        types=f"{OUT}/merged.call.sites.pass.variant-types.png",
+        per_sample=f"{OUT}/merged.call.sites.pass.per-sample-types.png",
+        panel=f"{OUT}/merged.call.sites.pass.call-summary-panel.png",
+    output:
+        f"{OUT}/3.call-summary.png",
+    shell:
+        "python3 {SCRIPTS}/compose-summary.py"
+        " --output {output}"
+        " --title 'vg call Genotyping (PASS)'"
+        " --cols 2"
+        " --panels"
+        " 'Variant Types (PASS):{input.types}'"
+        " 'Per-Sample Types (PASS):{input.per_sample}'"
+        " 'Call Summary:{input.panel}'"
+
+
+# --- Merged DV analysis ---
+
+rule merge_dv_vcfs:
+    """Merge PASS-filtered per-sample DeepVariant VCFs"""
+    input:
+        expand(f"{OUT}/{{s}}.deepvariant.pass-only.vcf.gz", s=SAMPLES),
+    output:
+        f"{OUT}/merged.deepvariant.vcf.gz",
+    shell:
+        "bcftools merge {input} -Oz"
+        " | bcftools +fill-tags -Oz -o {output} -- -t AF,AC,AN"
+        " && tabix -p vcf {output}"
+
+
+rule merged_dv_stats:
+    """Merged DV VCF -> variant stats + plots"""
+    input:
+        vcf=f"{OUT}/merged.deepvariant.vcf.gz",
+        segs=f"{OUT}/{NAME}.augref-segs.tsv",
+    output:
+        tsv=f"{OUT}/merged.dv.sites.pass.vcf-stats.tsv",
+        types=f"{OUT}/merged.dv.sites.pass.variant-types.png",
+        size_dist=f"{OUT}/merged.dv.sites.pass.size-dist.png",
+        size_dist_log=f"{OUT}/merged.dv.sites.pass.size-dist-log.png",
+        af=f"{OUT}/merged.dv.sites.pass.af-spectrum.png",
+        per_sample=f"{OUT}/merged.dv.sites.pass.per-sample-types.png",
+        per_sample_tsv=f"{OUT}/merged.dv.sites.pass.per-sample-types.tsv",
+    shell:
+        "Rscript vcf-stats.R"
+        " {input.vcf} {OUT}/merged.dv.sites.pass"
+        " --mode sites --af-step 0.05"
+        " --title '{REF} chr12 DeepVariant'"
+        " --segs {input.segs} --segs-strip-prefix '{AUGREF}#0#'"
+        " --per-sample"
+
+
+rule summary_deepvariant:
+    """Compose DeepVariant summary (figure 4)"""
+    input:
+        types=f"{OUT}/merged.dv.sites.pass.variant-types.png",
+        per_sample=f"{OUT}/merged.dv.sites.pass.per-sample-types.png",
+    output:
+        f"{OUT}/4.deepvariant-summary.png",
+    shell:
+        "python3 {SCRIPTS}/compose-summary.py"
+        " --output {output}"
+        " --title 'DeepVariant (PASS)'"
+        " --cols 2"
+        " --panels"
+        " 'DV Variant Types (PASS):{input.types}'"
+        " 'DV Per-Sample Types (PASS):{input.per_sample}'"

@@ -1,0 +1,20 @@
+# Data files (copy manually to cluster)
+*.vg
+*.gfa
+*.gbz
+*.gam
+*.fastq
+*.pack
+*.dist
+*.min
+*.zipcodes
+
+# Output directories
+output/
+output-flanks/
+
+# Misc
+Rplots.pdf
+out.vcf
+.snakemake/
+.claude/
