@@ -819,12 +819,14 @@ rule plots:
 ############################################################################
 
 rule annotation_intersect:
-    """Augref segments + annotation BEDs → per-segment annotation TSV"""
+    """Augref segments + annotation BEDs → per-segment annotation TSV + genome-wide coverage"""
     input:
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
+        fai=f"{OUT_DIR}/{OUT_NAME}.fa.gz.fai",
         annots=all_annotation_inputs(),
     output:
-        f"{OUT_DIR}/{OUT_NAME}.annot-per-segment.tsv",
+        per_seg=f"{OUT_DIR}/{OUT_NAME}.annot-per-segment.tsv",
+        genome_cov=f"{OUT_DIR}/{OUT_NAME}.annot-genome-coverage.tsv",
     resources:
         mem_mb=512000,
         runtime=2880,
@@ -834,7 +836,9 @@ rule annotation_intersect:
     shell:
         "python scripts/intersect-annotations.py"
         " {input.segs} {input.annots}"
-        " --per-segment --per-segment-output {output}"
+        " --per-segment --per-segment-output {output.per_seg}"
+        " --genome-coverage-output {output.genome_cov}"
+        " --fai {input.fai}"
         " --output-dir {OUT_DIR}"
         " --annotation-names {params.names}"
         " {params.group_arg}"
@@ -922,15 +926,17 @@ rule annot_beds_call_space:
 rule annotation_plots:
     """Per-segment annotation TSV → overlap plots + stats"""
     input:
-        f"{OUT_DIR}/{OUT_NAME}.annot-per-segment.tsv",
+        per_seg=f"{OUT_DIR}/{OUT_NAME}.annot-per-segment.tsv",
+        genome_cov=f"{OUT_DIR}/{OUT_NAME}.annot-genome-coverage.tsv",
     output:
         annotation_outputs(),
     resources:
         mem_mb=256000,
         runtime=2880,
     shell:
-        "Rscript scripts/annotation-plots.R {input} {OUT_DIR}/{OUT_NAME}"
+        "Rscript scripts/annotation-plots.R {input.per_seg} {OUT_DIR}/{OUT_NAME}"
         " --min-overlap 0.5 --title '{REF} Annotation Overlap'"
+        " --genome-coverage {input.genome_cov}"
 
 rule pass_filter_vcf:
     """VCF → PASS-only VCF (filter before merging to avoid cross-sample filter contamination)"""

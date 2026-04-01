@@ -45,6 +45,7 @@ vcf_file      <- NULL
 augref_prefix <- NULL
 filt          <- NULL
 min_overlap   <- 0
+genome_coverage_file <- NULL
 
 i <- 3
 while (i <= length(args)) {
@@ -63,6 +64,9 @@ while (i <= length(args)) {
   } else if (args[i] == "--min-overlap" && i + 1 <= length(args)) {
     min_overlap <- as.numeric(args[i + 1])
     i <- i + 2
+  } else if (args[i] == "--genome-coverage" && i + 1 <= length(args)) {
+    genome_coverage_file <- args[i + 1]
+    i <- i + 2
   } else {
     i <- i + 1
   }
@@ -80,6 +84,14 @@ dt <- fread(input_file)
 if (nrow(dt) == 0) {
   cat("No data found. Exiting.\n")
   quit(status = 0)
+}
+
+# Read genome-wide coverage if provided
+genome_cov <- NULL
+if (!is.null(genome_coverage_file) && file.exists(genome_coverage_file)) {
+  genome_cov <- fread(genome_coverage_file)
+  cat("Read genome-wide coverage from:", genome_coverage_file,
+      "(", nrow(genome_cov), "rows )\n")
 }
 
 # ---------------------------------------------------------------------------
@@ -364,11 +376,24 @@ summary_source <- dt_shared[, .(overlap_bp = as.numeric(sum(source_overlap_bp)),
 summary_source[, frac := overlap_bp / total_bp]
 summary_source[, coord_type := "Off-reference"]
 
-summary_ref <- dt_shared[, .(overlap_bp = as.numeric(sum(ref_overlap_bp)),
-                              total_bp = as.numeric(sum(ref_len))),
-                          by = .(annotation)]
-summary_ref[, frac := overlap_bp / total_bp]
-summary_ref[, coord_type := "On-reference"]
+if (!is.null(genome_cov)) {
+  # Use genome-wide annotation coverage for reference bars
+  gw <- genome_cov[annotation_class == "_total" | annotation_class == annotation]
+  # For grouped annotations use _total; for ungrouped use self-named row
+  gw_total <- gw[annotation_class == "_total"]
+  gw_ungrouped <- gw[annotation_class == annotation & !annotation %in% gw_total$annotation]
+  summary_ref <- rbind(gw_total, gw_ungrouped)[, .(
+    overlap_bp = as.numeric(overlap_bp),
+    frac = overlap_frac), by = .(annotation)]
+  summary_ref[, coord_type := "Genome-wide"]
+} else {
+  summary_ref <- dt_shared[, .(overlap_bp = as.numeric(sum(ref_overlap_bp)),
+                                total_bp = as.numeric(sum(ref_len))),
+                            by = .(annotation)]
+  summary_ref[, frac := overlap_bp / total_bp]
+  summary_ref[, coord_type := "On-reference"]
+}
+ref_label <- summary_ref$coord_type[1]
 
 bar_dt <- rbind(summary_source[, .(annotation, frac, overlap_bp, coord_type)],
                 summary_ref[, .(annotation, frac, overlap_bp, coord_type)])
@@ -387,10 +412,11 @@ p1 <- ggplot(bar_dt, aes(x = annotation, y = frac, fill = coord_type)) +
   geom_text(aes(label = bp_label),
             position = position_dodge(width = 0.7),
             vjust = -0.3, size = 2.5) +
-  scale_fill_manual(values = c("Off-reference" = "coral", "On-reference" = "steelblue"),
+  scale_fill_manual(values = setNames(c("coral", "steelblue"),
+                                      c("Off-reference", ref_label)),
                     name = NULL) +
   scale_y_continuous(labels = percent, expand = expansion(mult = c(0, 0.15))) +
-  labs(title = title, subtitle = "Fraction of Alt Segment bp Overlapping Annotations",
+  labs(title = title, subtitle = "Fraction of bp Overlapping Annotations",
        x = "Annotation", y = "Overlap Fraction") +
   theme_minimal() +
   theme(
@@ -474,9 +500,23 @@ if (has_repeat_classes) {
                        by = .(display_class)]
   src_bar[, coord_type := "Off-reference"]
 
-  ref_bar <- repeat_dt[, .(overlap_frac = as.numeric(sum(ref_overlap_bp)) / total_ref_bp),
+  if (!is.null(genome_cov)) {
+    # Use genome-wide per-class coverage for reference bars
+    gw_rep <- genome_cov[annotation == "repeats" & !annotation_class %in% c("_total", "repeats")]
+    gw_rep[, annotation_class := sub("/.*", "", annotation_class)]
+    gw_rep <- gw_rep[, .(overlap_bp = sum(overlap_bp), genome_bp = genome_bp[1]),
+                      by = .(annotation_class)]
+    gw_rep[, display_class := ifelse(annotation_class %in% top_classes,
+                                      annotation_class, "Other")]
+    ref_bar <- gw_rep[, .(overlap_frac = sum(overlap_bp) / genome_bp[1]),
                        by = .(display_class)]
-  ref_bar[, coord_type := "On-reference"]
+    ref_bar[, coord_type := "Genome-wide"]
+  } else {
+    ref_bar <- repeat_dt[, .(overlap_frac = as.numeric(sum(ref_overlap_bp)) / total_ref_bp),
+                         by = .(display_class)]
+    ref_bar[, coord_type := "On-reference"]
+  }
+  ref_label_repeat <- ref_bar$coord_type[1]
 
   repeat_bar_dt <- rbind(src_bar, ref_bar)
   # Order classes by total fraction (off + on), Other last
@@ -485,7 +525,8 @@ if (has_repeat_classes) {
 
   p3 <- ggplot(repeat_bar_dt, aes(x = display_class, y = overlap_frac, fill = coord_type)) +
     geom_col(position = "dodge", width = 0.7) +
-    scale_fill_manual(values = c("Off-reference" = "coral", "On-reference" = "steelblue"),
+    scale_fill_manual(values = setNames(c("coral", "steelblue"),
+                                        c("Off-reference", ref_label_repeat)),
                       name = NULL) +
     scale_y_continuous(labels = percent, expand = expansion(mult = c(0, 0.1))) +
     labs(title = title, subtitle = "Repeat Class Breakdown (fraction of segment bp)",
