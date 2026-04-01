@@ -2688,10 +2688,11 @@ rule summary_longread_call:
         " --panels {params.panels}"
 
 rule summary_longread_deepvariant:
-    """Compose long-read DeepVariant summary figure"""
+    """Compose long-read DeepVariant + comparison summary figure"""
     input:
         dv_types=f"{OUT_DIR}/merged.longread.dv.sites.pass.variant-types.png",
         dv_per_sample=f"{OUT_DIR}/merged.longread.dv.sites.pass.per-sample-types.png",
+        vcfeval=f"{OUT_DIR}/merged.lr.call-vs-dv.pass.vcfeval-compare.png",
         dv_giab=[f"{OUT_DIR}/merged.longread.dv.sites.pass.giab-strat.png"] if giab_strat_configured() else [],
         dv_per_sample_giab=[f"{OUT_DIR}/merged.longread.dv.sites.pass.per-sample-giab-strat.png"] if giab_strat_configured() else [],
         annot_snp=[f"{OUT_DIR}/merged.longread.dv.sites.pass.variant-types-by-annot.png"] if annotation_inputs() else [],
@@ -2700,7 +2701,8 @@ rule summary_longread_deepvariant:
     params:
         panels=lambda wc, input: " ".join(
             [f"'DV Variant Types (PASS):{input.dv_types}'",
-             f"'DV Per-Sample Types (PASS):{input.dv_per_sample}'"]
+             f"'DV Per-Sample Types (PASS):{input.dv_per_sample}'",
+             f"'Call vs DV (vcfeval):{input.vcfeval}'"]
             + ([f"'DV GIAB Stratification:{input.dv_giab[0]}'"] if input.dv_giab else [])
             + ([f"'DV Per-Sample GIAB:{input.dv_per_sample_giab[0]}'"] if input.dv_per_sample_giab else [])
             + ([f"'DV Types by Annotation:{input.annot_snp[0]}'"] if input.annot_snp else [])
@@ -2708,7 +2710,7 @@ rule summary_longread_deepvariant:
     shell:
         "python3 scripts/compose-summary.py"
         " --output {output}"
-        " --title 'Long-Read DeepVariant (PASS)'"
+        " --title 'Long-Read DeepVariant + Comparison (PASS)'"
         " --cols 2"
         " --panels {params.panels}"
 
