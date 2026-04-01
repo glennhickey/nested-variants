@@ -381,11 +381,12 @@ if (!is.null(segs_file)) {
                         measure.vars = c("SNP_TP", "SNP_FP", "SNP_FN"),
                         variable.name = "error_type", value.name = "count")
 
+      annot_title <- sub(" Per-Contig", "", title)
       p_annot <- ggplot(annot_bar, aes(x = annotation, y = count, fill = error_type)) +
         geom_col(position = "dodge", width = 0.7) +
         scale_fill_manual(values = snp_colors, labels = snp_labels, name = NULL) +
         scale_y_continuous(labels = comma) +
-        labs(title = title,
+        labs(title = annot_title,
              subtitle = paste0("SNP TP/FP/FN by Annotation (off-ref contigs",
                                if (n_samples > 1) paste0(", ", n_samples, " samples") else "",
                                ")"),
@@ -450,11 +451,12 @@ if (!is.null(segs_file)) {
                        variable.name = "error_type", value.name = "count")
       giab_bar[, giab_region := factor(giab_region, levels = giab_names)]
 
+      giab_title <- sub(" Per-Contig", "", title)
       p_giab <- ggplot(giab_bar, aes(x = giab_region, y = count, fill = error_type)) +
         geom_col(position = "dodge", width = 0.7) +
         scale_fill_manual(values = snp_colors, labels = snp_labels, name = NULL) +
         scale_y_continuous(labels = comma) +
-        labs(title = title,
+        labs(title = giab_title,
              subtitle = paste0("SNP TP/FP/FN by GIAB Region (off-ref contigs",
                                if (n_samples > 1) paste0(", ", n_samples, " samples") else "",
                                ")"),
