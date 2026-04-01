@@ -430,12 +430,12 @@ def summary_figure_outputs():
         outputs.append(f"{OUT_DIR}/5c.coverage-summary.png")
         outputs.append(f"{OUT_DIR}/5d.mapq-summary.png")
     if LR_SAMPLES:
-        outputs.append(f"{OUT_DIR}/3lr.call-summary-longread.png")
-        outputs.append(f"{OUT_DIR}/4lr.deepvariant-summary-longread.png")
-        outputs.append(f"{OUT_DIR}/5lr.concordance-summary-longread.png")
-        outputs.append(f"{OUT_DIR}/5blr.concordance-onref-summary-longread.png")
-        outputs.append(f"{OUT_DIR}/5c-lr.coverage-summary-longread.png")
-        outputs.append(f"{OUT_DIR}/5d-lr.mapq-summary-longread.png")
+        outputs.append(f"{OUT_DIR}/7.call-summary-longread.png")
+        outputs.append(f"{OUT_DIR}/8.deepvariant-summary-longread.png")
+        outputs.append(f"{OUT_DIR}/9.concordance-summary-longread.png")
+        outputs.append(f"{OUT_DIR}/9b.concordance-onref-summary-longread.png")
+        outputs.append(f"{OUT_DIR}/9c.coverage-summary-longread.png")
+        outputs.append(f"{OUT_DIR}/9d.mapq-summary-longread.png")
     if config.get("pantree_vcf", ""):
         outputs.append(f"{OUT_DIR}/6.pantree-summary.png")
     return outputs
@@ -2671,7 +2671,7 @@ rule summary_longread_call:
         giab_strat=[f"{OUT_DIR}/merged.longread.call.sites.pass.giab-strat.png"] if giab_strat_configured() else [],
         giab_per_sample=[f"{OUT_DIR}/merged.longread.call.sites.pass.per-sample-giab-strat.png"] if giab_strat_configured() else [],
     output:
-        f"{OUT_DIR}/3lr.call-summary-longread.png",
+        f"{OUT_DIR}/7.call-summary-longread.png",
     params:
         panels=lambda wc, input: " ".join(
             [f"'Variant Types (PASS):{input.variant_types}'",
@@ -2696,7 +2696,7 @@ rule summary_longread_deepvariant:
         dv_per_sample_giab=[f"{OUT_DIR}/merged.longread.dv.sites.pass.per-sample-giab-strat.png"] if giab_strat_configured() else [],
         annot_snp=[f"{OUT_DIR}/merged.longread.dv.sites.pass.variant-types-by-annot.png"] if annotation_inputs() else [],
     output:
-        f"{OUT_DIR}/4lr.deepvariant-summary-longread.png",
+        f"{OUT_DIR}/8.deepvariant-summary-longread.png",
     params:
         panels=lambda wc, input: " ".join(
             [f"'DV Variant Types (PASS):{input.dv_types}'",
@@ -2720,7 +2720,7 @@ rule summary_longread_concordance:
         annot=f"{OUT_DIR}/merged.lr.call-vs-dv.pass.chromsplit-annot.png" if annotation_inputs() else [],
         giab=f"{OUT_DIR}/merged.lr.call-vs-dv.pass.chromsplit-giab.png" if giab_strat_configured() else [],
     output:
-        f"{OUT_DIR}/5lr.concordance-summary-longread.png",
+        f"{OUT_DIR}/9.concordance-summary-longread.png",
     params:
         panels=lambda wc, input: " ".join(
             [f"'Top Discordant Off-Ref:{input.discordant}'",
@@ -2741,7 +2741,7 @@ rule summary_longread_concordance_onref:
         discordant=f"{OUT_DIR}/merged.lr.call-vs-dv.pass.chromsplit-top-onref.png",
         concordant=f"{OUT_DIR}/merged.lr.call-vs-dv.pass.chromsplit-concordant-onref.png",
     output:
-        f"{OUT_DIR}/5blr.concordance-onref-summary-longread.png",
+        f"{OUT_DIR}/9b.concordance-onref-summary-longread.png",
     shell:
         "python3 scripts/compose-summary.py"
         " --output {output}"
@@ -2756,7 +2756,7 @@ rule summary_longread_coverage:
     input:
         f"{OUT_DIR}/contig-depth-summary.lr.png",
     output:
-        f"{OUT_DIR}/5c-lr.coverage-summary-longread.png",
+        f"{OUT_DIR}/9c.coverage-summary-longread.png",
     shell:
         "cp {input} {output}"
 
@@ -2765,7 +2765,7 @@ rule summary_longread_mapq:
     input:
         f"{OUT_DIR}/mapq-dist.lr.png",
     output:
-        f"{OUT_DIR}/5d-lr.mapq-summary-longread.png",
+        f"{OUT_DIR}/9d.mapq-summary-longread.png",
     shell:
         "cp {input} {output}"
 

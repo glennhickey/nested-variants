@@ -205,9 +205,12 @@ yeast-test/output/
 ├── merged.longread.call.sites.pass.vcf-stats.tsv
 ├── merged.longread.call.sites.pass.variant-types.png
 ├── merged.longread.call.sites.pass.call-summary-panel.png
-├── 3lr.call-summary-longread.png              # long-read call summary figure
-├── 5c-lr.coverage-summary-longread.png        # long-read coverage summary
-├── 5d-lr.mapq-summary-longread.png            # long-read MAPQ summary
+├── 7.call-summary-longread.png                # long-read call summary figure
+├── 8.deepvariant-summary-longread.png         # long-read DeepVariant summary
+├── 9.concordance-summary-longread.png         # long-read concordance (off-ref)
+├── 9b.concordance-onref-summary-longread.png  # long-read concordance (on-ref)
+├── 9c.coverage-summary-longread.png           # long-read coverage summary
+├── 9d.mapq-summary-longread.png               # long-read MAPQ summary
 #
 # --- Pantree comparison (when pantree_vcf configured) ---
 #
