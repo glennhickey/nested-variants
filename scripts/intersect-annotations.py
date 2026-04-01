@@ -602,27 +602,30 @@ def compute_genome_wide_coverage(fai_file, annot_files, annot_names,
             total_overlap = _bedtools_coverage_bp(genome_bed.name, total_bed)
             rows.append((name, '_total', genome_bp, total_overlap))
 
-            # Per-class: read annotation BED, group by class column, compute each
-            class_intervals = defaultdict(list)
+            # Per-class: stream through the annotation BED to find unique classes,
+            # then use awk to extract each class and pipe to bedtools merge + intersect.
+            # This avoids loading the entire BED into memory.
+            sys.stderr.write(f"    Collecting classes for {name}...\n")
+            classes = set()
             with open(annot_file) as f:
                 for line in f:
                     fields = line.strip().split('\t')
                     if len(fields) >= gc:
-                        cls = fields[gc - 1]  # 1-indexed to 0-indexed
-                        class_intervals[cls].append((fields[0], fields[1], fields[2]))
+                        classes.add(fields[gc - 1])
 
-            for cls, intervals in sorted(class_intervals.items()):
-                cls_tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.bed', delete=False)
-                for chrom, start, end in intervals:
-                    cls_tmp.write(f'{chrom}\t{start}\t{end}\n')
-                cls_tmp.close()
-                # Merge overlapping intervals within this class
+            for cls in sorted(classes):
+                # Stream: awk to filter class → sort → bedtools merge → temp file
                 cls_merged = tempfile.NamedTemporaryFile(suffix='.bed', delete=False)
                 cls_merged.close()
-                merge_annotation_bed(cls_tmp.name, cls_merged.name)
+                safe_cls = cls.replace("\\", "\\\\").replace('"', '\\"')
+                cmd = ("awk -F'\\t' '${col} == \"{cls}\"' '{bed}'"
+                       " | cut -f1,2,3"
+                       " | LC_ALL=C sort -k1,1 -k2,2n"
+                       " | bedtools merge -i - > '{out}'").format(
+                    col=gc, cls=safe_cls, bed=annot_file, out=cls_merged.name)
+                subprocess.run(cmd, shell=True, check=True)
                 overlap = _bedtools_coverage_bp(genome_bed.name, cls_merged.name)
                 rows.append((name, cls, genome_bp, overlap))
-                os.remove(cls_tmp.name)
                 os.remove(cls_merged.name)
         else:
             # Ungrouped: merge and compute total
@@ -648,18 +651,32 @@ def compute_genome_wide_coverage(fai_file, annot_files, annot_names,
 
 
 def _bedtools_coverage_bp(genome_bed, annot_bed):
-    """Compute total bp of genome_bed covered by annot_bed."""
-    cmd = ['bedtools', 'intersect', '-a', genome_bed, '-b', annot_bed, '-wo', '-sorted']
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        # Try without -sorted
-        cmd = ['bedtools', 'intersect', '-a', genome_bed, '-b', annot_bed, '-wo']
-        result = subprocess.run(cmd, capture_output=True, text=True)
+    """Compute total bp of genome_bed covered by annot_bed.
+
+    Uses bedtools coverage which reports per-interval coverage stats
+    without producing a line per overlap (constant memory).
+    """
+    # bedtools coverage -a genome -b annot outputs per-genome-interval:
+    #   chrom start end <coverage_count> <covered_bp> <interval_len> <frac>
+    # Column 5 (0-indexed: 4) is the number of covered bp.
+    cmd = ['bedtools', 'coverage', '-a', genome_bed, '-b', annot_bed, '-sorted']
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     total = 0
-    for line in result.stdout.strip().split('\n'):
-        if line:
+    for line in proc.stdout:
+        fields = line.split('\t')
+        if len(fields) >= 5:
+            total += int(fields[4])
+    proc.wait()
+    if proc.returncode != 0:
+        # Retry without -sorted
+        cmd = ['bedtools', 'coverage', '-a', genome_bed, '-b', annot_bed]
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        total = 0
+        for line in proc.stdout:
             fields = line.split('\t')
-            total += int(fields[-1])
+            if len(fields) >= 5:
+                total += int(fields[4])
+        proc.wait()
     return total
 
 
