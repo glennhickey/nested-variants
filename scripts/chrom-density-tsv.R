@@ -20,6 +20,14 @@ if (length(ref_idx) > 0) {
   args <- args[-c(ref_idx, ref_idx + 1)]
 }
 
+# Extract --censat flag if present
+censat_file <- NULL
+censat_idx <- which(args == "--censat")
+if (length(censat_idx) > 0) {
+  censat_file <- args[censat_idx + 1]
+  args <- args[-c(censat_idx, censat_idx + 1)]
+}
+
 if (length(args) < 2) {
   cat("Usage: ./chrom-density-tsv.R <input.tsv> <output.png> [title] [min_length] [bed_file] [scale] [--ref REF]\n")
   cat("Example: ./chrom-density-tsv.R nesting.tsv density.png \"Nested Variants\" 50 refgaps.bed log1p --ref CHM13\n")
@@ -85,9 +93,11 @@ if (is.null(chrom_lengths)) {
 }
 chrom_lengths$chromosome <- factor(chrom_lengths$chromosome, levels = chrom_levels)
 
-# Read BED overlay
+# Read BED overlay and optional censat track
 bed_data <- read_bed_overlay(bed_file, chrom_levels)
+censat_data <- read_bed_overlay(censat_file, chrom_levels)
 
 # Build ideogram and save
-p <- plot_ideogram(density_data, chrom_lengths, bed_data, plot_title, scale_type)
+p <- plot_ideogram(density_data, chrom_lengths, bed_data, plot_title, scale_type,
+                   censat_data = censat_data)
 save_and_summarize(p, output_file, as.data.frame(tsv_data))

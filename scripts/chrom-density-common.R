@@ -132,8 +132,11 @@ read_bed_overlay <- function(bed_file, chrom_levels) {
 
   cat("Reading BED file from:", bed_file, "\n")
   bed_data <- fread(bed_file, header = FALSE, sep = "\t",
-                    col.names = c("contig", "start", "end"),
-                    colClasses = c("character", "integer", "integer"))
+                    select = c(1L, 2L, 3L))
+  setnames(bed_data, c("contig", "start", "end"))
+  bed_data[, contig := as.character(contig)]
+  bed_data[, start := as.integer(start)]
+  bed_data[, end := as.integer(end)]
 
   # Extract chromosome from contig (handles PREFIX#HAPLOTYPE#chr format)
   bed_data$chromosome <- sub(".*#", "", bed_data$contig)
@@ -155,12 +158,16 @@ read_bed_overlay <- function(bed_file, chrom_levels) {
 #' @param plot_title Plot title string
 #' @param scale_type Fill scale transform: "log1p", "sqrt", "log", "identity"
 #' @return ggplot object
-plot_ideogram <- function(density_data, chrom_lengths, bed_data, plot_title, scale_type = "log1p") {
+plot_ideogram <- function(density_data, chrom_lengths, bed_data, plot_title, scale_type = "log1p",
+                          censat_data = NULL) {
   chrom_levels <- levels(chrom_lengths$chromosome)
 
   # Layout parameters
   ideogram_height  <- 0.6
   ideogram_spacing <- 1.0
+  censat_height    <- 0.15
+  censat_gap       <- 0.05
+  censat_offset    <- ideogram_height / 2 + censat_gap + censat_height / 2
   y_positions <- seq(length(chrom_levels), 1, by = -1) * ideogram_spacing
 
   chrom_y_map <- data.frame(
@@ -173,6 +180,10 @@ plot_ideogram <- function(density_data, chrom_lengths, bed_data, plot_title, sca
   chrom_lengths <- merge(chrom_lengths, chrom_y_map, by = "chromosome")
   if (!is.null(bed_data) && nrow(bed_data) > 0) {
     bed_data <- merge(bed_data, chrom_y_map, by = "chromosome")
+  }
+  has_censat <- !is.null(censat_data) && nrow(censat_data) > 0
+  if (has_censat) {
+    censat_data <- merge(censat_data, chrom_y_map, by = "chromosome")
   }
 
   p <- ggplot() +
@@ -188,7 +199,7 @@ plot_ideogram <- function(density_data, chrom_lengths, bed_data, plot_title, sca
                   ymin = y_pos - ideogram_height / 2,
                   ymax = y_pos + ideogram_height / 2,
                   fill = count)) +
-    # BED overlay
+    # BED overlay (reference gaps)
     { if (!is.null(bed_data) && nrow(bed_data) > 0)
         geom_rect(data = bed_data,
                   aes(xmin = start, xmax = end,
@@ -196,6 +207,15 @@ plot_ideogram <- function(density_data, chrom_lengths, bed_data, plot_title, sca
                       ymax = y_pos + ideogram_height / 2,
                       alpha = "Reference gaps"),
                   fill = "black")
+    } +
+    # CenSat track (thin stripe below chromosome bar)
+    { if (has_censat)
+        geom_rect(data = censat_data,
+                  aes(xmin = start, xmax = end,
+                      ymin = y_pos - censat_offset - censat_height / 2,
+                      ymax = y_pos - censat_offset + censat_height / 2,
+                      alpha = "CenSat"),
+                  fill = "mediumpurple")
     } +
     scale_fill_gradientn(
       colors = c("#FFFACD", "yellow", "orange", "#FF4500", "#FF0000"),
@@ -208,10 +228,20 @@ plot_ideogram <- function(density_data, chrom_lengths, bed_data, plot_title, sca
                                barwidth  = unit(0.5, "cm"),
                                label.position = "right")
     ) +
-    { if (!is.null(bed_data) && nrow(bed_data) > 0)
-        scale_alpha_manual(values = c("Reference gaps" = 0.7),
-                           name = NULL,
-                           guide = guide_legend(order = 2))
+    { alpha_vals <- c()
+      alpha_fills <- c()
+      if (!is.null(bed_data) && nrow(bed_data) > 0) {
+        alpha_vals["Reference gaps"] <- 0.7
+        alpha_fills <- c(alpha_fills, "black")
+      }
+      if (has_censat) {
+        alpha_vals["CenSat"] <- 0.8
+        alpha_fills <- c(alpha_fills, "mediumpurple")
+      }
+      if (length(alpha_vals) > 0)
+        scale_alpha_manual(values = alpha_vals, name = NULL,
+                           guide = guide_legend(order = 2,
+                                                override.aes = list(fill = alpha_fills)))
     } +
     scale_y_continuous(breaks = y_positions,
                        labels = chrom_levels,
