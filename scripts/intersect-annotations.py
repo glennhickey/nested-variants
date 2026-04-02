@@ -602,31 +602,34 @@ def compute_genome_wide_coverage(fai_file, annot_files, annot_names,
             total_overlap = _bedtools_coverage_bp(genome_bed.name, total_bed)
             rows.append((name, '_total', genome_bp, total_overlap))
 
-            # Per-class: stream through the annotation BED to find unique classes,
-            # then use awk to extract each class and pipe to bedtools merge + intersect.
-            # This avoids loading the entire BED into memory.
-            sys.stderr.write(f"    Collecting classes for {name}...\n")
-            classes = set()
+            # Per-class: single pass to split annotation BED by class into
+            # per-class temp files, then merge and intersect each.
+            sys.stderr.write(f"    Splitting {name} by class (single pass)...\n")
+            cls_dir = tempfile.mkdtemp(prefix='annot_cls_')
+            cls_handles = {}
             with open(annot_file) as f:
                 for line in f:
-                    fields = line.strip().split('\t')
+                    fields = line.rstrip('\n').split('\t')
                     if len(fields) >= gc:
-                        classes.add(fields[gc - 1])
+                        cls = fields[gc - 1]
+                        if cls not in cls_handles:
+                            cls_handles[cls] = open(
+                                os.path.join(cls_dir, cls.replace('/', '_') + '.bed'), 'w')
+                        cls_handles[cls].write(f'{fields[0]}\t{fields[1]}\t{fields[2]}\n')
+            for fh in cls_handles.values():
+                fh.close()
 
-            for cls in sorted(classes):
-                # Stream: awk to filter class → sort → bedtools merge → temp file
-                cls_merged = tempfile.NamedTemporaryFile(suffix='.bed', delete=False)
-                cls_merged.close()
-                safe_cls = cls.replace("\\", "\\\\").replace('"', '\\"')
-                cmd = ("awk -F'\\t' '${col} == \"{cls}\"' '{bed}'"
-                       " | cut -f1,2,3"
-                       " | LC_ALL=C sort -k1,1 -k2,2n"
-                       " | bedtools merge -i - > '{out}'").format(
-                    col=gc, cls=safe_cls, bed=annot_file, out=cls_merged.name)
+            sys.stderr.write(f"    Computing coverage for {len(cls_handles)} classes...\n")
+            for cls in sorted(cls_handles.keys()):
+                cls_bed = os.path.join(cls_dir, cls.replace('/', '_') + '.bed')
+                cls_merged = cls_bed + '.merged'
+                cmd = (f"LC_ALL=C sort -k1,1 -k2,2n '{cls_bed}'"
+                       f" | bedtools merge -i - > '{cls_merged}'")
                 subprocess.run(cmd, shell=True, check=True)
-                overlap = _bedtools_coverage_bp(genome_bed.name, cls_merged.name)
+                overlap = _bedtools_coverage_bp(genome_bed.name, cls_merged)
                 rows.append((name, cls, genome_bp, overlap))
-                os.remove(cls_merged.name)
+
+            shutil.rmtree(cls_dir)
         else:
             # Ungrouped: merge and compute total
             merged_tmp = tempfile.NamedTemporaryFile(suffix='.bed', delete=False)
