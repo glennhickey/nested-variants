@@ -544,145 +544,6 @@ def write_per_segment_summary(segments, source_results, ref_results,
     sys.stderr.write(f"Per-segment summary written to {output_file}\n")
 
 
-def compute_genome_wide_coverage(fai_file, annot_files, annot_names,
-                                  annot_group_columns, output_file):
-    """Compute genome-wide annotation coverage from FAI and annotation BEDs.
-
-    For each annotation, computes the total bp of the reference genome covered
-    by that annotation (merging overlapping intervals first).
-
-    Args:
-        fai_file: FASTA index (.fai) with chrom lengths
-        annot_files: list of annotation BED file paths
-        annot_names: display names for each annotation
-        annot_group_columns: per-annotation group column (None or int)
-        output_file: output TSV path
-    """
-    # Read genome size from FAI — only on-ref contigs (no _alt suffix),
-    # stripping "augref_" prefix to match annotation BED contig names.
-    genome_bed = tempfile.NamedTemporaryFile(mode='w', suffix='.bed', delete=False)
-    genome_bp = 0
-    with open(fai_file) as f:
-        for line in f:
-            fields = line.strip().split('\t')
-            chrom, length = fields[0], int(fields[1])
-            # Skip off-reference contigs (alt segments)
-            if chrom.endswith('_alt'):
-                continue
-            # Strip augref_ prefix to match annotation BED naming
-            if chrom.startswith('augref_'):
-                chrom = chrom[len('augref_'):]
-            genome_bed.write(f'{chrom}\t0\t{length}\n')
-            genome_bp += length
-    genome_bed.close()
-    sort_bed(genome_bed.name)
-
-    sys.stderr.write(f"Genome-wide coverage: {genome_bp:,} bp from {fai_file}\n")
-
-    temp_files = [genome_bed.name]
-    rows = []
-
-    for i, annot_file in enumerate(annot_files):
-        name = annot_names[i]
-        gc = annot_group_columns[i]
-
-        if gc is not None:
-            # Grouped annotation: compute per-class and _total coverage
-            # Class-agnostic total
-            precomputed = os.path.splitext(annot_file)[0] + '.total.bed'
-            if os.path.isfile(precomputed):
-                total_bed = precomputed
-            else:
-                total_tmp = tempfile.NamedTemporaryFile(suffix='.bed', delete=False)
-                total_tmp.close()
-                merge_annotation_bed(annot_file, total_tmp.name, presorted=True)
-                total_bed = total_tmp.name
-                temp_files.append(total_bed)
-
-            total_overlap = _bedtools_coverage_bp(genome_bed.name, total_bed)
-            rows.append((name, '_total', genome_bp, total_overlap))
-
-            # Per-class: single pass to split annotation BED by class into
-            # per-class temp files, then merge and intersect each.
-            sys.stderr.write(f"    Splitting {name} by class (single pass)...\n")
-            cls_dir = tempfile.mkdtemp(prefix='annot_cls_')
-            cls_handles = {}
-            with open(annot_file) as f:
-                for line in f:
-                    fields = line.rstrip('\n').split('\t')
-                    if len(fields) >= gc:
-                        cls = fields[gc - 1]
-                        if cls not in cls_handles:
-                            cls_handles[cls] = open(
-                                os.path.join(cls_dir, cls.replace('/', '_') + '.bed'), 'w')
-                        cls_handles[cls].write(f'{fields[0]}\t{fields[1]}\t{fields[2]}\n')
-            for fh in cls_handles.values():
-                fh.close()
-
-            sys.stderr.write(f"    Computing coverage for {len(cls_handles)} classes...\n")
-            for cls in sorted(cls_handles.keys()):
-                cls_bed = os.path.join(cls_dir, cls.replace('/', '_') + '.bed')
-                cls_merged = cls_bed + '.merged'
-                cmd = (f"LC_ALL=C sort -k1,1 -k2,2n '{cls_bed}'"
-                       f" | bedtools merge -i - > '{cls_merged}'")
-                subprocess.run(cmd, shell=True, check=True)
-                overlap = _bedtools_coverage_bp(genome_bed.name, cls_merged)
-                rows.append((name, cls, genome_bp, overlap))
-
-            shutil.rmtree(cls_dir)
-        else:
-            # Ungrouped: merge and compute total
-            merged_tmp = tempfile.NamedTemporaryFile(suffix='.bed', delete=False)
-            merged_tmp.close()
-            merge_annotation_bed(annot_file, merged_tmp.name)
-            overlap = _bedtools_coverage_bp(genome_bed.name, merged_tmp.name)
-            rows.append((name, name, genome_bp, overlap))
-            temp_files.append(merged_tmp.name)
-
-    # Write output
-    with open(output_file, 'w') as out:
-        out.write('annotation\tannotation_class\tgenome_bp\toverlap_bp\toverlap_frac\n')
-        for name, cls, gbp, obp in rows:
-            frac = obp / gbp if gbp > 0 else 0
-            out.write(f'{name}\t{cls}\t{gbp}\t{obp}\t{frac:.6f}\n')
-
-    for f in temp_files:
-        if os.path.exists(f):
-            os.remove(f)
-
-    sys.stderr.write(f"Genome-wide coverage written to {output_file}\n")
-
-
-def _bedtools_coverage_bp(genome_bed, annot_bed):
-    """Compute total bp of genome_bed covered by annot_bed.
-
-    Uses bedtools coverage which reports per-interval coverage stats
-    without producing a line per overlap (constant memory).
-    """
-    # bedtools coverage -a genome -b annot outputs per-genome-interval:
-    #   chrom start end <coverage_count> <covered_bp> <interval_len> <frac>
-    # Column 5 (0-indexed: 4) is the number of covered bp.
-    cmd = ['bedtools', 'coverage', '-a', genome_bed, '-b', annot_bed, '-sorted']
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    total = 0
-    for line in proc.stdout:
-        fields = line.split('\t')
-        if len(fields) >= 5:
-            total += int(fields[4])
-    proc.wait()
-    if proc.returncode != 0:
-        # Retry without -sorted
-        cmd = ['bedtools', 'coverage', '-a', genome_bed, '-b', annot_bed]
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        total = 0
-        for line in proc.stdout:
-            fields = line.split('\t')
-            if len(fields) >= 5:
-                total += int(fields[4])
-        proc.wait()
-    return total
-
-
 def main(command_line=None):
     parser = argparse.ArgumentParser(
         description='Intersect both off-reference and on-reference coordinates with annotation BED files. Requires: bedtools'
@@ -711,10 +572,6 @@ def main(command_line=None):
                         help='Output path for per-segment TSV (default: per_segment_annotations.tsv in output dir)')
     parser.add_argument('--annotation-names', nargs='+', default=None,
                         help='Clean display names for each annotation file (same order as positional args)')
-    parser.add_argument('--genome-coverage-output', default=None,
-                        help='Output path for genome-wide annotation coverage TSV')
-    parser.add_argument('--fai', default=None,
-                        help='FASTA index (.fai) for genome chromosome lengths (required with --genome-coverage-output)')
 
     options = parser.parse_args(command_line)
 
@@ -845,15 +702,6 @@ def main(command_line=None):
         write_per_segment_summary(segments, source_results, ref_results,
                                   source_total_results, ref_total_results,
                                   annot_names, annot_group_columns, per_seg_output)
-
-        # Compute genome-wide annotation coverage if requested
-        if options.genome_coverage_output:
-            if not options.fai:
-                sys.exit("Error: --fai is required with --genome-coverage-output")
-            compute_genome_wide_coverage(
-                options.fai, options.annotation_files,
-                annot_names, annot_group_columns,
-                options.genome_coverage_output)
 
         # Clean up temp files (not original annotation files used for grouped annotations)
         for f in temp_files:

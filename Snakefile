@@ -825,14 +825,12 @@ rule plots:
 ############################################################################
 
 rule annotation_intersect:
-    """Augref segments + annotation BEDs → per-segment annotation TSV + genome-wide coverage"""
+    """Augref segments + annotation BEDs → per-segment annotation TSV"""
     input:
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
-        fai=f"{OUT_DIR}/{OUT_NAME}.fa.gz.fai",
         annots=all_annotation_inputs(),
     output:
-        per_seg=f"{OUT_DIR}/{OUT_NAME}.annot-per-segment.tsv",
-        genome_cov=f"{OUT_DIR}/{OUT_NAME}.annot-genome-coverage.tsv",
+        f"{OUT_DIR}/{OUT_NAME}.annot-per-segment.tsv",
     resources:
         mem_mb=512000,
         runtime=2880,
@@ -842,12 +840,110 @@ rule annotation_intersect:
     shell:
         "python scripts/intersect-annotations.py"
         " {input.segs} {input.annots}"
-        " --per-segment --per-segment-output {output.per_seg}"
-        " --genome-coverage-output {output.genome_cov}"
-        " --fai {input.fai}"
+        " --per-segment --per-segment-output {output}"
         " --output-dir {OUT_DIR}"
         " --annotation-names {params.names}"
         " {params.group_arg}"
+
+rule annotation_genome_coverage:
+    """Compute genome-wide annotation coverage from FAI + annotation BEDs"""
+    input:
+        fai=f"{OUT_DIR}/{OUT_NAME}.fa.gz.fai",
+        annots=all_annotation_inputs(),
+    output:
+        f"{OUT_DIR}/{OUT_NAME}.annot-genome-coverage.tsv",
+    resources:
+        mem_mb=8000,
+        runtime=60,
+    params:
+        names=all_annotation_names(),
+        group_col=6 if config.get("annot_repeats", "") or config.get("annot_pclai", "") else 0,
+    run:
+        import tempfile, subprocess, os
+        fai = str(input.fai)
+        annot_files = list(input.annots)
+        names = list(params.names)
+        gc = int(params.group_col)
+
+        # Build genome BED from FAI (on-ref contigs only, strip augref_ prefix)
+        genome_bed = tempfile.NamedTemporaryFile(mode='w', suffix='.bed', delete=False)
+        genome_bp = 0
+        with open(fai) as f:
+            for line in f:
+                fields = line.strip().split('\t')
+                chrom, length = fields[0], int(fields[1])
+                if chrom.endswith('_alt'):
+                    continue
+                if chrom.startswith('augref_'):
+                    chrom = chrom[len('augref_'):]
+                genome_bed.write(f'{chrom}\t0\t{length}\n')
+                genome_bp += length
+        genome_bed.close()
+        shell(f"LC_ALL=C sort -k1,1 -k2,2n '{genome_bed.name}' -o '{genome_bed.name}'")
+
+        rows = []
+        for i, annot_file in enumerate(annot_files):
+            name = names[i]
+            is_grouped = gc > 0 and name in ('repeats', 'pclai')
+
+            if is_grouped:
+                # Class-agnostic total
+                total_bed = os.path.splitext(annot_file)[0] + '.total.bed'
+                if not os.path.isfile(total_bed):
+                    total_bed = tempfile.NamedTemporaryFile(suffix='.bed', delete=False).name
+                    shell(f"cut -f1-3 '{annot_file}' | LC_ALL=C sort -k1,1 -k2,2n | bedtools merge -i - > '{total_bed}'")
+                overlap = _coverage_bp(genome_bed.name, total_bed)
+                rows.append(f'{name}\t_total\t{genome_bp}\t{overlap}\t{overlap/genome_bp:.6f}')
+
+                # Per-class: single pass split
+                cls_dir = tempfile.mkdtemp()
+                cls_set = set()
+                with open(annot_file) as f:
+                    handles = {}
+                    for line in f:
+                        fields = line.rstrip('\n').split('\t')
+                        if len(fields) >= gc:
+                            cls = fields[gc - 1]
+                            cls_set.add(cls)
+                            if cls not in handles:
+                                handles[cls] = open(os.path.join(cls_dir, cls.replace('/', '_') + '.bed'), 'w')
+                            handles[cls].write(f'{fields[0]}\t{fields[1]}\t{fields[2]}\n')
+                    for fh in handles.values():
+                        fh.close()
+                for cls in sorted(cls_set):
+                    cls_bed = os.path.join(cls_dir, cls.replace('/', '_') + '.bed')
+                    cls_merged = cls_bed + '.m'
+                    shell(f"LC_ALL=C sort -k1,1 -k2,2n '{cls_bed}' | bedtools merge -i - > '{cls_merged}'")
+                    overlap = _coverage_bp(genome_bed.name, cls_merged)
+                    rows.append(f'{name}\t{cls}\t{genome_bp}\t{overlap}\t{overlap/genome_bp:.6f}')
+                import shutil
+                shutil.rmtree(cls_dir)
+            else:
+                merged = tempfile.NamedTemporaryFile(suffix='.bed', delete=False).name
+                shell(f"cut -f1-3 '{annot_file}' | LC_ALL=C sort -k1,1 -k2,2n | bedtools merge -i - > '{merged}'")
+                overlap = _coverage_bp(genome_bed.name, merged)
+                rows.append(f'{name}\t{name}\t{genome_bp}\t{overlap}\t{overlap/genome_bp:.6f}')
+                os.remove(merged)
+
+        os.remove(genome_bed.name)
+        with open(str(output[0]), 'w') as out:
+            out.write('annotation\tannotation_class\tgenome_bp\toverlap_bp\toverlap_frac\n')
+            for r in rows:
+                out.write(r + '\n')
+
+def _coverage_bp(genome_bed, annot_bed):
+    """Sum covered bp from bedtools coverage output."""
+    import subprocess
+    proc = subprocess.Popen(
+        ['bedtools', 'coverage', '-a', genome_bed, '-b', annot_bed, '-sorted'],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    total = 0
+    for line in proc.stdout:
+        fields = line.split('\t')
+        if len(fields) >= 5:
+            total += int(fields[4])
+    proc.wait()
+    return total
 
 rule annotation_augref_beds:
     """Per-segment annotation TSV + annotation BEDs → augref-space BEDs"""
