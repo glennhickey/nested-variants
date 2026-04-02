@@ -846,7 +846,12 @@ rule annotation_intersect:
         " {params.group_arg}"
 
 rule annotation_genome_coverage:
-    """Compute genome-wide annotation coverage from FAI + annotation BEDs"""
+    """Compute genome-wide annotation coverage from FAI + annotation BEDs.
+
+    Annotation BEDs are already sorted and merged (per-class for grouped
+    annotations like repeats) by the download script. We just run
+    bedtools coverage against a genome BED built from the FAI.
+    """
     input:
         fai=f"{OUT_DIR}/{OUT_NAME}.fa.gz.fai",
         annots=all_annotation_inputs(),
@@ -859,27 +864,39 @@ rule annotation_genome_coverage:
         names=all_annotation_names(),
         group_col=6 if config.get("annot_repeats", "") or config.get("annot_pclai", "") else 0,
     run:
-        import tempfile, subprocess, os
+        import os
+
         fai = str(input.fai)
         annot_files = list(input.annots)
         names = list(params.names)
         gc = int(params.group_col)
 
-        # Build genome BED from FAI (on-ref contigs only, strip augref_ prefix)
-        genome_bed = tempfile.NamedTemporaryFile(mode='w', suffix='.bed', delete=False)
+        # Sum genome size from FAI (on-ref contigs only) and collect contig names
         genome_bp = 0
+        ref_contigs = set()
         with open(fai) as f:
             for line in f:
                 fields = line.strip().split('\t')
                 chrom, length = fields[0], int(fields[1])
                 if chrom.endswith('_alt'):
                     continue
+                # Strip augref_ prefix to match annotation BED naming
                 if chrom.startswith('augref_'):
                     chrom = chrom[len('augref_'):]
-                genome_bed.write(f'{chrom}\t0\t{length}\n')
+                ref_contigs.add(chrom)
                 genome_bp += length
-        genome_bed.close()
-        shell(f"LC_ALL=C sort -k1,1 -k2,2n '{genome_bed.name}' -o '{genome_bed.name}'")
+
+        def sum_bed_bp(bed_file, contigs=None):
+            """Sum interval lengths from a BED file (assumes already merged).
+            If contigs is provided, only count intervals on those contigs."""
+            total = 0
+            with open(bed_file) as f:
+                for line in f:
+                    fields = line.split('\t')
+                    if len(fields) >= 3:
+                        if contigs is None or fields[0] in contigs:
+                            total += int(fields[2]) - int(fields[1])
+            return total
 
         rows = []
         for i, annot_file in enumerate(annot_files):
@@ -887,63 +904,37 @@ rule annotation_genome_coverage:
             is_grouped = gc > 0 and name in ('repeats', 'pclai')
 
             if is_grouped:
-                # Class-agnostic total
+                # Class-agnostic total (use pre-computed .total.bed if available)
                 total_bed = os.path.splitext(annot_file)[0] + '.total.bed'
-                if not os.path.isfile(total_bed):
-                    total_bed = tempfile.NamedTemporaryFile(suffix='.bed', delete=False).name
-                    shell(f"cut -f1-3 '{annot_file}' | LC_ALL=C sort -k1,1 -k2,2n | bedtools merge -i - > '{total_bed}'")
-                overlap = _coverage_bp(genome_bed.name, total_bed)
+                if os.path.isfile(total_bed):
+                    overlap = sum_bed_bp(total_bed, ref_contigs)
+                else:
+                    overlap = sum_bed_bp(annot_file, ref_contigs)
                 rows.append(f'{name}\t_total\t{genome_bp}\t{overlap}\t{overlap/genome_bp:.6f}')
 
-                # Per-class: single pass split
-                cls_dir = tempfile.mkdtemp()
-                cls_set = set()
+                # Per-class: intervals are already per-class merged by the download
+                # script, so just sum interval lengths per class in a single pass.
+                from collections import defaultdict
+                class_bp = defaultdict(int)
                 with open(annot_file) as f:
-                    handles = {}
                     for line in f:
                         fields = line.rstrip('\n').split('\t')
-                        if len(fields) >= gc:
+                        if len(fields) >= gc and fields[0] in ref_contigs:
                             cls = fields[gc - 1]
-                            cls_set.add(cls)
-                            if cls not in handles:
-                                handles[cls] = open(os.path.join(cls_dir, cls.replace('/', '_') + '.bed'), 'w')
-                            handles[cls].write(f'{fields[0]}\t{fields[1]}\t{fields[2]}\n')
-                    for fh in handles.values():
-                        fh.close()
-                for cls in sorted(cls_set):
-                    cls_bed = os.path.join(cls_dir, cls.replace('/', '_') + '.bed')
-                    cls_merged = cls_bed + '.m'
-                    shell(f"LC_ALL=C sort -k1,1 -k2,2n '{cls_bed}' | bedtools merge -i - > '{cls_merged}'")
-                    overlap = _coverage_bp(genome_bed.name, cls_merged)
-                    rows.append(f'{name}\t{cls}\t{genome_bp}\t{overlap}\t{overlap/genome_bp:.6f}')
-                import shutil
-                shutil.rmtree(cls_dir)
-            else:
-                merged = tempfile.NamedTemporaryFile(suffix='.bed', delete=False).name
-                shell(f"cut -f1-3 '{annot_file}' | LC_ALL=C sort -k1,1 -k2,2n | bedtools merge -i - > '{merged}'")
-                overlap = _coverage_bp(genome_bed.name, merged)
-                rows.append(f'{name}\t{name}\t{genome_bp}\t{overlap}\t{overlap/genome_bp:.6f}')
-                os.remove(merged)
+                            class_bp[cls] += int(fields[2]) - int(fields[1])
 
-        os.remove(genome_bed.name)
+                for cls in sorted(class_bp.keys()):
+                    bp = class_bp[cls]
+                    rows.append(f'{name}\t{cls}\t{genome_bp}\t{bp}\t{bp/genome_bp:.6f}')
+            else:
+                # Ungrouped: already sorted and merged by download script
+                overlap = sum_bed_bp(annot_file, ref_contigs)
+                rows.append(f'{name}\t{name}\t{genome_bp}\t{overlap}\t{overlap/genome_bp:.6f}')
+
         with open(str(output[0]), 'w') as out:
             out.write('annotation\tannotation_class\tgenome_bp\toverlap_bp\toverlap_frac\n')
             for r in rows:
                 out.write(r + '\n')
-
-def _coverage_bp(genome_bed, annot_bed):
-    """Sum covered bp from bedtools coverage output."""
-    import subprocess
-    proc = subprocess.Popen(
-        ['bedtools', 'coverage', '-a', genome_bed, '-b', annot_bed, '-sorted'],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    total = 0
-    for line in proc.stdout:
-        fields = line.split('\t')
-        if len(fields) >= 5:
-            total += int(fields[4])
-    proc.wait()
-    return total
 
 rule annotation_augref_beds:
     """Per-segment annotation TSV + annotation BEDs → augref-space BEDs"""
