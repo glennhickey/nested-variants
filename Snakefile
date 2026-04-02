@@ -859,44 +859,32 @@ rule annotation_genome_coverage:
         f"{OUT_DIR}/{OUT_NAME}.annot-genome-coverage.tsv",
     resources:
         mem_mb=8000,
-        runtime=60,
+        runtime=240,
     params:
         names=all_annotation_names(),
         group_col=6 if config.get("annot_repeats", "") or config.get("annot_pclai", "") else 0,
     run:
-        import os
+        import os, subprocess, tempfile
 
         fai = str(input.fai)
         annot_files = list(input.annots)
         names = list(params.names)
         gc = int(params.group_col)
 
-        # Sum genome size from FAI (on-ref contigs only) and collect contig names
+        # Build contig filter file and sum genome size from FAI (on-ref only)
         genome_bp = 0
-        ref_contigs = set()
+        contigs_file = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False)
         with open(fai) as f:
             for line in f:
                 fields = line.strip().split('\t')
                 chrom, length = fields[0], int(fields[1])
                 if chrom.endswith('_alt'):
                     continue
-                # Strip augref_ prefix to match annotation BED naming
                 if chrom.startswith('augref_'):
                     chrom = chrom[len('augref_'):]
-                ref_contigs.add(chrom)
+                contigs_file.write(chrom + '\n')
                 genome_bp += length
-
-        def sum_bed_bp(bed_file, contigs=None):
-            """Sum interval lengths from a BED file (assumes already merged).
-            If contigs is provided, only count intervals on those contigs."""
-            total = 0
-            with open(bed_file) as f:
-                for line in f:
-                    fields = line.split('\t')
-                    if len(fields) >= 3:
-                        if contigs is None or fields[0] in contigs:
-                            total += int(fields[2]) - int(fields[1])
-            return total
+        contigs_file.close()
 
         rows = []
         for i, annot_file in enumerate(annot_files):
@@ -904,33 +892,34 @@ rule annotation_genome_coverage:
             is_grouped = gc > 0 and name in ('repeats', 'pclai')
 
             if is_grouped:
-                # Class-agnostic total (use pre-computed .total.bed if available)
+                # Class-agnostic total from .total.bed or awk on main file
                 total_bed = os.path.splitext(annot_file)[0] + '.total.bed'
                 if os.path.isfile(total_bed):
-                    overlap = sum_bed_bp(total_bed, ref_contigs)
+                    cmd = f"grep -Ff '{contigs_file.name}' '{total_bed}' | awk -F'\\t' '{{s+=$3-$2}} END{{print s+0}}'"
                 else:
-                    overlap = sum_bed_bp(annot_file, ref_contigs)
+                    cmd = f"grep -Ff '{contigs_file.name}' '{annot_file}' | cut -f1-3 | awk -F'\\t' '{{s+=$3-$2}} END{{print s+0}}'"
+                overlap = int(subprocess.check_output(cmd, shell=True, text=True).strip())
                 rows.append(f'{name}\t_total\t{genome_bp}\t{overlap}\t{overlap/genome_bp:.6f}')
 
-                # Per-class: intervals are already per-class merged by the download
-                # script, so just sum interval lengths per class in a single pass.
-                from collections import defaultdict
-                class_bp = defaultdict(int)
-                with open(annot_file) as f:
-                    for line in f:
-                        fields = line.rstrip('\n').split('\t')
-                        if len(fields) >= gc and fields[0] in ref_contigs:
-                            cls = fields[gc - 1]
-                            class_bp[cls] += int(fields[2]) - int(fields[1])
-
-                for cls in sorted(class_bp.keys()):
-                    bp = class_bp[cls]
-                    rows.append(f'{name}\t{cls}\t{genome_bp}\t{bp}\t{bp/genome_bp:.6f}')
+                # Per-class: single awk pass to sum bp per class, filtered to ref contigs
+                cmd = (f"grep -Ff '{contigs_file.name}' '{annot_file}'"
+                       f" | awk -F'\\t' '{{class=$" + str(gc) + "; bp[$" + str(gc) + "]+=$3-$2}"
+                       f" END{{for(c in bp) print c\"\\t\"bp[c]}}'")
+                result = subprocess.check_output(cmd, shell=True, text=True).strip()
+                for line in result.split('\n'):
+                    if line:
+                        cls, bp = line.split('\t')
+                        bp = int(bp)
+                        rows.append(f'{name}\t{cls}\t{genome_bp}\t{bp}\t{bp/genome_bp:.6f}')
             else:
-                # Ungrouped: already sorted and merged by download script
-                overlap = sum_bed_bp(annot_file, ref_contigs)
+                cmd = f"grep -Ff '{contigs_file.name}' '{annot_file}' | awk -F'\\t' '{{s+=$3-$2}} END{{print s+0}}'"
+                overlap = int(subprocess.check_output(cmd, shell=True, text=True).strip())
                 rows.append(f'{name}\t{name}\t{genome_bp}\t{overlap}\t{overlap/genome_bp:.6f}')
 
+        os.remove(contigs_file.name)
+
+        # Sort rows by annotation name then class for consistent output
+        rows.sort()
         with open(str(output[0]), 'w') as out:
             out.write('annotation\tannotation_class\tgenome_bp\toverlap_bp\toverlap_frac\n')
             for r in rows:
