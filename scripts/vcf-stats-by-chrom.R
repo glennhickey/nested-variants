@@ -101,7 +101,8 @@ if (length(stats_pairs) > 0) {
     }
 
     fname <- paste0(output_prefix, ".", grp, "-counts.png")
-    ggsave(fname, p, width = 8, height = 5, dpi = 300)
+    ggsave(fname, p, width = 8, height = 5, dpi = 300,
+           device = grDevices::png, type = "cairo")
     cat("Saved:", fname, "\n")
   }
 }
@@ -132,7 +133,8 @@ if (length(rec_pairs) > 0) {
     theme(plot.title = element_text(face = "bold"))
 
   ggsave(paste0(output_prefix, ".af-spectrum.png"), p_c,
-         width = 8, height = 5, dpi = 300)
+         width = 8, height = 5, dpi = 300,
+         device = grDevices::png, type = "cairo")
   cat("Saved:", paste0(output_prefix, ".af-spectrum.png"), "\n")
 }
 
@@ -161,7 +163,8 @@ if (length(ps_pairs) > 0) {
       theme(plot.title = element_text(face = "bold"))
 
     fname <- paste0(output_prefix, ".per-sample-", grp, ".png")
-    ggsave(fname, p, width = 8, height = 5, dpi = 300)
+    ggsave(fname, p, width = 8, height = 5, dpi = 300,
+           device = grDevices::png, type = "cairo")
     cat("Saved:", fname, "\n")
   }
 }

@@ -99,7 +99,8 @@ if (nrow(snp_row) > 0 && !is.na(snp_row$tstv_ratio)) {
 }
 
 ggsave(paste0(output_prefix, ".variant-types.png"), p_agg,
-       width = 8, height = 5, dpi = 300)
+       width = 8, height = 5, dpi = 300,
+       device = grDevices::png, type = "cairo")
 cat("Saved:", paste0(output_prefix, ".variant-types.png"), "\n")
 
 # --- Per-chromosome variant types ---
@@ -117,7 +118,8 @@ p_chrom <- ggplot(by_chrom[ref_context == "Off-reference"],
         axis.text.x = element_text(angle = 30, hjust = 1))
 
 ggsave(paste0(output_prefix, ".by-chrom.variant-types.png"), p_chrom,
-       width = 8, height = 5, dpi = 300)
+       width = 8, height = 5, dpi = 300,
+       device = grDevices::png, type = "cairo")
 cat("Saved:", paste0(output_prefix, ".by-chrom.variant-types.png"), "\n")
 
 # --- Write aggregate TSV ---
@@ -147,6 +149,7 @@ if (length(per_sample_pairs) > 0) {
           axis.text.x = element_text(angle = 30, hjust = 1))
 
   ggsave(paste0(output_prefix, ".per-sample-types.png"), p_ps,
-         width = 8, height = 5, dpi = 300)
+         width = 8, height = 5, dpi = 300,
+         device = grDevices::png, type = "cairo")
   cat("Saved:", paste0(output_prefix, ".per-sample-types.png"), "\n")
 }
