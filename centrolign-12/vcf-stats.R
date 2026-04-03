@@ -49,6 +49,7 @@ giab_strat_names_arg <- NULL
 per_sample <- FALSE
 ref_sample <- NULL
 no_sv      <- FALSE
+no_fill_tags <- FALSE
 tsv_input  <- FALSE
 dump_records <- FALSE
 records_only <- FALSE
@@ -89,6 +90,9 @@ while (i <= length(args)) {
     i <- i + 2
   } else if (args[i] == "--no-sv") {
     no_sv <- TRUE
+    i <- i + 1
+  } else if (args[i] == "--no-fill-tags") {
+    no_fill_tags <- TRUE
     i <- i + 1
   } else if (args[i] == "--tsv") {
     tsv_input <- TRUE
@@ -153,11 +157,14 @@ cat("Reading VCF:", vcf, " (mode:", mode, ", filter:", filter, ")\n")
 # When filter=="pass", insert bcftools view -f PASS to keep only PASS variants
 filter_cmd <- if (filter == "pass") "bcftools view -f PASS 2>/dev/null |" else ""
 
+fill_cmd <- if (no_fill_tags) "" else "bcftools +fill-tags - -- -t AF 2>/dev/null |"
 if (mode == "variants") {
-  pipe_prefix <- sprintf("bcftools norm -m- '%s' 2>/dev/null | bcftools view -c1 2>/dev/null | %s bcftools +fill-tags - -- -t AF 2>/dev/null", vcf, filter_cmd)
+  pipe_prefix <- sprintf("bcftools norm -m- '%s' 2>/dev/null | bcftools view -c1 2>/dev/null | %s %s", vcf, filter_cmd, fill_cmd)
 } else {
-  pipe_prefix <- sprintf("bcftools view -c1 '%s' 2>/dev/null | %s bcftools +fill-tags - -- -t AF 2>/dev/null", vcf, filter_cmd)
+  pipe_prefix <- sprintf("bcftools view -c1 '%s' 2>/dev/null | %s %s", vcf, filter_cmd, fill_cmd)
 }
+# Remove trailing pipe if fill-tags was skipped
+pipe_prefix <- sub("\\|\\s*$", "", pipe_prefix)
 
 # Try with AF + TR_MOTIF first (filter out all-homref sites from vg call -A)
 cmd_af <- sprintf(

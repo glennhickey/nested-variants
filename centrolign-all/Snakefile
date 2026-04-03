@@ -206,8 +206,8 @@ rule vcf_stats_per_chrom:
         vcf=f"{OUT}/{{chrom}}.tr.vcf.gz",
         segs=f"{OUT}/{{chrom}}.augref-segs.tsv",
     resources:
-        mem_mb=64000,
-        runtime=240,
+        mem_mb=128000,
+        runtime=480,
     output:
         tsv=f"{OUT}/{{chrom}}.sites.vcf-stats.tsv",
         records=f"{OUT}/{{chrom}}.sites.records.tsv",
@@ -220,7 +220,7 @@ rule vcf_stats_per_chrom:
     shell:
         "Rscript vcf-stats.R"
         " {input.vcf} {OUT}/{wildcards.chrom}.sites"
-        " --mode sites --af-step 0.05"
+        " --mode sites --af-step 0.05 --no-fill-tags"
         " --title '{REF} {wildcards.chrom} Deconstruct'"
         " --segs {input.segs}"
         " --per-sample --ref-sample {REF}"
