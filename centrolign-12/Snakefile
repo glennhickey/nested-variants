@@ -18,7 +18,12 @@ SCRIPTS = "../scripts"
 
 REF = config.get("ref", "CHM13")
 AUGREF = f"augref_{REF}"
-VG = config.get("vg", "chr12.vg")
+INPUT = config.get("vg", config.get("gbz", "chr12.vg"))
+# If a GBZ is provided, derive VG name from it; otherwise use as-is.
+if INPUT.endswith(".gbz"):
+    VG = INPUT.replace(".gbz", ".vg")
+else:
+    VG = INPUT
 OUT = config.get("out", "output")
 NAME = config.get("name", "chr12")
 MIN_AUGREF_LEN = 50
@@ -42,6 +47,19 @@ rule all:
 
 
 # --- Graph construction ---
+
+if INPUT.endswith(".gbz"):
+    rule gbz_to_vg:
+        """GBZ -> VG (set RS header so reference path type is preserved)"""
+        input:
+            INPUT,
+        output:
+            VG,
+        shell:
+            "vg convert -f {input}"
+            " | python3 fix-path-names.py --ref {REF} --header-only"
+            " | vg convert -g - > {output}"
+
 
 rule paths:
     """VG -> augref GFA + segment table"""
