@@ -200,31 +200,62 @@ rule annotate_tr:
 
 # --- Deconstruct stats ---
 
+rule extract_records:
+    """Per-chromosome VCF -> compact per-record TSV (streaming, no mmap)"""
+    input:
+        f"{OUT}/{{chrom}}.tr.vcf.gz",
+    output:
+        f"{OUT}/{{chrom}}.sites.records.tsv",
+    resources:
+        mem_mb=8000,
+        runtime=120,
+    shell:
+        "python3 {SCRIPTS}/vcf-extract-stats.py {input} > {output}"
+
+
 rule vcf_stats_per_chrom:
-    """Per-chromosome VCF -> variant stats + per-record data"""
+    """Per-chromosome records -> variant stats + plots"""
+    input:
+        records=f"{OUT}/{{chrom}}.sites.records.tsv",
+        segs=f"{OUT}/{{chrom}}.augref-segs.tsv",
+    resources:
+        mem_mb=64000,
+        runtime=240,
+    output:
+        tsv=f"{OUT}/{{chrom}}.sites.vcf-stats.tsv",
+        types=f"{OUT}/{{chrom}}.sites.variant-types.png",
+        af=f"{OUT}/{{chrom}}.sites.af-spectrum.png",
+        size_dist=f"{OUT}/{{chrom}}.sites.size-dist.png",
+        size_dist_log=f"{OUT}/{{chrom}}.sites.size-dist-log.png",
+    shell:
+        "Rscript vcf-stats.R"
+        " {input.records} {OUT}/{wildcards.chrom}.sites"
+        " --tsv --mode sites --af-step 0.05"
+        " --title '{REF} {wildcards.chrom} Deconstruct'"
+        " --segs {input.segs}"
+        " --ref-sample {REF}"
+
+
+rule per_sample_per_chrom:
+    """Per-chromosome VCF -> per-sample variant counts"""
     input:
         vcf=f"{OUT}/{{chrom}}.tr.vcf.gz",
+        records=f"{OUT}/{{chrom}}.sites.records.tsv",
         segs=f"{OUT}/{{chrom}}.augref-segs.tsv",
     resources:
         mem_mb=128000,
         runtime=480,
     output:
-        tsv=f"{OUT}/{{chrom}}.sites.vcf-stats.tsv",
-        records=f"{OUT}/{{chrom}}.sites.records.tsv",
-        types=f"{OUT}/{{chrom}}.sites.variant-types.png",
-        af=f"{OUT}/{{chrom}}.sites.af-spectrum.png",
         per_sample=f"{OUT}/{{chrom}}.sites.per-sample-types.png",
-        size_dist=f"{OUT}/{{chrom}}.sites.size-dist.png",
-        size_dist_log=f"{OUT}/{{chrom}}.sites.size-dist-log.png",
         per_sample_tsv=f"{OUT}/{{chrom}}.sites.per-sample-types.tsv",
     shell:
         "Rscript vcf-stats.R"
-        " {input.vcf} {OUT}/{wildcards.chrom}.sites"
-        " --mode sites --af-step 0.05 --no-fill-tags"
+        " {input.records} {OUT}/{wildcards.chrom}.sites"
+        " --tsv --mode sites --af-step 0.05"
         " --title '{REF} {wildcards.chrom} Deconstruct'"
         " --segs {input.segs}"
-        " --per-sample --ref-sample {REF}"
-        " --dump-records"
+        " --per-sample --per-sample-vcf {input.vcf}"
+        " --ref-sample {REF}"
 
 
 rule concat_records:

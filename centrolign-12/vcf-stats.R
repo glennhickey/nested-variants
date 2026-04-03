@@ -51,6 +51,7 @@ ref_sample <- NULL
 no_sv      <- FALSE
 no_fill_tags <- FALSE
 tsv_input  <- FALSE
+per_sample_vcf <- NULL
 dump_records <- FALSE
 records_only <- FALSE
 segs_file    <- NULL
@@ -94,6 +95,9 @@ while (i <= length(args)) {
   } else if (args[i] == "--no-fill-tags") {
     no_fill_tags <- TRUE
     i <- i + 1
+  } else if (args[i] == "--per-sample-vcf" && i + 1 <= length(args)) {
+    per_sample_vcf <- args[i + 1]
+    i <- i + 2
   } else if (args[i] == "--tsv") {
     tsv_input <- TRUE
     i <- i + 1
@@ -835,8 +839,15 @@ if (!is.null(giab_strat_beds_arg)) {
 if (per_sample) {
   cat("Per-sample mode enabled\n")
 
+  # When --tsv is used, site data comes from TSV; GTs come from --per-sample-vcf
+  gt_vcf <- if (!is.null(per_sample_vcf)) per_sample_vcf else vcf
+  if (tsv_input && is.null(per_sample_vcf)) {
+    cat("Error: --per-sample with --tsv requires --per-sample-vcf <file.vcf.gz>\n")
+    quit(status = 1)
+  }
+
   # 1. Read sample names
-  sample_cmd <- sprintf("bcftools query -l '%s' 2>/dev/null", vcf)
+  sample_cmd <- sprintf("bcftools query -l '%s' 2>/dev/null", gt_vcf)
   all_sample_names <- system(sample_cmd, intern = TRUE)
   n_all_samples <- length(all_sample_names)
   # Exclude reference sample from per-sample analysis (it always has 0 variants)
@@ -866,12 +877,31 @@ if (per_sample) {
     #    (bcftools outputs all samples; we filter to non-ref samples after melting)
     # Read site info (CHROM/POS/REF/ALT) and per-sample GTs separately to keep
     # each fread call under 2 GB (fread segfaults on mmap files > 2^31 bytes).
-    site_cmd <- sprintf(
-      "%s | bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT\\n' 2>/dev/null",
+    # When using --per-sample-vcf, build pipe_prefix from that VCF
+    gt_pipe <- if (!is.null(per_sample_vcf)) {
+      sprintf("bcftools view -c1 '%s' 2>/dev/null", per_sample_vcf)
+    } else {
       pipe_prefix
-    )
-    gt_dt <- fread(cmd = site_cmd,
-                   col.names = c("CHROM", "POS", "REF", "ALT"))
+    }
+    if (tsv_input) {
+      # Site data already in dt from TSV; just need CHROM, POS for joining with GTs
+      gt_dt <- dt[, .(CHROM, POS)]
+      # Need REF/ALT for per-sample variant classification
+      if ("REF" %in% names(dt)) gt_dt[, REF := dt$REF]
+      if ("ALT" %in% names(dt)) gt_dt[, ALT := dt$ALT]
+      # Copy pre-computed fields for per-sample classification
+      gt_dt[, variant_type := dt$variant_type]
+      gt_dt[, size := dt$size]
+      gt_dt[, size_signed := dt$size_signed]
+      gt_dt[, ref_context := dt$ref_context]
+    } else {
+      site_cmd <- sprintf(
+        "%s | bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT\\n' 2>/dev/null",
+        gt_pipe
+      )
+      gt_dt <- fread(cmd = site_cmd,
+                     col.names = c("CHROM", "POS", "REF", "ALT"))
+    }
     cat("Read", nrow(gt_dt), "site records\n")
     # Read GT columns in batches to stay under fread's 2 GB mmap limit
     batch_size <- 50
@@ -881,7 +911,7 @@ if (per_sample) {
       sample_list <- paste(all_sample_names[sample_indices], collapse = ",")
       batch_cmd <- sprintf(
         "%s | bcftools query -f '[\\t%%GT]\\n' -s '%s' 2>/dev/null | cut -f2-",
-        pipe_prefix, sample_list
+        gt_pipe, sample_list
       )
       batch_cols <- paste0("GT_", sample_indices)
       batch_dt <- fread(cmd = batch_cmd, header = FALSE)
@@ -898,6 +928,8 @@ if (per_sample) {
 
     if (nrow(gt_dt) > 0) {
       # 3. Classify variants (same logic as site-level)
+      #    Skip if already classified (--tsv input)
+      if (!all(c("variant_type", "size") %in% names(gt_dt))) {
       gt_dt[, ref_len := nchar(REF)]
       is_multi_gt <- grepl(",", gt_dt$ALT, fixed = TRUE)
       gt_dt[, size_signed := 0L]
@@ -930,6 +962,7 @@ if (per_sample) {
       gt_dt[, ref_context := fifelse(
         grepl("_[0-9]+_alt$", CHROM), "Off-reference", "On-reference"
       )]
+      } # end if (!all(c("variant_type", "size") %in% names(gt_dt)))
 
       # Drop SV categories if requested
       if (no_sv) {
