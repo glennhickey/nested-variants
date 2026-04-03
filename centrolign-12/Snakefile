@@ -68,7 +68,6 @@ rule gbz:
         f"{OUT}/{NAME}.augref.gbz",
     shell:
         "vg gbwt -G {input} --gbz-format -g {output}"
-        " --set-reference {AUGREF}"
 
 
 # --- Deconstruction ---

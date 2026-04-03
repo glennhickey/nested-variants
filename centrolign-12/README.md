@@ -22,14 +22,14 @@ Two VG graphs are available:
 - **chr12.subsample150.100kb_flanks.fixed.vg** — Subsampled graph
   (150 haplotypes, 100 kb flanks). Built from
   `chr12.subsample150.100kb_flanks.gfa` with path name fixes applied
-  via `fix-path-names.sed` to match the PanSN format of `chr12.vg`.
+  via `fix-path-names.py` to match the PanSN format of `chr12.vg`.
 
 Both graphs use CHM13 as the reference.
 
 ### Rebuilding the fixed VG from GFA
 
 ```bash
-sed -f fix-path-names.sed chr12.subsample150.100kb_flanks.gfa \
+python3 fix-path-names.py < chr12.subsample150.100kb_flanks.gfa \
   | vg convert -g - > chr12.subsample150.100kb_flanks.fixed.vg
 ```
 
@@ -53,7 +53,7 @@ snakemake --profile ../profiles/slurm \
 
 ```bash
 # Rebuild the fixed VG from GFA (if not already present):
-sed -f fix-path-names.sed chr12.subsample150.100kb_flanks.gfa \
+python3 fix-path-names.py < chr12.subsample150.100kb_flanks.gfa \
   | vg convert -g - > chr12.subsample150.100kb_flanks.fixed.vg
 
 # Local:
