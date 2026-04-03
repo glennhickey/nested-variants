@@ -500,7 +500,7 @@ if HAS_READS:
             f"{OUT}/{{chrom}}.{{sample}}.gam",
         threads: 8
         resources:
-            mem_mb=64000,
+            mem_mb=256000,
             runtime=480,
         run:
             if wildcards.chrom in SKIP_HAPL:
