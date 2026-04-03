@@ -877,7 +877,12 @@ if (per_sample) {
         pipe_prefix, sample_list
       )
       batch_cols <- paste0("GT_", sample_indices)
-      batch_dt <- fread(cmd = batch_cmd, col.names = batch_cols)
+      batch_dt <- fread(cmd = batch_cmd, header = FALSE)
+      # Handle possible trailing delimiter from bcftools
+      if (ncol(batch_dt) > length(batch_cols)) {
+        batch_dt <- batch_dt[, seq_along(batch_cols), with = FALSE]
+      }
+      setnames(batch_dt, batch_cols)
       gt_dt <- cbind(gt_dt, batch_dt)
       cat("  Read GT batch", batch_start, "-", batch_end,
           "(", batch_end, "/", n_all_samples, "samples )\n")
