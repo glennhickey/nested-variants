@@ -79,7 +79,7 @@ rule gbz_to_vg:
         "{chrom}.vg",
     resources:
         mem_mb=32000,
-        runtime=120,
+        runtime=480,
     shell:
         "vg convert -f {input}"
         " | python3 fix-path-names.py --ref {REF} --header-only"
@@ -96,7 +96,7 @@ rule paths:
     threads: 8
     resources:
         mem_mb=64000,
-        runtime=480,
+        runtime=960,
     shell:
         "vg paths -x {input} -Q {REF} -u"
         " --min-augref-len {MIN_AUGREF_LEN}"
@@ -114,7 +114,7 @@ rule gbz:
         f"{OUT}/{{chrom}}.augref.gbz",
     resources:
         mem_mb=32000,
-        runtime=120,
+        runtime=480,
     shell:
         "vg gbwt -G {input} --gbz-format -g {output}"
 
@@ -184,7 +184,7 @@ rule deconstruct:
     threads: 8
     resources:
         mem_mb=64000,
-        runtime=480,
+        runtime=960,
     shell:
         "vg deconstruct {input} -P {AUGREF} -a -t {threads}"
         " | bgzip > {output.vcf}"
@@ -202,7 +202,7 @@ rule fasta:
     threads: 8
     resources:
         mem_mb=32000,
-        runtime=120,
+        runtime=480,
     shell:
         "{SCRIPTS}/fasta.sh"
         " --gbz {input}"
@@ -222,7 +222,7 @@ rule annotate_tr:
         f"{OUT}/{{chrom}}.tr.vcf.gz",
     resources:
         mem_mb=32000,
-        runtime=120,
+        runtime=480,
     shell:
         "python3 {SCRIPTS}/annotate-tr.py"
         " --vcf {input.vcf} --ref {input.ref}"
@@ -240,7 +240,7 @@ rule extract_records:
         f"{OUT}/{{chrom}}.sites.records.tsv",
     resources:
         mem_mb=8000,
-        runtime=120,
+        runtime=480,
     shell:
         "python3 {SCRIPTS}/vcf-extract-stats.py {input} > {output}"
 
@@ -252,7 +252,7 @@ rule vcf_stats_per_chrom:
         segs=f"{OUT}/{{chrom}}.augref-segs.tsv",
     resources:
         mem_mb=64000,
-        runtime=240,
+        runtime=480,
     output:
         tsv=f"{OUT}/{{chrom}}.sites.vcf-stats.tsv",
         types=f"{OUT}/{{chrom}}.sites.variant-types.png",
@@ -276,7 +276,7 @@ rule per_sample_per_chrom:
         segs=f"{OUT}/{{chrom}}.augref-segs.tsv",
     resources:
         mem_mb=128000,
-        runtime=480,
+        runtime=960,
     output:
         per_sample=f"{OUT}/{{chrom}}.sites.per-sample-types.png",
         per_sample_tsv=f"{OUT}/{{chrom}}.sites.per-sample-types.tsv",
@@ -308,7 +308,7 @@ rule vcf_stats_aggregate:
         segs=f"{OUT}/all.augref-segs.tsv",
     resources:
         mem_mb=64000,
-        runtime=240,
+        runtime=480,
     output:
         tsv=f"{OUT}/all.sites.vcf-stats.tsv",
         types=f"{OUT}/all.sites.variant-types.png",
@@ -370,7 +370,7 @@ rule deconstruct_by_chrom:
     """Per-chromosome breakdown plots (variant counts, AF, per-sample)"""
     resources:
         mem_mb=64000,
-        runtime=240,
+        runtime=480,
     input:
         stats=expand(f"{OUT}/{{c}}.sites.vcf-stats.tsv", c=CHROMS),
         per_sample=expand(f"{OUT}/{{c}}.sites.per-sample-types.tsv", c=CHROMS),
@@ -459,7 +459,7 @@ if HAS_READS:
         threads: 8
         resources:
             mem_mb=256000,
-            runtime=480,
+            runtime=960,
         shell:
             "{SCRIPTS}/haplotypes.sh"
             " --gbz {input}"
@@ -501,7 +501,7 @@ if HAS_READS:
         threads: 8
         resources:
             mem_mb=256000,
-            runtime=480,
+            runtime=960,
         run:
             if wildcards.chrom in SKIP_HAPL:
                 shell(
@@ -531,7 +531,7 @@ if HAS_READS:
         threads: 8
         resources:
             mem_mb=256000,
-            runtime=480,
+            runtime=960,
         shell:
             "{SCRIPTS}/call.sh"
             " --gbz {input.gbz}"
@@ -554,7 +554,7 @@ if HAS_READS:
         threads: 8
         resources:
             mem_mb=256000,
-            runtime=480,
+            runtime=960,
         shell:
             "{SCRIPTS}/surject.sh"
             " --gbz {input.gbz}"
@@ -578,7 +578,7 @@ if HAS_READS:
         threads: 8
         resources:
             mem_mb=256000,
-            runtime=480,
+            runtime=960,
         shell:
             "{SCRIPTS}/deepvariant.sh"
             " --bam {input.bam}"
@@ -647,7 +647,7 @@ if HAS_READS:
             per_sample_tsv=f"{OUT}/{{chrom}}.call.sites.pass.per-sample-types.tsv",
         resources:
             mem_mb=32000,
-            runtime=120,
+            runtime=480,
         shell:
             "Rscript vcf-stats.R"
             " {input.vcf} {OUT}/{wildcards.chrom}.call.sites.pass"
@@ -672,7 +672,7 @@ if HAS_READS:
             per_sample_tsv=f"{OUT}/{{chrom}}.dv.sites.pass.per-sample-types.tsv",
         resources:
             mem_mb=32000,
-            runtime=120,
+            runtime=480,
         shell:
             "Rscript vcf-stats.R"
             " {input.vcf} {OUT}/{wildcards.chrom}.dv.sites.pass"
@@ -721,7 +721,7 @@ if HAS_READS:
             per_sample_tsv=f"{OUT}/all.call.sites.pass.per-sample-types.tsv",
         resources:
             mem_mb=32000,
-            runtime=120,
+            runtime=480,
         shell:
             "Rscript vcf-stats.R"
             " {input.vcf} {OUT}/all.call.sites.pass"
@@ -746,7 +746,7 @@ if HAS_READS:
             per_sample_tsv=f"{OUT}/all.dv.sites.pass.per-sample-types.tsv",
         resources:
             mem_mb=32000,
-            runtime=120,
+            runtime=480,
         shell:
             "Rscript vcf-stats.R"
             " {input.vcf} {OUT}/all.dv.sites.pass"
@@ -766,7 +766,7 @@ if HAS_READS:
             f"{OUT}/{{chrom}}.call.sites.pass.records.tsv",
         resources:
             mem_mb=8000,
-            runtime=60,
+            runtime=480,
         shell:
             "python3 {SCRIPTS}/vcf-extract-stats.py {input} > {output}"
 
@@ -779,7 +779,7 @@ if HAS_READS:
             f"{OUT}/{{chrom}}.dv.sites.pass.records.tsv",
         resources:
             mem_mb=8000,
-            runtime=60,
+            runtime=480,
         shell:
             "python3 {SCRIPTS}/vcf-extract-stats.py {input} > {output}"
 
