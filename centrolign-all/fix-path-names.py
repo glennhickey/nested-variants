@@ -1,0 +1,1 @@
+../centrolign-12/fix-path-names.py

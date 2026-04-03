@@ -227,7 +227,9 @@ if (!is.null(segs_strip_prefix) && nzchar(segs_strip_prefix)) {
 # ---------------------------------------------------------------------------
 # Classify variants (per-site, no multi-allelic splitting)
 # For multi-allelic sites: SV > Indel > SNP (use largest allele)
+# Skip if variant_type and size are already present (e.g., --tsv from --dump-records)
 # ---------------------------------------------------------------------------
+if (!all(c("variant_type", "size") %in% names(dt))) {
 dt[, ref_len := nchar(REF)]
 
 # Compute max size and direction across comma-separated ALT alleles.
@@ -293,6 +295,7 @@ if (has_tr) {
       sum(dt$variant_type %in% c("Insertion", "Deletion", "SV Insertion", "SV Deletion")),
       "indel records\n")
 }
+} # end if (!all(c("variant_type", "size") %in% names(dt)))
 
 # ---------------------------------------------------------------------------
 # AF: compute per-site non-reference frequency (sum of alt AFs)
@@ -324,7 +327,7 @@ if (has_af) {
 if (dump_records) {
   records_path <- paste0(prefix, ".records.tsv")
   cols <- intersect(c("CHROM", "POS", "ref_context", "variant_type",
-                       "size", "size_signed", "nonref_af", "is_repeat"), names(dt))
+                       "size", "size_signed", "nonref_af", "is_repeat", "tstv"), names(dt))
   fwrite(dt[, ..cols], records_path, sep = "\t", nThread = 1)
   cat("Wrote per-record TSV:", records_path, "\n")
   if (records_only) {

@@ -1,0 +1,11 @@
+# Data files (copy manually to cluster)
+*.vg
+*.gbz
+*.gfa
+
+# Output directories
+output-all/
+
+# Misc
+.snakemake/
+.claude/
