@@ -603,6 +603,7 @@ if HAS_READS:
             " --out-dir {OUT}"
             " --out-name {wildcards.chrom}.{wildcards.sample}.deepvariant.vcf.gz"
             " --model-type PACBIO"
+            " --tmpdir {OUT}/dv_tmp_{wildcards.chrom}_{wildcards.sample}"
             " --cpus {threads} --mem 32gb"
             " --local"
 
