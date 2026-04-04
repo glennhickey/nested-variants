@@ -596,6 +596,7 @@ if HAS_READS:
             mem_mb=256000,
             runtime=960,
         shell:
+            "DV_TMP=$(mktemp -d) && "
             "{SCRIPTS}/deepvariant.sh"
             " --bam {input.bam}"
             " --ref {input.ref}"
@@ -603,9 +604,10 @@ if HAS_READS:
             " --out-dir {OUT}"
             " --out-name {wildcards.chrom}.{wildcards.sample}.deepvariant.vcf.gz"
             " --model-type PACBIO"
-            " --tmpdir {OUT}/dv_tmp_{wildcards.chrom}_{wildcards.sample}"
+            " --tmpdir $DV_TMP"
             " --cpus {threads} --mem 32gb"
             " --local"
+            " ; rm -rf $DV_TMP"
 
 
     rule pass_filter_vcf:
