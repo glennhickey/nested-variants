@@ -486,10 +486,22 @@ if HAS_READS:
         d = {
             "gbz": f"{OUT}/{wildcards.chrom}.augref.gbz",
             "reads": f"{OUT}/{wildcards.chrom}.{wildcards.sample}.fastq.gz",
+            "reads_idx": f"{OUT}/{wildcards.chrom}.{wildcards.sample}.reads.idx",
         }
         if wildcards.chrom not in SKIP_HAPL:
             d["hapl"] = f"{OUT}/{wildcards.chrom}.hapl"
         return d
+
+
+    rule reads_idx:
+        """Create reads index file for giraffe.sh"""
+        input:
+            f"{OUT}/{{chrom}}.{{sample}}.fastq.gz",
+        output:
+            f"{OUT}/{{chrom}}.{{sample}}.reads.idx",
+        run:
+            with open(output[0], "w") as f:
+                f.write(os.path.abspath(input[0]) + "\n")
 
 
     rule giraffe:
@@ -512,12 +524,16 @@ if HAS_READS:
                     " > {output}")
             else:
                 shell(
-                    "vg giraffe -p -t {threads} -b hifi"
-                    " -Z {input.gbz}"
-                    " --haplotype-name {input.hapl}"
-                    " -N {wildcards.sample}"
-                    " -f {input.reads}"
-                    " > {output}")
+                    "{SCRIPTS}/giraffe.sh"
+                    " --gbz {input.gbz}"
+                    " --hapl {input.hapl}"
+                    " --reads {input.reads_idx}"
+                    " --sample {wildcards.sample}"
+                    " --out-dir {OUT}"
+                    " --out-name {wildcards.chrom}.{wildcards.sample}.gam"
+                    " --preset hifi"
+                    " --cpus {threads} --mem 256gb"
+                    " --local")
 
 
     rule call:
