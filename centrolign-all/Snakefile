@@ -9,6 +9,7 @@
 #   snakemake --cores 8        # full run
 
 import os
+import sys
 import glob as _glob
 
 SCRIPTS = "../scripts"
@@ -47,13 +48,24 @@ CALL_CHROMS = sorted(
     [c for c in CHROMS if c in CHROM_SAMPLES],
     key=lambda c: (len(c), c),
 )
-# All unique sample names across chromosomes
+# All unique sample names across chromosomes (union)
 ALL_SAMPLES = sorted(set(
     s for c in CALL_CHROMS for s in CHROM_SAMPLES[c]
 ))
+# Samples present in ALL call chromosomes (intersection) — needed for cross-chrom
+# concat, which requires identical sample sets across per-chrom merged VCFs.
+COMMON_SAMPLES = sorted(
+    set.intersection(*(set(CHROM_SAMPLES[c]) for c in CALL_CHROMS))
+) if CALL_CHROMS else []
 
 # Whether to produce mapping/calling panels (need reads)
 HAS_READS = len(CALL_CHROMS) > 0
+# Whether to produce aggregate call/DV panels (need at least one sample in every chrom)
+HAS_COMMON_SAMPLES = len(COMMON_SAMPLES) > 0
+if HAS_READS and not HAS_COMMON_SAMPLES:
+    print(f"WARNING: no sample present in all {len(CALL_CHROMS)} chromosomes; "
+          f"skipping aggregate call/DV panels (5, 7). Per-chrom and by-chrom "
+          f"panels (6, 8) will still be built.", file=sys.stderr)
 
 
 rule all:
@@ -62,11 +74,12 @@ rule all:
         f"{OUT}/2.deconstruct-summary.png",
         f"{OUT}/3.deconstruct-by-chrom.png",
         f"{OUT}/4.per-sample-by-chrom.png",
-        *([f"{OUT}/5.call-summary.png",
-           f"{OUT}/6.call-by-chrom.png",
-           f"{OUT}/7.deepvariant-summary.png",
+        *([f"{OUT}/6.call-by-chrom.png",
            f"{OUT}/8.deepvariant-by-chrom.png",
           ] if HAS_READS else []),
+        *([f"{OUT}/5.call-summary.png",
+           f"{OUT}/7.deepvariant-summary.png",
+          ] if HAS_COMMON_SAMPLES else []),
 
 
 # --- Per-chromosome graph construction ---
@@ -630,6 +643,8 @@ if HAS_READS:
                         for s in sorted(CHROM_SAMPLES[wc.chrom])],
         output:
             f"{OUT}/{{chrom}}.merged.call.vcf.gz",
+        wildcard_constraints:
+            chrom="|".join(CALL_CHROMS) if CALL_CHROMS else "NONE",
         shell:
             "bcftools merge {input} -Oz"
             " | bcftools +fill-tags -Oz -o {output} -- -t AF,AC,AN"
@@ -643,6 +658,8 @@ if HAS_READS:
                         for s in sorted(CHROM_SAMPLES[wc.chrom])],
         output:
             f"{OUT}/{{chrom}}.merged.deepvariant.vcf.gz",
+        wildcard_constraints:
+            chrom="|".join(CALL_CHROMS) if CALL_CHROMS else "NONE",
         shell:
             "bcftools merge {input} -Oz"
             " | bcftools +fill-tags -Oz -o {output} -- -t AF,AC,AN"
@@ -704,25 +721,43 @@ if HAS_READS:
     # --- Aggregate call/DV across chromosomes ---
 
     rule concat_call_vcfs:
-        """Concatenate per-chrom merged call VCFs"""
+        """Concatenate per-chrom merged call VCFs (subset to common samples)"""
         input:
             expand(f"{OUT}/{{c}}.merged.call.vcf.gz", c=CALL_CHROMS),
         output:
             f"{OUT}/all.merged.call.vcf.gz",
+        params:
+            samples=",".join(COMMON_SAMPLES),
         shell:
-            "bcftools concat -a {input} -Oz -o {output}"
+            "TMPDIR=$(mktemp -d) && "
+            "for f in {input}; do "
+            "  bcftools view -s '{params.samples}' $f -Oz"
+            "  -o $TMPDIR/$(basename $f)"
+            "  && tabix -fp vcf $TMPDIR/$(basename $f); "
+            "done && "
+            "bcftools concat -a $TMPDIR/*.vcf.gz -Oz -o {output}"
             " && tabix -fp vcf {output}"
+            " && rm -rf $TMPDIR"
 
 
     rule concat_dv_vcfs:
-        """Concatenate per-chrom merged DV VCFs"""
+        """Concatenate per-chrom merged DV VCFs (subset to common samples)"""
         input:
             expand(f"{OUT}/{{c}}.merged.deepvariant.vcf.gz", c=CALL_CHROMS),
         output:
             f"{OUT}/all.merged.deepvariant.vcf.gz",
+        params:
+            samples=",".join(COMMON_SAMPLES),
         shell:
-            "bcftools concat -a {input} -Oz -o {output}"
+            "TMPDIR=$(mktemp -d) && "
+            "for f in {input}; do "
+            "  bcftools view -s '{params.samples}' $f -Oz"
+            "  -o $TMPDIR/$(basename $f)"
+            "  && tabix -fp vcf $TMPDIR/$(basename $f); "
+            "done && "
+            "bcftools concat -a $TMPDIR/*.vcf.gz -Oz -o {output}"
             " && tabix -fp vcf {output}"
+            " && rm -rf $TMPDIR"
 
 
     rule call_stats_aggregate:
