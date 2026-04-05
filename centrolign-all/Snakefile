@@ -222,7 +222,7 @@ rule fasta:
         " --ref {AUGREF}"
         " --out-dir {OUT}"
         " --out-name {wildcards.chrom}.fa.gz"
-        " --cpus {threads} --mem 64gb"
+        " --cpus {threads} --mem 32gb"
         " --local"
 
 
@@ -259,40 +259,22 @@ rule extract_records:
 
 
 rule vcf_stats_per_chrom:
-    """Per-chromosome records -> variant stats + plots"""
+    """Per-chromosome records + VCF -> variant stats + per-sample + plots"""
     input:
+        vcf=f"{OUT}/{{chrom}}.tr.vcf.gz",
         records=f"{OUT}/{{chrom}}.sites.records.tsv",
         segs=f"{OUT}/{{chrom}}.augref-segs.tsv",
-    resources:
-        mem_mb=64000,
-        runtime=480,
     output:
         tsv=f"{OUT}/{{chrom}}.sites.vcf-stats.tsv",
         types=f"{OUT}/{{chrom}}.sites.variant-types.png",
         af=f"{OUT}/{{chrom}}.sites.af-spectrum.png",
         size_dist=f"{OUT}/{{chrom}}.sites.size-dist.png",
         size_dist_log=f"{OUT}/{{chrom}}.sites.size-dist-log.png",
-    shell:
-        "Rscript vcf-stats.R"
-        " {input.records} {OUT}/{wildcards.chrom}.sites"
-        " --tsv --mode sites --af-step 0.05"
-        " --title '{REF} {wildcards.chrom} Deconstruct'"
-        " --segs {input.segs}"
-        " --ref-sample {REF}"
-
-
-rule per_sample_per_chrom:
-    """Per-chromosome VCF -> per-sample variant counts"""
-    input:
-        vcf=f"{OUT}/{{chrom}}.tr.vcf.gz",
-        records=f"{OUT}/{{chrom}}.sites.records.tsv",
-        segs=f"{OUT}/{{chrom}}.augref-segs.tsv",
+        per_sample=f"{OUT}/{{chrom}}.sites.per-sample-types.png",
+        per_sample_tsv=f"{OUT}/{{chrom}}.sites.per-sample-types.tsv",
     resources:
         mem_mb=128000,
         runtime=960,
-    output:
-        per_sample=f"{OUT}/{{chrom}}.sites.per-sample-types.png",
-        per_sample_tsv=f"{OUT}/{{chrom}}.sites.per-sample-types.tsv",
     shell:
         "Rscript vcf-stats.R"
         " {input.records} {OUT}/{wildcards.chrom}.sites"
@@ -479,20 +461,20 @@ if HAS_READS:
             " --ref {REF}"
             " --out-dir {OUT}"
             " --out-name {wildcards.chrom}.hapl"
-            " --cpus {threads} --mem 32gb"
+            " --cpus {threads} --mem 256gb"
             " --local"
 
 
     rule concat_reads:
         """Concatenate per-haplotype fastqs into one per-sample fastq"""
+        input:
+            lambda wc: CHROM_SAMPLES.get(wc.chrom, {}).get(wc.sample, []),
         output:
             f"{OUT}/{{chrom}}.{{sample}}.fastq.gz",
         wildcard_constraints:
             sample="|".join(ALL_SAMPLES),
-        params:
-            fastqs=lambda wc: CHROM_SAMPLES.get(wc.chrom, {}).get(wc.sample, []),
         shell:
-            "cat {params.fastqs} > {output}"
+            "cat {input} > {output}"
 
 
     def giraffe_input(wildcards):
@@ -528,6 +510,7 @@ if HAS_READS:
             mem_mb=256000,
             runtime=960,
         run:
+            mem_gb = int(resources.mem_mb / 1024)
             if wildcards.chrom in SKIP_HAPL:
                 shell(
                     "vg giraffe -p -t {threads} -b hifi"
@@ -545,7 +528,7 @@ if HAS_READS:
                     " --out-dir {OUT}"
                     " --out-name {wildcards.chrom}.{wildcards.sample}.gam"
                     " --preset hifi"
-                    " --cpus {threads} --mem 256gb"
+                    f" --cpus {{threads}} --mem {mem_gb}gb"
                     " --local")
 
 
@@ -569,7 +552,7 @@ if HAS_READS:
             " --sample {wildcards.sample}"
             " --out-dir {OUT}"
             " --out-name {wildcards.chrom}.{wildcards.sample}.call.vcf.gz"
-            " --cpus {threads} --mem 32gb"
+            " --cpus {threads} --mem 256gb"
             " --local"
 
 
@@ -593,7 +576,7 @@ if HAS_READS:
             " --out-dir {OUT}"
             " --out-name {wildcards.chrom}.{wildcards.sample}.bam"
             " --no-interleaved --read-length long"
-            " --cpus {threads} --mem 32gb"
+            " --cpus {threads} --mem 256gb"
             " --local"
 
 
@@ -618,7 +601,7 @@ if HAS_READS:
             " --out-name {wildcards.chrom}.{wildcards.sample}.deepvariant.vcf.gz"
             " --model-type PACBIO"
             " --tmpdir $DV_TMP"
-            " --cpus {threads} --mem 32gb"
+            " --cpus {threads} --mem 256gb"
             " --local"
             " ; rm -rf $DV_TMP"
 
@@ -714,7 +697,7 @@ if HAS_READS:
             " {input.vcf} {OUT}/{wildcards.chrom}.dv.sites.pass"
             " --mode sites --af-step 0.05"
             " --title '{REF} {wildcards.chrom} DeepVariant'"
-            " --segs {input.segs} --segs-strip-prefix '{AUGREF}#0#'"
+            " --segs {input.segs}"
             " --per-sample"
 
 
@@ -781,7 +764,7 @@ if HAS_READS:
             " {input.vcf} {OUT}/all.call.sites.pass"
             " --mode sites --af-step 0.05"
             " --title '{REF} Call (All Chromosomes)'"
-            " --segs {input.segs}"
+            " --segs {input.segs} --segs-strip-prefix '{AUGREF}#0#'"
             " --per-sample"
 
 
