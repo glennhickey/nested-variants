@@ -8,4 +8,4 @@ default-resources:
   # IMPORTANT: Snakemake defaults tmpdir to /tmp, which is often too small for
   # DeepVariant. Set this to node-local scratch if your cluster has it:
   tmpdir: /data/tmp
-jobs: 50
+jobs: 10000
