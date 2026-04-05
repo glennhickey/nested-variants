@@ -19,6 +19,9 @@ OUT = config.get("out", "output-all")
 MIN_AUGREF_LEN = config.get("min_augref_len", 50)
 READS_DIR = config.get("reads_dir", "reads")
 SKIP_HAPL = set(config.get("skip_hapl", "").split(",")) - {""}
+# Memory cap passed to scripts (KMC, DV). On cluster, 256 GB; for local
+# testing, override with --config mem_gb=16
+MEM_GB = int(config.get("mem_gb", 256))
 
 # Chromosomes: specify via --config chroms="chr6,chr12" or auto-discover from *.gbz
 if "chroms" in config:
@@ -222,7 +225,7 @@ rule fasta:
         " --ref {AUGREF}"
         " --out-dir {OUT}"
         " --out-name {wildcards.chrom}.fa.gz"
-        " --cpus {threads} --mem 32gb"
+        f" --cpus {{threads}} --mem {MEM_GB}gb"
         " --local"
 
 
@@ -461,7 +464,7 @@ if HAS_READS:
             " --ref {REF}"
             " --out-dir {OUT}"
             " --out-name {wildcards.chrom}.hapl"
-            " --cpus {threads} --mem 256gb"
+            f" --cpus {{threads}} --mem {MEM_GB}gb"
             " --local"
 
 
@@ -510,7 +513,6 @@ if HAS_READS:
             mem_mb=256000,
             runtime=960,
         run:
-            mem_gb = int(resources.mem_mb / 1024)
             if wildcards.chrom in SKIP_HAPL:
                 shell(
                     "vg giraffe -p -t {threads} -b hifi"
@@ -528,7 +530,7 @@ if HAS_READS:
                     " --out-dir {OUT}"
                     " --out-name {wildcards.chrom}.{wildcards.sample}.gam"
                     " --preset hifi"
-                    f" --cpus {{threads}} --mem {mem_gb}gb"
+                    f" --cpus {{threads}} --mem {MEM_GB}gb"
                     " --local")
 
 
@@ -552,7 +554,7 @@ if HAS_READS:
             " --sample {wildcards.sample}"
             " --out-dir {OUT}"
             " --out-name {wildcards.chrom}.{wildcards.sample}.call.vcf.gz"
-            " --cpus {threads} --mem 256gb"
+            f" --cpus {{threads}} --mem {MEM_GB}gb"
             " --local"
 
 
@@ -576,7 +578,7 @@ if HAS_READS:
             " --out-dir {OUT}"
             " --out-name {wildcards.chrom}.{wildcards.sample}.bam"
             " --no-interleaved --read-length long"
-            " --cpus {threads} --mem 256gb"
+            f" --cpus {{threads}} --mem {MEM_GB}gb"
             " --local"
 
 
@@ -592,7 +594,8 @@ if HAS_READS:
             mem_mb=256000,
             runtime=960,
         shell:
-            "DV_TMP=$(mktemp -d) && "
+            "DV_TMP=$(mktemp -d $PWD/{OUT}/dv_tmp_{wildcards.chrom}_{wildcards.sample}.XXXXXX)"
+            " && "
             "{SCRIPTS}/deepvariant.sh"
             " --bam {input.bam}"
             " --ref {input.ref}"
@@ -601,7 +604,7 @@ if HAS_READS:
             " --out-name {wildcards.chrom}.{wildcards.sample}.deepvariant.vcf.gz"
             " --model-type PACBIO"
             " --tmpdir $DV_TMP"
-            " --cpus {threads} --mem 256gb"
+            f" --cpus {{threads}} --mem {MEM_GB}gb"
             " --local"
             " ; rm -rf $DV_TMP"
 
