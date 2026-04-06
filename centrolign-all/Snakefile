@@ -832,6 +832,9 @@ if HAS_READS:
 
     rule call_by_chrom:
         """Per-chromosome call breakdown plots"""
+        resources:
+            mem_mb=128000,
+            runtime=480,
         input:
             stats=expand(f"{OUT}/{{c}}.call.sites.pass.vcf-stats.tsv", c=CALL_CHROMS),
             per_sample=expand(f"{OUT}/{{c}}.call.sites.pass.per-sample-types.tsv", c=CALL_CHROMS),
@@ -864,6 +867,9 @@ if HAS_READS:
 
     rule dv_by_chrom:
         """Per-chromosome DV breakdown plots"""
+        resources:
+            mem_mb=128000,
+            runtime=480,
         input:
             stats=expand(f"{OUT}/{{c}}.dv.sites.pass.vcf-stats.tsv", c=CALL_CHROMS),
             per_sample=expand(f"{OUT}/{{c}}.dv.sites.pass.per-sample-types.tsv", c=CALL_CHROMS),
