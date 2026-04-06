@@ -903,15 +903,15 @@ rule annotation_genome_coverage:
     """
     input:
         fai=f"{OUT_DIR}/{OUT_NAME}.fa.gz.fai",
-        annots=all_annotation_inputs(),
+        annots=annotation_inputs(),
     output:
         f"{OUT_DIR}/{OUT_NAME}.annot-genome-coverage.tsv",
     resources:
         mem_mb=8000,
         runtime=240,
     params:
-        names=all_annotation_names(),
-        group_col=6 if config.get("annot_repeats", "") or config.get("annot_pclai", "") else 0,
+        names=annotation_names(),
+        group_col=6 if config.get("annot_repeats", "") else 0,
     run:
         import os, subprocess, tempfile
 
