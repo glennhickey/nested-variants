@@ -25,6 +25,7 @@ SAMPLE=""
 OUTPUT_DIR="."
 OUTPUT_NAME=""
 DOCKER_IMAGE="mgibio/pangenie:v4.2.1-bookworm"
+JELLYFISH_SIZE="3000000000"
 
 # SLURM resource defaults
 CPUS="16"
@@ -63,6 +64,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --docker)
             DOCKER_IMAGE="$2"
+            shift 2
+            ;;
+        --jellyfish-size)
+            JELLYFISH_SIZE="$2"
             shift 2
             ;;
         --cpus)
@@ -178,7 +183,8 @@ echo "Running PanGenie via Docker"
     -o "${WORK_TMPDIR}/out" \
     -s "${SAMPLE}" \
     -t "${CPUS}" \
-    -j "${CPUS}"
+    -j "${CPUS}" \
+    -e "${JELLYFISH_SIZE}"
 
 # PanGenie outputs {prefix}_genotyping.vcf
 PG_OUT="${WORK_TMPDIR}/out_genotyping.vcf"
