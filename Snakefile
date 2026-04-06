@@ -1673,6 +1673,67 @@ rule freebayes:
         " --cpus {threads} --mem {params.mem_gb}gb"
         " --local"
 
+rule pangenie_prepare_panel:
+    """Prepare panel VCF for PanGenie: remove haploid samples, convert to diploid
+    phased, filter missing, add IDs, split to biallelic, merge overlapping variants."""
+    input:
+        vcf=f"{OUT_DIR}/{OUT_NAME}.vcf.gz",
+        ref=f"{OUT_DIR}/{OUT_NAME}.fa.gz",
+    output:
+        f"{OUT_DIR}/{OUT_NAME}.pangenie-panel.vcf.gz",
+    resources:
+        mem_mb=32000,
+        runtime=120,
+    params:
+        exclude_samples=config.get("pangenie_exclude_samples", REF),
+    shell:
+        "TMPDIR=$(mktemp -d \"${{TMPDIR:-.}}/pg-prep.XXXXXX\")"
+        " && trap 'rm -rf \"$TMPDIR\"' EXIT"
+        " && gunzip -c {input.ref} > $TMPDIR/ref.fa"
+        " && samtools faidx $TMPDIR/ref.fa"
+        " && bcftools view -s ^{params.exclude_samples} {input.vcf}"
+        "    | awk 'BEGIN{{OFS=\"\\t\"}} /^#/{{print;next}}"
+        "      {{for(i=10;i<=NF;i++){{g=$i; if(g==\".\")$i=\".|.\"; else $i=g\"|\"g}} print}}'"
+        "    | python3 scripts/pangenie/prepare-vcf.py --missing 0.2 2>/dev/null"
+        "    | python3 scripts/pangenie/add-ids.py 2>/dev/null"
+        "    | bgzip > $TMPDIR/callset.vcf.gz"
+        " && tabix -fp vcf $TMPDIR/callset.vcf.gz"
+        " && bcftools norm -m- $TMPDIR/callset.vcf.gz > $TMPDIR/biallelic.vcf 2>/dev/null"
+        " && python3 scripts/pangenie/merge_vcfs.py merge"
+        "    -vcf $TMPDIR/biallelic.vcf -r $TMPDIR/ref.fa -ploidy 2"
+        "    2>/dev/null"
+        "    | bgzip > {output}"
+        " && tabix -fp vcf {output}"
+
+rule pangenie:
+    """FASTQ + panel VCF + ref → VCF via PanGenie Docker"""
+    input:
+        reads=_get_reads,
+        ref=f"{OUT_DIR}/{OUT_NAME}.fa.gz",
+        panel=f"{OUT_DIR}/{OUT_NAME}.pangenie-panel.vcf.gz",
+    output:
+        f"{OUT_DIR}/{{sample}}.pangenie.vcf.gz",
+    threads: rule_cpus("pangenie", 24)
+    resources:
+        mem_mb=rule_mem_gb("pangenie", 256) * 1024,
+        runtime=rule_runtime("pangenie"),
+    params:
+        mem_gb=rule_mem_gb("pangenie", 256),
+        docker=config.get("pangenie_docker", "mgibio/pangenie:v4.2.1-bookworm"),
+        jellyfish_size=config.get("pangenie_jellyfish_size", 3000000000),
+    shell:
+        "scripts/pangenie.sh"
+        " --reads {input.reads}"
+        " --ref {input.ref}"
+        " --vcf {input.panel}"
+        " --sample {wildcards.sample}"
+        " --out-dir {OUT_DIR}"
+        " --out-name {wildcards.sample}.pangenie.vcf.gz"
+        " --docker {params.docker}"
+        " --jellyfish-size {params.jellyfish_size}"
+        " --cpus {threads} --mem {params.mem_gb}gb"
+        " --local"
+
 rule call_plots:
     """Per-sample call VCF → density ideogram"""
     input:
