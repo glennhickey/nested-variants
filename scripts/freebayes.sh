@@ -178,5 +178,7 @@ echo "Generated $(wc -l < "$REGIONS_FILE") regions (${REGION_SIZE}bp chunks)"
   | parallel -k -j "$CPUS" \
       freebayes -f "$REF" "$BAM" --region {} \
   | awk 'BEGIN{OFS="\t"; p=1} /^#/{if(p)print; if(/^#CHROM/)p=0; next} {if($7==".") $7="PASS"; print}' \
+  | bcftools annotate -x FORMAT/DPR \
+  | bcftools reheader -s <(echo "$SAMPLE") \
   | bgzip > "$VCF"
 tabix -p vcf "$VCF"

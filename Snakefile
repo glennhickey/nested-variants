@@ -122,13 +122,13 @@ def annotation_snp_outputs(callers=None):
     """Return annotation SNP heatmap outputs if annotations are configured.
 
     callers: list of caller types to include, e.g. ["call"], ["deepvariant"],
-             ["deconstruct"], or None for all.
+             ["freebayes"], ["deconstruct"], or None for all.
     Deconstruct VCFs have no FILTER field, so only "all" is generated for them.
     """
     if not annotation_inputs():
         return []
     if callers is None:
-        callers = ["deconstruct", "call", "deepvariant"]
+        callers = ["deconstruct", "call", "deepvariant", "freebayes"]
     outputs = []
     for plot in ["annot-snp-counts", "annot-snp-tstv"]:
         if "deconstruct" in callers:
@@ -151,6 +151,15 @@ def annotation_snp_outputs(callers=None):
                     outputs.append(f"{OUT_DIR}/{s}.deepvariant.{plot}.{filt}.png")
                 if LR_SAMPLES:
                     outputs.append(f"{OUT_DIR}/merged.longread.deepvariant.{plot}.{filt}.png")
+        if "freebayes" in callers:
+            for filt in ["all", "pass"]:
+                for s in SAMPLES:
+                    outputs.append(f"{OUT_DIR}/{s}.freebayes.{plot}.{filt}.png")
+                outputs.append(f"{OUT_DIR}/merged.freebayes.{plot}.{filt}.png")
+                for s in LR_SAMPLES:
+                    outputs.append(f"{OUT_DIR}/{s}.freebayes.{plot}.{filt}.png")
+                if LR_SAMPLES:
+                    outputs.append(f"{OUT_DIR}/merged.longread.freebayes.{plot}.{filt}.png")
     if config.get("annot_pclai", ""):
         for plot in ["annot-pclai-snp-counts", "annot-pclai-snp-tstv"]:
             if "deconstruct" in callers:
@@ -173,18 +182,27 @@ def annotation_snp_outputs(callers=None):
                         outputs.append(f"{OUT_DIR}/{s}.deepvariant.{plot}.{filt}.png")
                     if LR_SAMPLES:
                         outputs.append(f"{OUT_DIR}/merged.longread.deepvariant.{plot}.{filt}.png")
+            if "freebayes" in callers:
+                for filt in ["all", "pass"]:
+                    for s in SAMPLES:
+                        outputs.append(f"{OUT_DIR}/{s}.freebayes.{plot}.{filt}.png")
+                    outputs.append(f"{OUT_DIR}/merged.freebayes.{plot}.{filt}.png")
+                    for s in LR_SAMPLES:
+                        outputs.append(f"{OUT_DIR}/{s}.freebayes.{plot}.{filt}.png")
+                    if LR_SAMPLES:
+                        outputs.append(f"{OUT_DIR}/merged.longread.freebayes.{plot}.{filt}.png")
     return outputs
 
 def annotation_stats_outputs(callers=None):
     """Return annotation-stratified VCF stats outputs when annotations are configured.
 
     callers: list of caller types to include, e.g. ["deconstruct"], ["call"],
-             ["deepvariant"], or None for all.
+             ["deepvariant"], ["freebayes"], or None for all.
     """
     if not annotation_inputs():
         return []
     if callers is None:
-        callers = ["deconstruct", "call", "deepvariant"]
+        callers = ["deconstruct", "call", "deepvariant", "freebayes"]
     outputs = []
     for suffix in ["variant-types-by-annot.png", "vcf-stats-by-annot.tsv"]:
         if "deconstruct" in callers:
@@ -210,6 +228,16 @@ def annotation_stats_outputs(callers=None):
                 if LR_SAMPLES:
                     outputs.append(f"{OUT_DIR}/merged.longread.dv.sites.{filt}.{suffix}")
                     outputs.append(f"{OUT_DIR}/merged.longread.dv.variants.{filt}.{suffix}")
+        if "freebayes" in callers:
+            for filt in ["all", "pass"]:
+                for s in SAMPLES + LR_SAMPLES:
+                    outputs.append(f"{OUT_DIR}/{s}.fb.sites.{filt}.{suffix}")
+                    outputs.append(f"{OUT_DIR}/{s}.fb.variants.{filt}.{suffix}")
+                outputs.append(f"{OUT_DIR}/merged.fb.sites.{filt}.{suffix}")
+                outputs.append(f"{OUT_DIR}/merged.fb.variants.{filt}.{suffix}")
+                if LR_SAMPLES:
+                    outputs.append(f"{OUT_DIR}/merged.longread.fb.sites.{filt}.{suffix}")
+                    outputs.append(f"{OUT_DIR}/merged.longread.fb.variants.{filt}.{suffix}")
     return outputs
 
 def augref_annot_beds():
@@ -275,7 +303,7 @@ def giab_strat_stats_outputs(callers=None):
     if not giab_strat_configured():
         return []
     if callers is None:
-        callers = ["deconstruct", "call", "deepvariant"]
+        callers = ["deconstruct", "call", "deepvariant", "freebayes"]
     outputs = []
     for suffix in ["giab-strat.png", "giab-strat.tsv"]:
         if "deconstruct" in callers:
@@ -301,12 +329,22 @@ def giab_strat_stats_outputs(callers=None):
                 if LR_SAMPLES:
                     outputs.append(f"{OUT_DIR}/merged.longread.dv.sites.{filt}.{suffix}")
                     outputs.append(f"{OUT_DIR}/merged.longread.dv.variants.{filt}.{suffix}")
+        if "freebayes" in callers:
+            for filt in ["all", "pass"]:
+                for s in SAMPLES + LR_SAMPLES:
+                    outputs.append(f"{OUT_DIR}/{s}.fb.sites.{filt}.{suffix}")
+                    outputs.append(f"{OUT_DIR}/{s}.fb.variants.{filt}.{suffix}")
+                outputs.append(f"{OUT_DIR}/merged.fb.sites.{filt}.{suffix}")
+                outputs.append(f"{OUT_DIR}/merged.fb.variants.{filt}.{suffix}")
+                if LR_SAMPLES:
+                    outputs.append(f"{OUT_DIR}/merged.longread.fb.sites.{filt}.{suffix}")
+                    outputs.append(f"{OUT_DIR}/merged.longread.fb.variants.{filt}.{suffix}")
     return outputs
 
 def per_sample_stats_outputs(callers=None):
     """Return per-sample stats outputs for multisample VCF rules."""
     if callers is None:
-        callers = ["deconstruct", "call", "deepvariant"]
+        callers = ["deconstruct", "call", "deepvariant", "freebayes"]
     outputs = []
     for suffix in ["per-sample-types.png", "per-sample-types.tsv", "per-sample-sv-types.png"]:
         if "deconstruct" in callers:
@@ -326,6 +364,13 @@ def per_sample_stats_outputs(callers=None):
                 if LR_SAMPLES:
                     outputs.append(f"{OUT_DIR}/merged.longread.dv.sites.{filt}.{suffix}")
                     outputs.append(f"{OUT_DIR}/merged.longread.dv.variants.{filt}.{suffix}")
+        if "freebayes" in callers:
+            for filt in ["all", "pass"]:
+                outputs.append(f"{OUT_DIR}/merged.fb.sites.{filt}.{suffix}")
+                outputs.append(f"{OUT_DIR}/merged.fb.variants.{filt}.{suffix}")
+                if LR_SAMPLES:
+                    outputs.append(f"{OUT_DIR}/merged.longread.fb.sites.{filt}.{suffix}")
+                    outputs.append(f"{OUT_DIR}/merged.longread.fb.variants.{filt}.{suffix}")
     if giab_strat_configured():
         for suffix in ["per-sample-giab-strat.png", "per-sample-giab-strat.tsv"]:
             if "deconstruct" in callers:
@@ -345,6 +390,13 @@ def per_sample_stats_outputs(callers=None):
                     if LR_SAMPLES:
                         outputs.append(f"{OUT_DIR}/merged.longread.dv.sites.{filt}.{suffix}")
                         outputs.append(f"{OUT_DIR}/merged.longread.dv.variants.{filt}.{suffix}")
+            if "freebayes" in callers:
+                for filt in ["all", "pass"]:
+                    outputs.append(f"{OUT_DIR}/merged.fb.sites.{filt}.{suffix}")
+                    outputs.append(f"{OUT_DIR}/merged.fb.variants.{filt}.{suffix}")
+                    if LR_SAMPLES:
+                        outputs.append(f"{OUT_DIR}/merged.longread.fb.sites.{filt}.{suffix}")
+                        outputs.append(f"{OUT_DIR}/merged.longread.fb.variants.{filt}.{suffix}")
     return outputs
 
 def compare_call_dv_outputs():
@@ -465,6 +517,7 @@ def summary_figure_outputs():
     if SAMPLES:
         outputs.append(f"{OUT_DIR}/3.call-summary.png")
         outputs.append(f"{OUT_DIR}/4.deepvariant-summary.png")
+        outputs.append(f"{OUT_DIR}/4b.freebayes-summary.png")
         outputs.append(f"{OUT_DIR}/5.concordance-summary.png")
         outputs.append(f"{OUT_DIR}/5b.concordance-onref-summary.png")
         outputs.append(f"{OUT_DIR}/5c.coverage-summary.png")
@@ -472,6 +525,7 @@ def summary_figure_outputs():
     if LR_SAMPLES:
         outputs.append(f"{OUT_DIR}/7.call-summary-longread.png")
         outputs.append(f"{OUT_DIR}/8.deepvariant-summary-longread.png")
+        outputs.append(f"{OUT_DIR}/8b.freebayes-summary-longread.png")
         outputs.append(f"{OUT_DIR}/9.concordance-summary-longread.png")
         outputs.append(f"{OUT_DIR}/9b.concordance-onref-summary-longread.png")
         outputs.append(f"{OUT_DIR}/9c.coverage-summary-longread.png")
@@ -522,6 +576,8 @@ rule all:
         expand("{out}/{s}.contig-depth.png", out=OUT_DIR, s=LR_SAMPLES),
         expand("{out}/{s}.deepvariant.vcf.gz", out=OUT_DIR, s=LR_SAMPLES),
         expand("{out}/{s}.dv-offref.png", out=OUT_DIR, s=LR_SAMPLES),
+        expand("{out}/{s}.freebayes.vcf.gz", out=OUT_DIR, s=LR_SAMPLES),
+        expand("{out}/{s}.fb-offref.png", out=OUT_DIR, s=LR_SAMPLES),
         expand("{out}/{s}.call.{mode}.{filt}.vcf-stats.tsv", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
         expand("{out}/{s}.call.{mode}.{filt}.variant-types.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
         expand("{out}/{s}.call.{mode}.{filt}.size-dist.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
@@ -530,6 +586,10 @@ rule all:
         expand("{out}/{s}.dv.{mode}.{filt}.variant-types.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
         expand("{out}/{s}.dv.{mode}.{filt}.size-dist.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
         expand("{out}/{s}.dv.{mode}.{filt}.size-dist-log.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
+        expand("{out}/{s}.fb.{mode}.{filt}.vcf-stats.tsv", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
+        expand("{out}/{s}.fb.{mode}.{filt}.variant-types.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
+        expand("{out}/{s}.fb.{mode}.{filt}.size-dist.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
+        expand("{out}/{s}.fb.{mode}.{filt}.size-dist-log.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
         expand("{out}/{s}.call.sites.{filt}.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.call.sites.{filt}.variant-types.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.call.sites.{filt}.size-dist.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
@@ -549,11 +609,24 @@ rule all:
         expand("{out}/{s}.dv.variants.{filt}.variant-types.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.dv.variants.{filt}.size-dist.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.dv.variants.{filt}.size-dist-log.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
+        # per-sample freebayes outputs
+        expand("{out}/{s}.freebayes.vcf.gz", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.fb-offref.png", out=OUT_DIR, s=SAMPLES),
+        expand("{out}/{s}.fb.sites.{filt}.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
+        expand("{out}/{s}.fb.sites.{filt}.variant-types.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
+        expand("{out}/{s}.fb.sites.{filt}.size-dist.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
+        expand("{out}/{s}.fb.sites.{filt}.size-dist-log.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
+        expand("{out}/{s}.fb.variants.{filt}.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
+        expand("{out}/{s}.fb.variants.{filt}.variant-types.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
+        expand("{out}/{s}.fb.variants.{filt}.size-dist.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
+        expand("{out}/{s}.fb.variants.{filt}.size-dist-log.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         # merged outputs
         f"{OUT_DIR}/merged.call.vcf.gz",
         f"{OUT_DIR}/merged.deepvariant.vcf.gz",
+        f"{OUT_DIR}/merged.freebayes.vcf.gz",
         f"{OUT_DIR}/merged.call-offref.png",
         f"{OUT_DIR}/merged.dv-offref.png",
+        f"{OUT_DIR}/merged.fb-offref.png",
         f"{OUT_DIR}/merged.call.sites.all.vcf-stats.tsv",
         f"{OUT_DIR}/merged.call.sites.all.variant-types.png",
         f"{OUT_DIR}/merged.call.sites.all.size-dist.png",
@@ -594,11 +667,32 @@ rule all:
         f"{OUT_DIR}/merged.dv.variants.pass.size-dist.png",
         f"{OUT_DIR}/merged.dv.variants.pass.size-dist-log.png",
         f"{OUT_DIR}/merged.dv.variants.pass.af-spectrum.png",
+        f"{OUT_DIR}/merged.fb.sites.all.vcf-stats.tsv",
+        f"{OUT_DIR}/merged.fb.sites.all.variant-types.png",
+        f"{OUT_DIR}/merged.fb.sites.all.size-dist.png",
+        f"{OUT_DIR}/merged.fb.sites.all.size-dist-log.png",
+        f"{OUT_DIR}/merged.fb.sites.all.af-spectrum.png",
+        f"{OUT_DIR}/merged.fb.sites.pass.vcf-stats.tsv",
+        f"{OUT_DIR}/merged.fb.sites.pass.variant-types.png",
+        f"{OUT_DIR}/merged.fb.sites.pass.size-dist.png",
+        f"{OUT_DIR}/merged.fb.sites.pass.size-dist-log.png",
+        f"{OUT_DIR}/merged.fb.sites.pass.af-spectrum.png",
+        f"{OUT_DIR}/merged.fb.variants.all.vcf-stats.tsv",
+        f"{OUT_DIR}/merged.fb.variants.all.variant-types.png",
+        f"{OUT_DIR}/merged.fb.variants.all.size-dist.png",
+        f"{OUT_DIR}/merged.fb.variants.all.size-dist-log.png",
+        f"{OUT_DIR}/merged.fb.variants.all.af-spectrum.png",
+        f"{OUT_DIR}/merged.fb.variants.pass.vcf-stats.tsv",
+        f"{OUT_DIR}/merged.fb.variants.pass.variant-types.png",
+        f"{OUT_DIR}/merged.fb.variants.pass.size-dist.png",
+        f"{OUT_DIR}/merged.fb.variants.pass.size-dist-log.png",
+        f"{OUT_DIR}/merged.fb.variants.pass.af-spectrum.png",
         # merged long-read outputs (when longread_samples configured)
         *([f"{OUT_DIR}/merged.longread.call.vcf.gz",
-           f"{OUT_DIR}/merged.longread.deepvariant.vcf.gz"]
+           f"{OUT_DIR}/merged.longread.deepvariant.vcf.gz",
+           f"{OUT_DIR}/merged.longread.freebayes.vcf.gz"]
           + [f"{OUT_DIR}/merged.longread.{caller}.{mode}.{filt}.{suffix}"
-             for caller in ["call", "dv"]
+             for caller in ["call", "dv", "fb"]
              for mode in ["sites", "variants"]
              for filt in ["all", "pass"]
              for suffix in ["vcf-stats.tsv", "variant-types.png", "size-dist.png",
@@ -695,6 +789,7 @@ rule deepvariant_all:
 # - {sample}.deepvariant.vcf.gz matches both deepvariant and call (sample=X.deepvariant)
 ruleorder: deconstruct > call
 ruleorder: deepvariant > call
+ruleorder: freebayes > call
 
 ############################################################################
 # Graph construction rules (run once)
@@ -1500,6 +1595,23 @@ rule dv_plots:
         " 0 '{config[refgaps_bed]}' {config[scale_type]}"
         " --ref {REF} --offref"
 
+rule fb_plots:
+    """Per-sample FreeBayes VCF → density ideogram"""
+    input:
+        vcf=f"{OUT_DIR}/{{sample}}.freebayes.vcf.gz",
+        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
+    output:
+        f"{OUT_DIR}/{{sample}}.fb-offref.png",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
+    shell:
+        "Rscript scripts/chrom-density-segs.R"
+        " {input.vcf} {input.segs} {output}"
+        " '{REF} FreeBayes Off-Reference Density ({wildcards.sample})'"
+        " 0 '{config[refgaps_bed]}' {config[scale_type]}"
+        " --ref {REF} --offref"
+
 ############################################################################
 # Batch merge rules
 ############################################################################
@@ -1632,6 +1744,70 @@ rule merge_dv_vcfs:
         " | bcftools +fill-tags -Oz -o {output} -- -t AF,AC,AN"
         " && tabix -p vcf {output}"
 
+rule merge_fb_vcfs:
+    """Merge per-sample FreeBayes VCFs with bcftools, add AF/AC/AN tags"""
+    input:
+        expand("{out}/{s}.freebayes.vcf.gz", out=OUT_DIR, s=SAMPLES),
+    output:
+        f"{OUT_DIR}/merged.freebayes.vcf.gz",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
+    shell:
+        "bcftools merge {input} -Oz"
+        " | bcftools +fill-tags -Oz -o {output} -- -t AF,AC,AN"
+        " && tabix -p vcf {output}"
+
+rule merge_longread_fb_vcfs:
+    """Merge long-read per-sample FreeBayes VCFs"""
+    input:
+        expand("{out}/{s}.freebayes.vcf.gz", out=OUT_DIR, s=LR_SAMPLES),
+    output:
+        f"{OUT_DIR}/merged.longread.freebayes.vcf.gz",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
+    run:
+        if len(input) == 1:
+            shell("bcftools +fill-tags {input} -Oz -o {output} -- -t AF,AC,AN"
+                  " && tabix -p vcf {output}")
+        else:
+            shell("bcftools merge {input} -Oz"
+                  " | bcftools +fill-tags -Oz -o {output} -- -t AF,AC,AN"
+                  " && tabix -p vcf {output}")
+
+rule merge_fb_pass_vcfs:
+    """Merge PASS-filtered per-sample FreeBayes VCFs"""
+    input:
+        expand("{out}/{s}.freebayes.pass-only.vcf.gz", out=OUT_DIR, s=SAMPLES),
+    output:
+        f"{OUT_DIR}/merged.freebayes.pass-prefiltered.vcf.gz",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
+    shell:
+        "bcftools merge {input} -Oz"
+        " | bcftools +fill-tags -Oz -o {output} -- -t AF,AC,AN"
+        " && tabix -p vcf {output}"
+
+rule merge_longread_fb_pass_vcfs:
+    """Merge PASS-filtered long-read per-sample FreeBayes VCFs"""
+    input:
+        expand("{out}/{s}.freebayes.pass-only.vcf.gz", out=OUT_DIR, s=LR_SAMPLES),
+    output:
+        f"{OUT_DIR}/merged.longread.freebayes.pass-prefiltered.vcf.gz",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
+    run:
+        if len(input) == 1:
+            shell("bcftools +fill-tags {input} -Oz -o {output} -- -t AF,AC,AN"
+                  " && tabix -p vcf {output}")
+        else:
+            shell("bcftools merge {input} -Oz"
+                  " | bcftools +fill-tags -Oz -o {output} -- -t AF,AC,AN"
+                  " && tabix -p vcf {output}")
+
 rule merged_call_plots:
     """Merged call VCF → density ideogram"""
     input:
@@ -1663,6 +1839,23 @@ rule merged_dv_plots:
         "Rscript scripts/chrom-density-segs.R"
         " {input.vcf} {input.segs} {output}"
         " '{REF} Merged DeepVariant Off-Reference Density'"
+        " 0 '{config[refgaps_bed]}' {config[scale_type]}"
+        " --ref {REF} --offref"
+
+rule merged_fb_plots:
+    """Merged FreeBayes VCF → density ideogram"""
+    input:
+        vcf=f"{OUT_DIR}/merged.freebayes.vcf.gz",
+        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
+    output:
+        f"{OUT_DIR}/merged.fb-offref.png",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
+    shell:
+        "Rscript scripts/chrom-density-segs.R"
+        " {input.vcf} {input.segs} {output}"
+        " '{REF} Merged FreeBayes Off-Reference Density'"
         " 0 '{config[refgaps_bed]}' {config[scale_type]}"
         " --ref {REF} --offref"
 
@@ -1821,6 +2014,41 @@ rule dv_stats:
     shell:
         "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{wildcards.sample}.dv.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} DeepVariant ({wildcards.sample})'"
+        " --segs {input.segs}"
+        " {params.annot_arg} {params.giab_arg} --no-sv"
+
+rule fb_stats:
+    """Per-sample FreeBayes VCF → variant stats + plots (one mode/filter combo)"""
+    input:
+        vcf=lambda wc: f"{OUT_DIR}/{wc.sample}.freebayes.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/{wc.sample}.freebayes.vcf.gz",
+        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
+        annot_beds=augref_annot_beds(),
+        giab_beds=augref_giab_strat_beds(),
+    output:
+        f"{OUT_DIR}/{{sample}}.fb.{{mode}}.{{filt}}.vcf-stats.tsv",
+        f"{OUT_DIR}/{{sample}}.fb.{{mode}}.{{filt}}.variant-types.png",
+        f"{OUT_DIR}/{{sample}}.fb.{{mode}}.{{filt}}.size-dist.png",
+        f"{OUT_DIR}/{{sample}}.fb.{{mode}}.{{filt}}.size-dist-log.png",
+        *([ f"{OUT_DIR}/{{sample}}.fb.{{mode}}.{{filt}}.variant-types-by-annot.png",
+            f"{OUT_DIR}/{{sample}}.fb.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv"]
+          if annotation_inputs() else []),
+        *([ f"{OUT_DIR}/{{sample}}.fb.{{mode}}.{{filt}}.giab-strat.png",
+            f"{OUT_DIR}/{{sample}}.fb.{{mode}}.{{filt}}.giab-strat.tsv"]
+          if giab_strat_configured() else []),
+    resources:
+        mem_mb=256000,
+        runtime=2880,
+    params:
+        annot_arg=lambda wc, input: (
+            f"--annot-beds {','.join(input.annot_beds)} --annot-names {','.join(annotation_names())}"
+            if annotation_inputs() else ""),
+        giab_arg=lambda wc, input: (
+            f"--giab-strat-beds {','.join(input.giab_beds)}"
+            f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
+            if giab_strat_configured() else ""),
+    shell:
+        "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{wildcards.sample}.fb.{wildcards.mode}.{wildcards.filt}"
+        " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} FreeBayes ({wildcards.sample})'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --no-sv"
 
@@ -1991,6 +2219,90 @@ rule merged_dv_stats:
     shell:
         "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.dv.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged DeepVariant'"
+        " --segs {input.segs}"
+        " {params.annot_arg} {params.giab_arg} --per-sample --no-sv"
+
+rule merged_fb_stats:
+    """Merged FreeBayes VCF → variant stats + plots (one mode/filter combo, includes AF spectrum)"""
+    input:
+        vcf=lambda wc: f"{OUT_DIR}/merged.freebayes.pass-prefiltered{'.normed' if wc.mode == 'variants' else ''}.vcf.gz" if wc.filt == "pass" else (f"{OUT_DIR}/merged.freebayes.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.freebayes.vcf.gz"),
+        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
+        annot_beds=augref_annot_beds(),
+        giab_beds=augref_giab_strat_beds(),
+    output:
+        f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}.vcf-stats.tsv",
+        f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}.variant-types.png",
+        f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}.size-dist.png",
+        f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}.size-dist-log.png",
+        f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}.af-spectrum.png",
+        *([ f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}.variant-types-by-annot.png",
+            f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv"]
+          if annotation_inputs() else []),
+        *([ f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}.giab-strat.png",
+            f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}.giab-strat.tsv"]
+          if giab_strat_configured() else []),
+        f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}.per-sample-types.png",
+        f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}.per-sample-types.tsv",
+        f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}.per-sample-sv-types.png",
+        *([ f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}.per-sample-giab-strat.png",
+            f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}.per-sample-giab-strat.tsv"]
+          if giab_strat_configured() else []),
+    resources:
+        mem_mb=256000,
+        runtime=2880,
+    params:
+        annot_arg=lambda wc, input: (
+            f"--annot-beds {','.join(input.annot_beds)} --annot-names {','.join(annotation_names())}"
+            if annotation_inputs() else ""),
+        giab_arg=lambda wc, input: (
+            f"--giab-strat-beds {','.join(input.giab_beds)}"
+            f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
+            if giab_strat_configured() else ""),
+    shell:
+        "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.fb.{wildcards.mode}.{wildcards.filt}"
+        " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged FreeBayes'"
+        " --segs {input.segs}"
+        " {params.annot_arg} {params.giab_arg} --per-sample --no-sv"
+
+rule merged_longread_fb_stats:
+    """Merged long-read FreeBayes VCF → variant stats + plots"""
+    input:
+        vcf=lambda wc: f"{OUT_DIR}/merged.longread.freebayes.pass-prefiltered{'.normed' if wc.mode == 'variants' else ''}.vcf.gz" if wc.filt == "pass" else (f"{OUT_DIR}/merged.longread.freebayes.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.longread.freebayes.vcf.gz"),
+        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
+        annot_beds=augref_annot_beds(),
+        giab_beds=augref_giab_strat_beds(),
+    output:
+        f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}.vcf-stats.tsv",
+        f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}.variant-types.png",
+        f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}.size-dist.png",
+        f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}.size-dist-log.png",
+        f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}.af-spectrum.png",
+        *([ f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}.variant-types-by-annot.png",
+            f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv"]
+          if annotation_inputs() else []),
+        *([ f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}.giab-strat.png",
+            f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}.giab-strat.tsv"]
+          if giab_strat_configured() else []),
+        f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}.per-sample-types.png",
+        f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}.per-sample-types.tsv",
+        f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}.per-sample-sv-types.png",
+        *([ f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}.per-sample-giab-strat.png",
+            f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}.per-sample-giab-strat.tsv"]
+          if giab_strat_configured() else []),
+    resources:
+        mem_mb=256000,
+        runtime=2880,
+    params:
+        annot_arg=lambda wc, input: (
+            f"--annot-beds {','.join(input.annot_beds)} --annot-names {','.join(annotation_names())}"
+            if annotation_inputs() else ""),
+        giab_arg=lambda wc, input: (
+            f"--giab-strat-beds {','.join(input.giab_beds)}"
+            f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
+            if giab_strat_configured() else ""),
+    shell:
+        "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.longread.fb.{wildcards.mode}.{wildcards.filt}"
+        " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged Long-Read FreeBayes'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample --no-sv"
 
@@ -2692,6 +3004,29 @@ rule summary_deepvariant:
         " --cols 2"
         " --panels {params.panels}"
 
+rule summary_freebayes:
+    """Compose FreeBayes summary figure"""
+    input:
+        fb_types=f"{OUT_DIR}/merged.fb.sites.pass.variant-types.png",
+        fb_per_sample=f"{OUT_DIR}/merged.fb.sites.pass.per-sample-types.png",
+        fb_giab=[f"{OUT_DIR}/merged.fb.sites.pass.giab-strat.png"] if giab_strat_configured() else [],
+        annot_snp=[f"{OUT_DIR}/merged.freebayes.annot-snp-tstv.pass.png"] if annotation_inputs() else [],
+    output:
+        f"{OUT_DIR}/4b.freebayes-summary.png",
+    params:
+        panels=lambda wc, input: " ".join(
+            [f"'FB Variant Types (PASS):{input.fb_types}'",
+             f"'FB Per-Sample Types (PASS):{input.fb_per_sample}'"]
+            + ([f"'FB GIAB Stratification:{input.fb_giab[0]}'"] if input.fb_giab else [])
+            + ([f"'FB SNP Ts/Tv by Annotation:{input.annot_snp[0]}'"] if input.annot_snp else [])
+        ),
+    shell:
+        "python3 scripts/compose-summary.py"
+        " --output {output}"
+        " --title 'FreeBayes (PASS)'"
+        " --cols 2"
+        " --panels {params.panels}"
+
 rule summary_concordance:
     """Compose call-vs-DV concordance stratification summary figure"""
     input:
@@ -2873,6 +3208,31 @@ rule summary_longread_deepvariant:
         "python3 scripts/compose-summary.py"
         " --output {output}"
         " --title 'Long-Read DeepVariant + Comparison (PASS)'"
+        " --cols 2"
+        " --panels {params.panels}"
+
+rule summary_longread_freebayes:
+    """Compose long-read FreeBayes summary figure"""
+    input:
+        fb_types=f"{OUT_DIR}/merged.longread.fb.sites.pass.variant-types.png",
+        fb_per_sample=f"{OUT_DIR}/merged.longread.fb.sites.pass.per-sample-types.png",
+        fb_giab=[f"{OUT_DIR}/merged.longread.fb.sites.pass.giab-strat.png"] if giab_strat_configured() else [],
+        fb_per_sample_giab=[f"{OUT_DIR}/merged.longread.fb.sites.pass.per-sample-giab-strat.png"] if giab_strat_configured() else [],
+        annot_snp=[f"{OUT_DIR}/merged.longread.fb.sites.pass.variant-types-by-annot.png"] if annotation_inputs() else [],
+    output:
+        f"{OUT_DIR}/8b.freebayes-summary-longread.png",
+    params:
+        panels=lambda wc, input: " ".join(
+            [f"'FB Variant Types (PASS):{input.fb_types}'",
+             f"'FB Per-Sample Types (PASS):{input.fb_per_sample}'"]
+            + ([f"'FB GIAB Stratification:{input.fb_giab[0]}'"] if input.fb_giab else [])
+            + ([f"'FB Per-Sample GIAB:{input.fb_per_sample_giab[0]}'"] if input.fb_per_sample_giab else [])
+            + ([f"'FB Types by Annotation:{input.annot_snp[0]}'"] if input.annot_snp else [])
+        ),
+    shell:
+        "python3 scripts/compose-summary.py"
+        " --output {output}"
+        " --title 'Long-Read FreeBayes (PASS)'"
         " --cols 2"
         " --panels {params.panels}"
 
