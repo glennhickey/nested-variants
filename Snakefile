@@ -430,6 +430,57 @@ def vcfeval_lr_compare_outputs():
             outputs.append(f"{OUT_DIR}/merged.lr.call-vs-dv.{filt}.chromsplit-giab.png")
     return outputs
 
+def compare_call_fb_outputs():
+    """Return call-vs-FB comparison outputs when samples are configured."""
+    if not SAMPLES:
+        return []
+    outputs = []
+    for mode in ["sites", "variants"]:
+        for filt in ["all", "pass"]:
+            outputs.append(f"{OUT_DIR}/merged.call-vs-fb.{mode}.{filt}.compare.png")
+            outputs.append(f"{OUT_DIR}/merged.call-vs-fb.{mode}.{filt}.compare.tsv")
+    return outputs
+
+def vcfeval_fb_compare_outputs():
+    """Return vcfeval-based call-vs-FB comparison outputs when samples are configured."""
+    if not SAMPLES:
+        return []
+    outputs = []
+    for filt in ["all", "pass"]:
+        outputs.append(f"{OUT_DIR}/merged.call-vs-fb.{filt}.vcfeval-compare.png")
+        outputs.append(f"{OUT_DIR}/merged.call-vs-fb.{filt}.vcfeval-compare.tsv")
+        outputs.append(f"{OUT_DIR}/merged.call-vs-fb.{filt}.chromsplit.tsv")
+        outputs.append(f"{OUT_DIR}/merged.call-vs-fb.{filt}.chromsplit.png")
+        outputs.append(f"{OUT_DIR}/merged.call-vs-fb.{filt}.chromsplit-top.png")
+        outputs.append(f"{OUT_DIR}/merged.call-vs-fb.{filt}.chromsplit-concordant.png")
+        outputs.append(f"{OUT_DIR}/merged.call-vs-fb.{filt}.chromsplit-top-onref.png")
+        outputs.append(f"{OUT_DIR}/merged.call-vs-fb.{filt}.chromsplit-concordant-onref.png")
+        if annotation_inputs():
+            outputs.append(f"{OUT_DIR}/merged.call-vs-fb.{filt}.chromsplit-annot.png")
+        if giab_strat_configured():
+            outputs.append(f"{OUT_DIR}/merged.call-vs-fb.{filt}.chromsplit-giab.png")
+    return outputs
+
+def vcfeval_lr_fb_compare_outputs():
+    """Return vcfeval-based call-vs-FB comparison outputs for long-read samples."""
+    if not LR_SAMPLES:
+        return []
+    outputs = []
+    for filt in ["all", "pass"]:
+        outputs.append(f"{OUT_DIR}/merged.lr.call-vs-fb.{filt}.vcfeval-compare.png")
+        outputs.append(f"{OUT_DIR}/merged.lr.call-vs-fb.{filt}.vcfeval-compare.tsv")
+        outputs.append(f"{OUT_DIR}/merged.lr.call-vs-fb.{filt}.chromsplit.tsv")
+        outputs.append(f"{OUT_DIR}/merged.lr.call-vs-fb.{filt}.chromsplit.png")
+        outputs.append(f"{OUT_DIR}/merged.lr.call-vs-fb.{filt}.chromsplit-top.png")
+        outputs.append(f"{OUT_DIR}/merged.lr.call-vs-fb.{filt}.chromsplit-concordant.png")
+        outputs.append(f"{OUT_DIR}/merged.lr.call-vs-fb.{filt}.chromsplit-top-onref.png")
+        outputs.append(f"{OUT_DIR}/merged.lr.call-vs-fb.{filt}.chromsplit-concordant-onref.png")
+        if annotation_inputs():
+            outputs.append(f"{OUT_DIR}/merged.lr.call-vs-fb.{filt}.chromsplit-annot.png")
+        if giab_strat_configured():
+            outputs.append(f"{OUT_DIR}/merged.lr.call-vs-fb.{filt}.chromsplit-giab.png")
+    return outputs
+
 def vcfeval_compare_outputs():
     """Return vcfeval-based call-vs-DV comparison outputs when samples are configured."""
     if not SAMPLES:
@@ -522,6 +573,8 @@ def summary_figure_outputs():
         outputs.append(f"{OUT_DIR}/5b.concordance-onref-summary.png")
         outputs.append(f"{OUT_DIR}/5c.coverage-summary.png")
         outputs.append(f"{OUT_DIR}/5d.mapq-summary.png")
+        outputs.append(f"{OUT_DIR}/10.freebayes-concordance-summary.png")
+        outputs.append(f"{OUT_DIR}/10b.freebayes-concordance-onref-summary.png")
     if LR_SAMPLES:
         outputs.append(f"{OUT_DIR}/7.call-summary-longread.png")
         outputs.append(f"{OUT_DIR}/8.deepvariant-summary-longread.png")
@@ -530,6 +583,8 @@ def summary_figure_outputs():
         outputs.append(f"{OUT_DIR}/9b.concordance-onref-summary-longread.png")
         outputs.append(f"{OUT_DIR}/9c.coverage-summary-longread.png")
         outputs.append(f"{OUT_DIR}/9d.mapq-summary-longread.png")
+        outputs.append(f"{OUT_DIR}/11.freebayes-concordance-summary-longread.png")
+        outputs.append(f"{OUT_DIR}/11b.freebayes-concordance-onref-summary-longread.png")
     if config.get("pantree_vcf", ""):
         outputs.append(f"{OUT_DIR}/6.pantree-summary.png")
     return outputs
@@ -563,6 +618,9 @@ rule all:
         *compare_call_dv_outputs(),
         *vcfeval_compare_outputs(),
         *vcfeval_lr_compare_outputs(),
+        *compare_call_fb_outputs(),
+        *vcfeval_fb_compare_outputs(),
+        *vcfeval_lr_fb_compare_outputs(),
         *polymorphism_outputs(),
         *pantree_outputs(),
         *summary_figure_outputs(),
@@ -2792,6 +2850,283 @@ rule vcfeval_lr_chromsplit_plot:
         " {params.annot_arg} {params.giab_arg}"
 
 ############################################################################
+# Call vs FreeBayes comparison
+############################################################################
+
+rule compare_call_fb:
+    """Compare merged call and merged FreeBayes VCFs per-sample"""
+    input:
+        call_vcf=lambda wc: f"{OUT_DIR}/merged.call.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.call.vcf.gz",
+        fb_vcf=lambda wc: f"{OUT_DIR}/merged.freebayes.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.freebayes.vcf.gz",
+    output:
+        f"{OUT_DIR}/merged.call-vs-fb.{{mode}}.{{filt}}.compare.png",
+        f"{OUT_DIR}/merged.call-vs-fb.{{mode}}.{{filt}}.compare.tsv",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
+    shell:
+        "Rscript scripts/vcf-compare.R {input.call_vcf} {input.fb_vcf}"
+        " {OUT_DIR}/merged.call-vs-fb.{wildcards.mode}.{wildcards.filt}"
+        " --mode {wildcards.mode} --filter {wildcards.filt}"
+        " --label-a Call --label-b FreeBayes"
+        " --title '{REF} Call vs FreeBayes'"
+        " --strip-prefix '{AUGREF}#0#'"
+        " --no-sv"
+
+rule vcfeval_fb_per_sample:
+    """Run VCF comparison per sample: call VCF (truth) vs FreeBayes VCF (calls)
+
+    Dispatches to vcfeval or aardvark based on config['eval_tool'].
+    When filt=pass, both VCFs are pre-filtered to PASS before comparison
+    (aardvark/vcfeval strip FILTER, so post-hoc filtering doesn't work).
+
+    vg call emits plain locus names (e.g. 'chr1') as CHROM while FreeBayes
+    uses the full augref path (e.g. 'augref_CHM13#0#chr1').  The rename step
+    restores the prefix on the call VCF so all inputs share the same namespace.
+    It is idempotent: only renames CHROMs that lack the prefix.
+    """
+    input:
+        call_vcf=f"{OUT_DIR}/{{sample}}.filtered.vcf.gz" if surject_filtering() else f"{OUT_DIR}/{{sample}}.vcf.gz",
+        fb_vcf=f"{OUT_DIR}/{{sample}}.freebayes.vcf.gz",
+        ref=f"{OUT_DIR}/{OUT_NAME}.fa.gz",
+        paths=f"{OUT_DIR}/{OUT_NAME}.filtered-paths.txt" if surject_filtering() else [],
+    output:
+        tp_baseline=f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/tp-baseline.vcf.gz",
+        fp=f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/fp.vcf.gz",
+        fn=f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/fn.vcf.gz",
+    threads: rule_cpus("vcfeval", 64)
+    resources:
+        mem_mb=rule_mem_gb("vcfeval", 128) * 1024,
+        runtime=rule_runtime("vcfeval"),
+    params:
+        out_dir=f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}",
+        eval_tool=config.get("eval_tool", "aardvark"),
+        docker_arg=lambda wc: f"--docker {config['vcfeval_docker']}" if config.get("vcfeval_docker") else "",
+        no_docker="" if config.get("vcfeval_docker") else "--no-docker",
+        augref_prefix=f"{AUGREF}#0#",
+        min_vcfeval_len=config.get("min_vcfeval_len", 0),
+    shell:
+        # Build contig rename map: only rename CHROMs missing the augref prefix
+        # (idempotent: works with both old vg [plain names] and fixed vg [augref names])
+        "export RTG_MEM=$(({resources.mem_mb} / 1024))g"
+        " && mkdir -p {params.out_dir}"
+        " && bcftools query -f '%CHROM\\n' {input.call_vcf} | sort -u"
+        "    | sed -n '/^{params.augref_prefix}/!s/^\\(.*\\)/\\1\\t{params.augref_prefix}\\1/p'"
+        "    > {params.out_dir}/rename-chrs.txt"
+        # Rename chroms (no-op if rename file is empty); optionally pre-filter to PASS
+        " && if [ -s {params.out_dir}/rename-chrs.txt ]; then"
+        "      bcftools annotate --rename-chrs {params.out_dir}/rename-chrs.txt"
+        "        {input.call_vcf}"
+        "        | awk '/^##contig=/{{id=$0; sub(/.*ID=/, \"\", id); sub(/[,>].*/, \"\", id);"
+        "                if(seen[id]++) next}} {{print}}';"
+        "    else"
+        "      bcftools view {input.call_vcf};"
+        "    fi"
+        "    | if [ '{wildcards.filt}' = 'pass' ]; then"
+        "        bcftools view -f PASS 2>/dev/null;"
+        "      else cat; fi"
+        "    | bgzip > {params.out_dir}/call.renamed.vcf.gz"
+        " && tabix -fp vcf {params.out_dir}/call.renamed.vcf.gz"
+        # Pre-filter FB VCF to PASS if needed
+        " && if [ '{wildcards.filt}' = 'pass' ]; then"
+        "      bcftools view -f PASS {input.fb_vcf} 2>/dev/null"
+        "        | bgzip > {params.out_dir}/fb.pass.vcf.gz"
+        "      && tabix -fp vcf {params.out_dir}/fb.pass.vcf.gz;"
+        "    fi"
+        # Stage inputs to node-local scratch for fast I/O
+        " && WORK_TMPDIR=$(mktemp -d \"${{TMPDIR:-{params.out_dir}}}/vcfeval.XXXXXX\")"
+        " && trap 'rm -rf \"$WORK_TMPDIR\"' EXIT"
+        " && echo \"Staging inputs to $WORK_TMPDIR\""
+        " && cp {params.out_dir}/call.renamed.vcf.gz"
+        "       {params.out_dir}/call.renamed.vcf.gz.tbi"
+        "       {input.ref} {input.ref}.fai"
+        "       \"$WORK_TMPDIR/\""
+        " && if [ '{wildcards.filt}' = 'pass' ]; then"
+        "      cp {params.out_dir}/fb.pass.vcf.gz"
+        "         {params.out_dir}/fb.pass.vcf.gz.tbi"
+        "         \"$WORK_TMPDIR/\";"
+        "      FB_VCF=$WORK_TMPDIR/fb.pass.vcf.gz;"
+        "    else"
+        "      cp {input.fb_vcf} {input.fb_vcf}.tbi \"$WORK_TMPDIR/\";"
+        "      FB_VCF=$WORK_TMPDIR/$(basename {input.fb_vcf});"
+        "    fi"
+        " && {{ [ -f {input.ref}.gzi ]"
+        "       && cp {input.ref}.gzi \"$WORK_TMPDIR/\" || true; }}"
+        " && python3 scripts/vcfcomp.py {params.eval_tool}"
+        "    --truth $WORK_TMPDIR/call.renamed.vcf.gz"
+        "    --calls $FB_VCF"
+        "    --ref $WORK_TMPDIR/$(basename {input.ref})"
+        "    --out-dir $WORK_TMPDIR"
+        "    --threads {threads}"
+        "    --min-contig-len {params.min_vcfeval_len}"
+        "    {params.docker_arg} {params.no_docker}"
+        # Copy results back from local scratch
+        " && for f in tp-baseline.vcf.gz tp-baseline.vcf.gz.tbi"
+        "          fp.vcf.gz fp.vcf.gz.tbi fn.vcf.gz fn.vcf.gz.tbi"
+        "          summary.txt snp_roc.tsv.gz non_snp_roc.tsv.gz weighted_roc.tsv.gz"
+        "          phasing.txt vcfeval.log progress"
+        "          query.vcf.gz query.vcf.gz.tbi truth.vcf.gz truth.vcf.gz.tbi; do"
+        "    [ -f \"$WORK_TMPDIR/$f\" ] && cp \"$WORK_TMPDIR/$f\" {params.out_dir}/;"
+        "  done"
+        # Clean up staged files on shared storage
+        " && rm -f {params.out_dir}/call.renamed.vcf.gz"
+        "    {params.out_dir}/call.renamed.vcf.gz.tbi"
+        "    {params.out_dir}/rename-chrs.txt"
+        "    {params.out_dir}/fb.pass.vcf.gz"
+        "    {params.out_dir}/fb.pass.vcf.gz.tbi"
+
+rule vcfeval_fb_compare_plot:
+    """Aggregate per-sample vcfeval results (FreeBayes) into comparison plot"""
+    input:
+        tp_baseline=expand(f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/tp-baseline.vcf.gz", sample=SAMPLES, allow_missing=True),
+        fp=expand(f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/fp.vcf.gz", sample=SAMPLES, allow_missing=True),
+        fn=expand(f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/fn.vcf.gz", sample=SAMPLES, allow_missing=True),
+    output:
+        f"{OUT_DIR}/merged.call-vs-fb.{{filt}}.vcfeval-compare.png",
+        f"{OUT_DIR}/merged.call-vs-fb.{{filt}}.vcfeval-compare.tsv",
+    params:
+        vcfeval_dirs=lambda wc, input: ",".join(
+            [f"{OUT_DIR}/vcfeval-fb/{wc.filt}/{s}" for s in SAMPLES]),
+        sample_names=",".join(SAMPLES),
+    resources:
+        mem_mb=32000,
+        runtime=120,
+    shell:
+        "Rscript scripts/vcf-compare-vcfeval.R"
+        " {OUT_DIR}/merged.call-vs-fb.{wildcards.filt}"
+        " --vcfeval-dirs {params.vcfeval_dirs}"
+        " --samples {params.sample_names}"
+        " --label-a Call --label-b FreeBayes"
+        " --title '{REF} Call vs FreeBayes (vcfeval)'"
+        " --no-sv"
+
+rule vcfeval_fb_chromsplit:
+    """Per-contig FP/FN/TP breakdown from vcfeval/aardvark output (FreeBayes)"""
+    input:
+        fp=f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/fp.vcf.gz",
+        fn=f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/fn.vcf.gz",
+        tp=f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/tp-baseline.vcf.gz",
+    output:
+        f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/chromsplit.tsv",
+    params:
+        out_dir=f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}",
+        subcommand="aardvark-breakdown" if config.get("eval_tool", "aardvark") == "aardvark" else "vcfeval-breakdown",
+    shell:
+        "python3 scripts/vcfcomp.py {params.subcommand}"
+        " --dir {params.out_dir} > {output}"
+
+rule vcfeval_fb_chromsplit_merge:
+    """Merge per-sample FreeBayes chromsplit breakdowns into a single long-format TSV"""
+    input:
+        expand(f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/chromsplit.tsv",
+               sample=SAMPLES, allow_missing=True),
+    output:
+        f"{OUT_DIR}/merged.call-vs-fb.{{filt}}.chromsplit.tsv",
+    run:
+        merge_chromsplit_tsv(input, SAMPLES, output[0])
+
+rule vcfeval_fb_chromsplit_plot:
+    """Per-contig FP/FN scatter and top-discordant bar chart (FreeBayes)"""
+    input:
+        tsv=f"{OUT_DIR}/merged.call-vs-fb.{{filt}}.chromsplit.tsv",
+        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
+        annot=f"{OUT_DIR}/{OUT_NAME}.annot-per-segment.tsv" if annotation_inputs() else [],
+        giab_beds=giab_strat_beds(),
+    output:
+        f"{OUT_DIR}/merged.call-vs-fb.{{filt}}.chromsplit.png",
+        f"{OUT_DIR}/merged.call-vs-fb.{{filt}}.chromsplit-top.png",
+        f"{OUT_DIR}/merged.call-vs-fb.{{filt}}.chromsplit-concordant.png",
+        f"{OUT_DIR}/merged.call-vs-fb.{{filt}}.chromsplit-top-onref.png",
+        f"{OUT_DIR}/merged.call-vs-fb.{{filt}}.chromsplit-concordant-onref.png",
+        *([ f"{OUT_DIR}/merged.call-vs-fb.{{filt}}.chromsplit-annot.png"]
+          if annotation_inputs() else []),
+        *([ f"{OUT_DIR}/merged.call-vs-fb.{{filt}}.chromsplit-giab.png"]
+          if giab_strat_configured() else []),
+    resources:
+        mem_mb=32000,
+    params:
+        strip_prefix=f"{AUGREF}#0#",
+        annot_arg=lambda wc, input: f"--annot {input.annot}" if annotation_inputs() else "",
+        giab_arg=lambda wc, input: (
+            f"--giab-beds {','.join(input.giab_beds)} --giab-names {','.join(GIAB_STRAT_DISPLAY)}"
+            if giab_strat_configured() else ""),
+    shell:
+        "Rscript scripts/vcf-chromsplit-plot.R {input.tsv}"
+        " {OUT_DIR}/merged.call-vs-fb.{wildcards.filt}"
+        " --title '{REF} Call vs FreeBayes Per-Contig'"
+        " --strip-prefix '{params.strip_prefix}'"
+        " --segs {input.segs}"
+        " {params.annot_arg} {params.giab_arg}"
+
+rule vcfeval_fb_lr_compare_plot:
+    """Aggregate long-read per-sample vcfeval results (FreeBayes) into comparison plot"""
+    input:
+        tp_baseline=expand(f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/tp-baseline.vcf.gz", sample=LR_SAMPLES, allow_missing=True),
+        fp=expand(f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/fp.vcf.gz", sample=LR_SAMPLES, allow_missing=True),
+        fn=expand(f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/fn.vcf.gz", sample=LR_SAMPLES, allow_missing=True),
+    output:
+        f"{OUT_DIR}/merged.lr.call-vs-fb.{{filt}}.vcfeval-compare.png",
+        f"{OUT_DIR}/merged.lr.call-vs-fb.{{filt}}.vcfeval-compare.tsv",
+    params:
+        vcfeval_dirs=lambda wc, input: ",".join(
+            [f"{OUT_DIR}/vcfeval-fb/{wc.filt}/{s}" for s in LR_SAMPLES]),
+        sample_names=",".join(LR_SAMPLES),
+    resources:
+        mem_mb=32000,
+        runtime=120,
+    shell:
+        "Rscript scripts/vcf-compare-vcfeval.R"
+        " {OUT_DIR}/merged.lr.call-vs-fb.{wildcards.filt}"
+        " --vcfeval-dirs {params.vcfeval_dirs}"
+        " --samples {params.sample_names}"
+        " --label-a Call --label-b FreeBayes"
+        " --title '{REF} Long-Read Call vs FreeBayes (vcfeval)'"
+        " --no-sv"
+
+rule vcfeval_fb_lr_chromsplit_merge:
+    """Merge long-read per-sample FreeBayes chromsplit breakdowns into a single long-format TSV"""
+    input:
+        expand(f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/chromsplit.tsv",
+               sample=LR_SAMPLES, allow_missing=True),
+    output:
+        f"{OUT_DIR}/merged.lr.call-vs-fb.{{filt}}.chromsplit.tsv",
+    run:
+        merge_chromsplit_tsv(input, LR_SAMPLES, output[0])
+
+rule vcfeval_fb_lr_chromsplit_plot:
+    """Long-read per-contig FP/FN scatter and top-discordant bar chart (FreeBayes)"""
+    input:
+        tsv=f"{OUT_DIR}/merged.lr.call-vs-fb.{{filt}}.chromsplit.tsv",
+        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
+        annot=f"{OUT_DIR}/{OUT_NAME}.annot-per-segment.tsv" if annotation_inputs() else [],
+        giab_beds=giab_strat_beds(),
+    output:
+        f"{OUT_DIR}/merged.lr.call-vs-fb.{{filt}}.chromsplit.png",
+        f"{OUT_DIR}/merged.lr.call-vs-fb.{{filt}}.chromsplit-top.png",
+        f"{OUT_DIR}/merged.lr.call-vs-fb.{{filt}}.chromsplit-concordant.png",
+        f"{OUT_DIR}/merged.lr.call-vs-fb.{{filt}}.chromsplit-top-onref.png",
+        f"{OUT_DIR}/merged.lr.call-vs-fb.{{filt}}.chromsplit-concordant-onref.png",
+        *([ f"{OUT_DIR}/merged.lr.call-vs-fb.{{filt}}.chromsplit-annot.png"]
+          if annotation_inputs() else []),
+        *([ f"{OUT_DIR}/merged.lr.call-vs-fb.{{filt}}.chromsplit-giab.png"]
+          if giab_strat_configured() else []),
+    resources:
+        mem_mb=32000,
+    params:
+        strip_prefix=f"{AUGREF}#0#",
+        annot_arg=lambda wc, input: f"--annot {input.annot}" if annotation_inputs() else "",
+        giab_arg=lambda wc, input: (
+            f"--giab-beds {','.join(input.giab_beds)} --giab-names {','.join(GIAB_STRAT_DISPLAY)}"
+            if giab_strat_configured() else ""),
+    shell:
+        "Rscript scripts/vcf-chromsplit-plot.R {input.tsv}"
+        " {OUT_DIR}/merged.lr.call-vs-fb.{wildcards.filt}"
+        " --title '{REF} Long-Read Call vs FreeBayes Per-Contig'"
+        " --strip-prefix '{params.strip_prefix}'"
+        " --segs {input.segs}"
+        " {params.annot_arg} {params.giab_arg}"
+
+############################################################################
 # Pantree comparison rules (optional — only when pantree_vcf is set)
 ############################################################################
 
@@ -3009,6 +3344,7 @@ rule summary_freebayes:
     input:
         fb_types=f"{OUT_DIR}/merged.fb.sites.pass.variant-types.png",
         fb_per_sample=f"{OUT_DIR}/merged.fb.sites.pass.per-sample-types.png",
+        vcfeval=f"{OUT_DIR}/merged.call-vs-fb.pass.vcfeval-compare.png",
         fb_giab=[f"{OUT_DIR}/merged.fb.sites.pass.giab-strat.png"] if giab_strat_configured() else [],
         annot_snp=[f"{OUT_DIR}/merged.freebayes.annot-snp-tstv.pass.png"] if annotation_inputs() else [],
     output:
@@ -3016,7 +3352,8 @@ rule summary_freebayes:
     params:
         panels=lambda wc, input: " ".join(
             [f"'FB Variant Types (PASS):{input.fb_types}'",
-             f"'FB Per-Sample Types (PASS):{input.fb_per_sample}'"]
+             f"'FB Per-Sample Types (PASS):{input.fb_per_sample}'",
+             f"'Call vs FB (vcfeval):{input.vcfeval}'"]
             + ([f"'FB GIAB Stratification:{input.fb_giab[0]}'"] if input.fb_giab else [])
             + ([f"'FB SNP Ts/Tv by Annotation:{input.annot_snp[0]}'"] if input.annot_snp else [])
         ),
@@ -3216,6 +3553,7 @@ rule summary_longread_freebayes:
     input:
         fb_types=f"{OUT_DIR}/merged.longread.fb.sites.pass.variant-types.png",
         fb_per_sample=f"{OUT_DIR}/merged.longread.fb.sites.pass.per-sample-types.png",
+        vcfeval=f"{OUT_DIR}/merged.lr.call-vs-fb.pass.vcfeval-compare.png",
         fb_giab=[f"{OUT_DIR}/merged.longread.fb.sites.pass.giab-strat.png"] if giab_strat_configured() else [],
         fb_per_sample_giab=[f"{OUT_DIR}/merged.longread.fb.sites.pass.per-sample-giab-strat.png"] if giab_strat_configured() else [],
         annot_snp=[f"{OUT_DIR}/merged.longread.fb.sites.pass.variant-types-by-annot.png"] if annotation_inputs() else [],
@@ -3224,7 +3562,8 @@ rule summary_longread_freebayes:
     params:
         panels=lambda wc, input: " ".join(
             [f"'FB Variant Types (PASS):{input.fb_types}'",
-             f"'FB Per-Sample Types (PASS):{input.fb_per_sample}'"]
+             f"'FB Per-Sample Types (PASS):{input.fb_per_sample}'",
+             f"'Call vs FB (vcfeval):{input.vcfeval}'"]
             + ([f"'FB GIAB Stratification:{input.fb_giab[0]}'"] if input.fb_giab else [])
             + ([f"'FB Per-Sample GIAB:{input.fb_per_sample_giab[0]}'"] if input.fb_per_sample_giab else [])
             + ([f"'FB Types by Annotation:{input.annot_snp[0]}'"] if input.annot_snp else [])
@@ -3314,3 +3653,85 @@ rule summary_pantree:
         " 'Size Distribution:{input.size_dist}'"
         " 'AF Spectrum:{input.af}'"
         " 'Density Ideogram:{input.density}'"
+
+############################################################################
+# FreeBayes concordance summary panels
+############################################################################
+
+rule summary_freebayes_concordance:
+    """Compose call-vs-FB concordance stratification summary figure (off-ref)"""
+    input:
+        discordant=f"{OUT_DIR}/merged.call-vs-fb.pass.chromsplit-top.png",
+        concordant=f"{OUT_DIR}/merged.call-vs-fb.pass.chromsplit-concordant.png",
+        annot=f"{OUT_DIR}/merged.call-vs-fb.pass.chromsplit-annot.png" if annotation_inputs() else [],
+        giab=f"{OUT_DIR}/merged.call-vs-fb.pass.chromsplit-giab.png" if giab_strat_configured() else [],
+    output:
+        f"{OUT_DIR}/10.freebayes-concordance-summary.png",
+    params:
+        panels=lambda wc, input: " ".join(
+            [f"'Top Discordant Off-Ref:{input.discordant}'",
+             f"'Top Concordant Off-Ref:{input.concordant}'"]
+            + ([f"'TP/FP/FN by Annotation:{input.annot}'"] if input.annot else [])
+            + ([f"'TP/FP/FN by GIAB Region:{input.giab}'"] if input.giab else [])
+        ),
+    shell:
+        "python3 scripts/compose-summary.py"
+        " --output {output}"
+        " --title 'Call vs FreeBayes Concordance — Off-Ref (PASS)'"
+        " --cols 2"
+        " --panels {params.panels}"
+
+rule summary_freebayes_concordance_onref:
+    """Compose on-reference call-vs-FB concordance summary figure"""
+    input:
+        discordant=f"{OUT_DIR}/merged.call-vs-fb.pass.chromsplit-top-onref.png",
+        concordant=f"{OUT_DIR}/merged.call-vs-fb.pass.chromsplit-concordant-onref.png",
+    output:
+        f"{OUT_DIR}/10b.freebayes-concordance-onref-summary.png",
+    shell:
+        "python3 scripts/compose-summary.py"
+        " --output {output}"
+        " --title 'Call vs FreeBayes Concordance — On-Ref (PASS)'"
+        " --cols 2"
+        " --panels"
+        " 'Top Discordant On-Ref:{input.discordant}'"
+        " 'Top Concordant On-Ref:{input.concordant}'"
+
+rule summary_longread_freebayes_concordance:
+    """Compose long-read call-vs-FB concordance summary figure (off-ref)"""
+    input:
+        discordant=f"{OUT_DIR}/merged.lr.call-vs-fb.pass.chromsplit-top.png",
+        concordant=f"{OUT_DIR}/merged.lr.call-vs-fb.pass.chromsplit-concordant.png",
+        annot=f"{OUT_DIR}/merged.lr.call-vs-fb.pass.chromsplit-annot.png" if annotation_inputs() else [],
+        giab=f"{OUT_DIR}/merged.lr.call-vs-fb.pass.chromsplit-giab.png" if giab_strat_configured() else [],
+    output:
+        f"{OUT_DIR}/11.freebayes-concordance-summary-longread.png",
+    params:
+        panels=lambda wc, input: " ".join(
+            [f"'Top Discordant Off-Ref:{input.discordant}'",
+             f"'Top Concordant Off-Ref:{input.concordant}'"]
+            + ([f"'TP/FP/FN by Annotation:{input.annot}'"] if input.annot else [])
+            + ([f"'TP/FP/FN by GIAB Region:{input.giab}'"] if input.giab else [])
+        ),
+    shell:
+        "python3 scripts/compose-summary.py"
+        " --output {output}"
+        " --title 'Long-Read Call vs FreeBayes Concordance — Off-Ref (PASS)'"
+        " --cols 2"
+        " --panels {params.panels}"
+
+rule summary_longread_freebayes_concordance_onref:
+    """Compose long-read on-reference call-vs-FB concordance summary figure"""
+    input:
+        discordant=f"{OUT_DIR}/merged.lr.call-vs-fb.pass.chromsplit-top-onref.png",
+        concordant=f"{OUT_DIR}/merged.lr.call-vs-fb.pass.chromsplit-concordant-onref.png",
+    output:
+        f"{OUT_DIR}/11b.freebayes-concordance-onref-summary-longread.png",
+    shell:
+        "python3 scripts/compose-summary.py"
+        " --output {output}"
+        " --title 'Long-Read Call vs FreeBayes Concordance — On-Ref (PASS)'"
+        " --cols 2"
+        " --panels"
+        " 'Top Discordant On-Ref:{input.discordant}'"
+        " 'Top Concordant On-Ref:{input.concordant}'"
