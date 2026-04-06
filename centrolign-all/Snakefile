@@ -443,10 +443,10 @@ rule summary_per_sample_by_chrom:
         " --cols 2"
         " --panels"
         " ' :{input.snp}'"
-        " ' :{input.indel}'"
-        " ' :{input.sv}'"
         " ' :{input.snp_onref}'"
+        " ' :{input.indel}'"
         " ' :{input.indel_onref}'"
+        " ' :{input.sv}'"
         " ' :{input.sv_onref}'"
 
 
