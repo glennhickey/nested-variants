@@ -840,14 +840,17 @@ rule segment_density:
         mem_mb=256000,
         runtime=2880,
     params:
-        censat_arg=f"--censat '{config['annot_censat']}'" if config.get("annot_censat", "") else "",
+        annot_args=" ".join(
+            [f"--censat '{config['annot_censat']}'" if config.get("annot_censat", "") else "",
+             f"--segdups '{config['annot_segdups']}'" if config.get("annot_segdups", "") else "",
+             f"--genes '{config['annot_genes']}'" if config.get("annot_genes", "") else ""]),
     shell:
         "Rscript scripts/chrom-density-tsv.R"
         " {input} {output}"
         " '{REF} Off-Reference Segment Density'"
         " {config[min_augref_len]} '{config[refgaps_bed]}' {config[scale_type]}"
         " --ref {REF}"
-        " {params.censat_arg}"
+        " {params.annot_args}"
 
 rule plots:
     """Deconstruct VCF → off-reference density ideogram"""
@@ -860,14 +863,17 @@ rule plots:
         mem_mb=256000,
         runtime=2880,
     params:
-        censat_arg=f"--censat '{config['annot_censat']}'" if config.get("annot_censat", "") else "",
+        annot_args=" ".join(
+            [f"--censat '{config['annot_censat']}'" if config.get("annot_censat", "") else "",
+             f"--segdups '{config['annot_segdups']}'" if config.get("annot_segdups", "") else "",
+             f"--genes '{config['annot_genes']}'" if config.get("annot_genes", "") else ""]),
     shell:
         "Rscript scripts/chrom-density-segs.R"
         " {input.vcf} {input.segs} {output}"
         " '{REF} Off-Reference Variant Density'"
         " 0 '{config[refgaps_bed]}' {config[scale_type]}"
         " --ref {REF} --offref"
-        " {params.censat_arg}"
+        " {params.annot_args}"
 
 ############################################################################
 # Annotation overlap rules (optional — only when annot_* keys are set)

@@ -159,15 +159,16 @@ read_bed_overlay <- function(bed_file, chrom_levels) {
 #' @param scale_type Fill scale transform: "log1p", "sqrt", "log", "identity"
 #' @return ggplot object
 plot_ideogram <- function(density_data, chrom_lengths, bed_data, plot_title, scale_type = "log1p",
-                          censat_data = NULL) {
+                          annot_tracks = NULL) {
+  # annot_tracks: named list of data.frames from read_bed_overlay(), e.g.
+  #   list(CenSat = censat_df, SegDups = segdups_df, Genes = genes_df)
   chrom_levels <- levels(chrom_lengths$chromosome)
 
   # Layout parameters
   ideogram_height  <- 0.6
   ideogram_spacing <- 1.0
-  censat_height    <- 0.15
-  censat_gap       <- 0.05
-  censat_offset    <- ideogram_height / 2 + censat_gap + censat_height / 2
+  track_height     <- 0.12
+  track_gap        <- 0.04
   y_positions <- seq(length(chrom_levels), 1, by = -1) * ideogram_spacing
 
   chrom_y_map <- data.frame(
@@ -181,9 +182,26 @@ plot_ideogram <- function(density_data, chrom_lengths, bed_data, plot_title, sca
   if (!is.null(bed_data) && nrow(bed_data) > 0) {
     bed_data <- merge(bed_data, chrom_y_map, by = "chromosome")
   }
-  has_censat <- !is.null(censat_data) && nrow(censat_data) > 0
-  if (has_censat) {
-    censat_data <- merge(censat_data, chrom_y_map, by = "chromosome")
+
+  # Annotation track colors
+  track_colors <- c(CenSat = "mediumpurple", SegDups = "#E69F00", Genes = "#56B4E9")
+
+  # Prepare annotation tracks: merge y positions, compute vertical offset
+  track_list <- list()
+  if (!is.null(annot_tracks)) {
+    idx <- 0
+    for (name in names(annot_tracks)) {
+      td <- annot_tracks[[name]]
+      if (!is.null(td) && nrow(td) > 0) {
+        td <- merge(td, chrom_y_map, by = "chromosome")
+        offset <- ideogram_height / 2 + track_gap + (idx + 0.5) * track_height + idx * track_gap
+        td$ymin <- td$y_pos - offset - track_height / 2
+        td$ymax <- td$y_pos - offset + track_height / 2
+        td$track_name <- name
+        track_list[[name]] <- td
+        idx <- idx + 1
+      }
+    }
   }
 
   p <- ggplot() +
@@ -208,14 +226,15 @@ plot_ideogram <- function(density_data, chrom_lengths, bed_data, plot_title, sca
                       alpha = "Reference gaps"),
                   fill = "black")
     } +
-    # CenSat track (thin stripe below chromosome bar)
-    { if (has_censat)
-        geom_rect(data = censat_data,
+    # Annotation tracks (thin stripes below chromosome bar)
+    { if (length(track_list) > 0) {
+        track_all <- do.call(rbind, track_list)
+        geom_rect(data = track_all,
                   aes(xmin = start, xmax = end,
-                      ymin = y_pos - censat_offset - censat_height / 2,
-                      ymax = y_pos - censat_offset + censat_height / 2,
-                      alpha = "CenSat"),
-                  fill = "mediumpurple")
+                      ymin = ymin, ymax = ymax,
+                      alpha = track_name),
+                  fill = track_colors[track_all$track_name])
+      }
     } +
     scale_fill_gradientn(
       colors = c("#FFFACD", "yellow", "orange", "#FF4500", "#FF0000"),
@@ -234,12 +253,11 @@ plot_ideogram <- function(density_data, chrom_lengths, bed_data, plot_title, sca
         alpha_vals["Reference gaps"] <- 0.7
         alpha_fills["Reference gaps"] <- "black"
       }
-      if (has_censat) {
-        alpha_vals["CenSat"] <- 0.8
-        alpha_fills["CenSat"] <- "mediumpurple"
+      for (tn in names(track_list)) {
+        alpha_vals[tn] <- 0.8
+        alpha_fills[tn] <- track_colors[tn]
       }
       if (length(alpha_vals) > 0) {
-        # Sort fills to match ggplot's alphabetical legend key ordering
         legend_order <- sort(names(alpha_vals))
         scale_alpha_manual(values = alpha_vals, name = NULL,
                            guide = guide_legend(order = 2,
