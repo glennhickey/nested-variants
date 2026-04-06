@@ -219,6 +219,7 @@ snakemake --profile profiles/slurm all \
     pantree_vcf=/private/home/ghickey/dev/work/pantree/CHM13-464.MCv2.0.noY.vcf.gz \
     "samples={HG001: $GIAB/HG001.novaseq.pcr-free.gs.paths, HG002: $GIAB/HG002.novaseq.pcr-free.gs.paths, HG003: $GIAB/HG003.novaseq.pcr-free.gs.paths, HG004: $GIAB/HG004.novaseq.pcr-free.gs.paths, HG005: $GIAB/HG005.novaseq.pcr-free.gs.paths, HG006: $GIAB/HG006.novaseq.pcr-free.gs.paths, HG007: $GIAB/HG007.novaseq.pcr-free.gs.paths, NA12891: $GIAB/NA12891.novaseq.pcr-free.gs.paths, NA12892: $GIAB/NA12892.novaseq.pcr-free.gs.paths}" \
     "longread_samples={HG002-hifi: $GIAB/HG002.hifi-revio.ncbi.paths, HG003-hifi: $GIAB/HG003.hifi-revio.ncbi.paths, HG004-hifi: $GIAB/HG004.hifi-revio.ncbi.paths}" \
+    pangenie_exclude_samples=GRCh38 \
     --rerun-incomplete --default-resources slurm_partition=high_priority
 ```
 
@@ -247,7 +248,8 @@ snakemake --profile profiles/slurm all \
     annot_pclai=$ANNOT/hprc-v2-pclai-grch38-chm13.bed \
     giab_strat=$ANNOT/hprc-v2-giab \
     "samples={HG001: $GIAB/HG001.novaseq.pcr-free.gs.paths, HG002: $GIAB/HG002.novaseq.pcr-free.gs.paths, HG003: $GIAB/HG003.novaseq.pcr-free.gs.paths}" \
-    "longread_samples={HG002-hifi: $GIAB/HG002.hifi-revio.ncbi.paths, HG003-hifi: $GIAB/HG003.hifi-revio.ncbi.paths, HG004-hifi: $GIAB/HG004.hifi-revio.ncbi.paths}"
+    "longread_samples={HG002-hifi: $GIAB/HG002.hifi-revio.ncbi.paths, HG003-hifi: $GIAB/HG003.hifi-revio.ncbi.paths, HG004-hifi: $GIAB/HG004.hifi-revio.ncbi.paths}" \
+    pangenie_exclude_samples=CHM13
 ```
 
 ### Output
