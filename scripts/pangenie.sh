@@ -136,7 +136,9 @@ mkdir -p "$OUTPUT_DIR"
 OUT_VCF="${OUTPUT_DIR}/${OUTPUT_NAME}"
 
 # Create scratch directory for uncompressed inputs
-WORK_TMPDIR=$(mktemp -d "${TMPDIR:-${OUTPUT_DIR}}/pangenie.${SAMPLE}.XXXXXX")
+# Use absolute OUTPUT_DIR as base to ensure Docker can mount it
+OUTPUT_DIR_ABS="$(cd "$OUTPUT_DIR" && pwd)"
+WORK_TMPDIR=$(mktemp -d "${OUTPUT_DIR_ABS}/pangenie.${SAMPLE}.XXXXXX")
 trap '[ -n "${WORK_TMPDIR}" ] && rm -rf "${WORK_TMPDIR}"' EXIT
 
 echo "PanGenie scratch: ${WORK_TMPDIR}"
