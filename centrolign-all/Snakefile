@@ -631,6 +631,9 @@ if HAS_READS:
             f"{OUT}/{{chrom}}.merged.call.vcf.gz",
         wildcard_constraints:
             chrom="|".join(CALL_CHROMS) if CALL_CHROMS else "NONE",
+        resources:
+            mem_mb=128000,
+            runtime=960,
         shell:
             "bcftools merge {input} -Oz"
             " | bcftools +fill-tags -Oz -o {output} -- -t AF,AC,AN"
@@ -646,6 +649,9 @@ if HAS_READS:
             f"{OUT}/{{chrom}}.merged.deepvariant.vcf.gz",
         wildcard_constraints:
             chrom="|".join(CALL_CHROMS) if CALL_CHROMS else "NONE",
+        resources:
+            mem_mb=128000,
+            runtime=960,
         shell:
             "bcftools merge {input} -Oz"
             " | bcftools +fill-tags -Oz -o {output} -- -t AF,AC,AN"
