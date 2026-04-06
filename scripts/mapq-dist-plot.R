@@ -96,6 +96,7 @@ p <- ggplot(plot_dt, aes(x = mapq, y = cum_pct, color = ref_context)) +
   scale_x_continuous(breaks = seq(0, 60, 10)) +
   labs(title = title,
        subtitle = "Cumulative: % of reads with MAPQ >= x",
+       caption = "Note: BAM off-ref is classified by surjected contig name, not original graph path.\nLong reads spanning on/off-ref boundaries may be misclassified after surjection.",
        x = "Mapping Quality Threshold",
        y = "% of Reads >= Threshold") +
   base_theme +
