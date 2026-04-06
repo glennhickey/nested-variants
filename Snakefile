@@ -1880,13 +1880,15 @@ rule pangenie_prepare_panel:
         mem_mb=32000,
         runtime=120,
     params:
-        exclude_samples=config.get("pangenie_exclude_samples", REF),
+        exclude_samples=config.get("pangenie_exclude_samples", ""),
     shell:
         "TMPDIR=$(mktemp -d \"${{TMPDIR:-.}}/pg-prep.XXXXXX\")"
         " && trap 'rm -rf \"$TMPDIR\"' EXIT"
         " && gunzip -c {input.ref} > $TMPDIR/ref.fa"
         " && samtools faidx $TMPDIR/ref.fa"
-        " && bcftools view -s ^{params.exclude_samples} {input.vcf}"
+        " && if [ -n '{params.exclude_samples}' ]; then"
+        "      bcftools view -s ^{params.exclude_samples} {input.vcf};"
+        "    else bcftools view {input.vcf}; fi"
         "    | awk 'BEGIN{{OFS=\"\\t\"}} /^#/{{print;next}}"
         "      {{for(i=10;i<=NF;i++){{g=$i; if(g==\".\")$i=\".|.\"; else $i=g\"|\"g}} print}}'"
         "    | python3 scripts/pangenie/prepare-vcf.py --missing 0.2 2>/dev/null"
