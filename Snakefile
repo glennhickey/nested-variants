@@ -138,11 +138,19 @@ def annotation_snp_outputs(callers=None):
                 for s in SAMPLES:
                     outputs.append(f"{OUT_DIR}/{s}.{plot}.{filt}.png")
                 outputs.append(f"{OUT_DIR}/merged.call.{plot}.{filt}.png")
+                for s in LR_SAMPLES:
+                    outputs.append(f"{OUT_DIR}/{s}.{plot}.{filt}.png")
+                if LR_SAMPLES:
+                    outputs.append(f"{OUT_DIR}/merged.longread.call.{plot}.{filt}.png")
         if "deepvariant" in callers:
             for filt in ["all", "pass"]:
                 for s in SAMPLES:
                     outputs.append(f"{OUT_DIR}/{s}.deepvariant.{plot}.{filt}.png")
                 outputs.append(f"{OUT_DIR}/merged.deepvariant.{plot}.{filt}.png")
+                for s in LR_SAMPLES:
+                    outputs.append(f"{OUT_DIR}/{s}.deepvariant.{plot}.{filt}.png")
+                if LR_SAMPLES:
+                    outputs.append(f"{OUT_DIR}/merged.longread.deepvariant.{plot}.{filt}.png")
     if config.get("annot_pclai", ""):
         for plot in ["annot-pclai-snp-counts", "annot-pclai-snp-tstv"]:
             if "deconstruct" in callers:
@@ -152,11 +160,19 @@ def annotation_snp_outputs(callers=None):
                     for s in SAMPLES:
                         outputs.append(f"{OUT_DIR}/{s}.{plot}.{filt}.png")
                     outputs.append(f"{OUT_DIR}/merged.call.{plot}.{filt}.png")
+                    for s in LR_SAMPLES:
+                        outputs.append(f"{OUT_DIR}/{s}.{plot}.{filt}.png")
+                    if LR_SAMPLES:
+                        outputs.append(f"{OUT_DIR}/merged.longread.call.{plot}.{filt}.png")
             if "deepvariant" in callers:
                 for filt in ["all", "pass"]:
                     for s in SAMPLES:
                         outputs.append(f"{OUT_DIR}/{s}.deepvariant.{plot}.{filt}.png")
                     outputs.append(f"{OUT_DIR}/merged.deepvariant.{plot}.{filt}.png")
+                    for s in LR_SAMPLES:
+                        outputs.append(f"{OUT_DIR}/{s}.deepvariant.{plot}.{filt}.png")
+                    if LR_SAMPLES:
+                        outputs.append(f"{OUT_DIR}/merged.longread.deepvariant.{plot}.{filt}.png")
     return outputs
 
 def annotation_stats_outputs(callers=None):
@@ -176,18 +192,24 @@ def annotation_stats_outputs(callers=None):
             outputs.append(f"{OUT_DIR}/{OUT_NAME}.variants.{suffix}")
         if "call" in callers:
             for filt in ["all", "pass"]:
-                for s in SAMPLES:
+                for s in SAMPLES + LR_SAMPLES:
                     outputs.append(f"{OUT_DIR}/{s}.call.sites.{filt}.{suffix}")
                     outputs.append(f"{OUT_DIR}/{s}.call.variants.{filt}.{suffix}")
                 outputs.append(f"{OUT_DIR}/merged.call.sites.{filt}.{suffix}")
                 outputs.append(f"{OUT_DIR}/merged.call.variants.{filt}.{suffix}")
+                if LR_SAMPLES:
+                    outputs.append(f"{OUT_DIR}/merged.longread.call.sites.{filt}.{suffix}")
+                    outputs.append(f"{OUT_DIR}/merged.longread.call.variants.{filt}.{suffix}")
         if "deepvariant" in callers:
             for filt in ["all", "pass"]:
-                for s in SAMPLES:
+                for s in SAMPLES + LR_SAMPLES:
                     outputs.append(f"{OUT_DIR}/{s}.dv.sites.{filt}.{suffix}")
                     outputs.append(f"{OUT_DIR}/{s}.dv.variants.{filt}.{suffix}")
                 outputs.append(f"{OUT_DIR}/merged.dv.sites.{filt}.{suffix}")
                 outputs.append(f"{OUT_DIR}/merged.dv.variants.{filt}.{suffix}")
+                if LR_SAMPLES:
+                    outputs.append(f"{OUT_DIR}/merged.longread.dv.sites.{filt}.{suffix}")
+                    outputs.append(f"{OUT_DIR}/merged.longread.dv.variants.{filt}.{suffix}")
     return outputs
 
 def augref_annot_beds():
@@ -261,18 +283,24 @@ def giab_strat_stats_outputs(callers=None):
             outputs.append(f"{OUT_DIR}/{OUT_NAME}.variants.{suffix}")
         if "call" in callers:
             for filt in ["all", "pass"]:
-                for s in SAMPLES:
+                for s in SAMPLES + LR_SAMPLES:
                     outputs.append(f"{OUT_DIR}/{s}.call.sites.{filt}.{suffix}")
                     outputs.append(f"{OUT_DIR}/{s}.call.variants.{filt}.{suffix}")
                 outputs.append(f"{OUT_DIR}/merged.call.sites.{filt}.{suffix}")
                 outputs.append(f"{OUT_DIR}/merged.call.variants.{filt}.{suffix}")
+                if LR_SAMPLES:
+                    outputs.append(f"{OUT_DIR}/merged.longread.call.sites.{filt}.{suffix}")
+                    outputs.append(f"{OUT_DIR}/merged.longread.call.variants.{filt}.{suffix}")
         if "deepvariant" in callers:
             for filt in ["all", "pass"]:
-                for s in SAMPLES:
+                for s in SAMPLES + LR_SAMPLES:
                     outputs.append(f"{OUT_DIR}/{s}.dv.sites.{filt}.{suffix}")
                     outputs.append(f"{OUT_DIR}/{s}.dv.variants.{filt}.{suffix}")
                 outputs.append(f"{OUT_DIR}/merged.dv.sites.{filt}.{suffix}")
                 outputs.append(f"{OUT_DIR}/merged.dv.variants.{filt}.{suffix}")
+                if LR_SAMPLES:
+                    outputs.append(f"{OUT_DIR}/merged.longread.dv.sites.{filt}.{suffix}")
+                    outputs.append(f"{OUT_DIR}/merged.longread.dv.variants.{filt}.{suffix}")
     return outputs
 
 def per_sample_stats_outputs(callers=None):
@@ -288,10 +316,16 @@ def per_sample_stats_outputs(callers=None):
             for filt in ["all", "pass"]:
                 outputs.append(f"{OUT_DIR}/merged.call.sites.{filt}.{suffix}")
                 outputs.append(f"{OUT_DIR}/merged.call.variants.{filt}.{suffix}")
+                if LR_SAMPLES:
+                    outputs.append(f"{OUT_DIR}/merged.longread.call.sites.{filt}.{suffix}")
+                    outputs.append(f"{OUT_DIR}/merged.longread.call.variants.{filt}.{suffix}")
         if "deepvariant" in callers:
             for filt in ["all", "pass"]:
                 outputs.append(f"{OUT_DIR}/merged.dv.sites.{filt}.{suffix}")
                 outputs.append(f"{OUT_DIR}/merged.dv.variants.{filt}.{suffix}")
+                if LR_SAMPLES:
+                    outputs.append(f"{OUT_DIR}/merged.longread.dv.sites.{filt}.{suffix}")
+                    outputs.append(f"{OUT_DIR}/merged.longread.dv.variants.{filt}.{suffix}")
     if giab_strat_configured():
         for suffix in ["per-sample-giab-strat.png", "per-sample-giab-strat.tsv"]:
             if "deconstruct" in callers:
@@ -301,10 +335,16 @@ def per_sample_stats_outputs(callers=None):
                 for filt in ["all", "pass"]:
                     outputs.append(f"{OUT_DIR}/merged.call.sites.{filt}.{suffix}")
                     outputs.append(f"{OUT_DIR}/merged.call.variants.{filt}.{suffix}")
+                    if LR_SAMPLES:
+                        outputs.append(f"{OUT_DIR}/merged.longread.call.sites.{filt}.{suffix}")
+                        outputs.append(f"{OUT_DIR}/merged.longread.call.variants.{filt}.{suffix}")
             if "deepvariant" in callers:
                 for filt in ["all", "pass"]:
                     outputs.append(f"{OUT_DIR}/merged.dv.sites.{filt}.{suffix}")
                     outputs.append(f"{OUT_DIR}/merged.dv.variants.{filt}.{suffix}")
+                    if LR_SAMPLES:
+                        outputs.append(f"{OUT_DIR}/merged.longread.dv.sites.{filt}.{suffix}")
+                        outputs.append(f"{OUT_DIR}/merged.longread.dv.variants.{filt}.{suffix}")
     return outputs
 
 def compare_call_dv_outputs():
@@ -476,16 +516,20 @@ rule all:
         expand("{out}/{s}.vcf.gz", out=OUT_DIR, s=SAMPLES),
         expand("{out}/{s}.call-offref.png", out=OUT_DIR, s=SAMPLES),
         expand("{out}/{s}.contig-depth.png", out=OUT_DIR, s=SAMPLES),
-        # long-read sample outputs (giraffe -b hifi + call + DV PACBIO + depth)
+        # long-read per-sample outputs (giraffe -b hifi + call + DV PACBIO + depth)
         expand("{out}/{s}.vcf.gz", out=OUT_DIR, s=LR_SAMPLES),
         expand("{out}/{s}.call-offref.png", out=OUT_DIR, s=LR_SAMPLES),
         expand("{out}/{s}.contig-depth.png", out=OUT_DIR, s=LR_SAMPLES),
         expand("{out}/{s}.deepvariant.vcf.gz", out=OUT_DIR, s=LR_SAMPLES),
         expand("{out}/{s}.dv-offref.png", out=OUT_DIR, s=LR_SAMPLES),
-        expand("{out}/{s}.dv.sites.{filt}.vcf-stats.tsv", out=OUT_DIR, s=LR_SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.dv.sites.{filt}.variant-types.png", out=OUT_DIR, s=LR_SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.dv.variants.{filt}.vcf-stats.tsv", out=OUT_DIR, s=LR_SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.dv.variants.{filt}.variant-types.png", out=OUT_DIR, s=LR_SAMPLES, filt=["all", "pass"]),
+        expand("{out}/{s}.call.{mode}.{filt}.vcf-stats.tsv", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
+        expand("{out}/{s}.call.{mode}.{filt}.variant-types.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
+        expand("{out}/{s}.call.{mode}.{filt}.size-dist.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
+        expand("{out}/{s}.call.{mode}.{filt}.size-dist-log.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
+        expand("{out}/{s}.dv.{mode}.{filt}.vcf-stats.tsv", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
+        expand("{out}/{s}.dv.{mode}.{filt}.variant-types.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
+        expand("{out}/{s}.dv.{mode}.{filt}.size-dist.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
+        expand("{out}/{s}.dv.{mode}.{filt}.size-dist-log.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
         expand("{out}/{s}.call.sites.{filt}.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.call.sites.{filt}.variant-types.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.call.sites.{filt}.size-dist.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
@@ -550,10 +594,15 @@ rule all:
         f"{OUT_DIR}/merged.dv.variants.pass.size-dist.png",
         f"{OUT_DIR}/merged.dv.variants.pass.size-dist-log.png",
         f"{OUT_DIR}/merged.dv.variants.pass.af-spectrum.png",
-        # merged long-read DeepVariant outputs (when longread_samples configured)
-        *([f"{OUT_DIR}/merged.longread.deepvariant.vcf.gz",
-           f"{OUT_DIR}/merged.longread.dv.sites.pass.vcf-stats.tsv",
-           f"{OUT_DIR}/merged.longread.dv.sites.pass.variant-types.png"]
+        # merged long-read outputs (when longread_samples configured)
+        *([f"{OUT_DIR}/merged.longread.call.vcf.gz",
+           f"{OUT_DIR}/merged.longread.deepvariant.vcf.gz"]
+          + [f"{OUT_DIR}/merged.longread.{caller}.{mode}.{filt}.{suffix}"
+             for caller in ["call", "dv"]
+             for mode in ["sites", "variants"]
+             for filt in ["all", "pass"]
+             for suffix in ["vcf-stats.tsv", "variant-types.png", "size-dist.png",
+                            "size-dist-log.png", "af-spectrum.png"]]
           if LR_SAMPLES else []),
 
 rule graph_only:
