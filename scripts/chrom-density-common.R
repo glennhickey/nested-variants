@@ -232,16 +232,19 @@ plot_ideogram <- function(density_data, chrom_lengths, bed_data, plot_title, sca
       alpha_fills <- c()
       if (!is.null(bed_data) && nrow(bed_data) > 0) {
         alpha_vals["Reference gaps"] <- 0.7
-        alpha_fills <- c(alpha_fills, "black")
+        alpha_fills["Reference gaps"] <- "black"
       }
       if (has_censat) {
         alpha_vals["CenSat"] <- 0.8
-        alpha_fills <- c(alpha_fills, "mediumpurple")
+        alpha_fills["CenSat"] <- "mediumpurple"
       }
-      if (length(alpha_vals) > 0)
+      if (length(alpha_vals) > 0) {
+        # Sort fills to match ggplot's alphabetical legend key ordering
+        legend_order <- sort(names(alpha_vals))
         scale_alpha_manual(values = alpha_vals, name = NULL,
                            guide = guide_legend(order = 2,
-                                                override.aes = list(fill = alpha_fills)))
+                                                override.aes = list(fill = alpha_fills[legend_order])))
+      }
     } +
     scale_y_continuous(breaks = y_positions,
                        labels = chrom_levels,
