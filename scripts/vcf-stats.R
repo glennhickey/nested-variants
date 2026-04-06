@@ -842,6 +842,7 @@ if (per_sample) {
   if (n_samples == 0) {
     cat("No samples found in VCF; skipping per-sample stats.\n")
     file.create(paste0(prefix, ".per-sample-types.png"))
+    file.create(paste0(prefix, ".per-sample-sv-types.png"))
     fwrite(data.table(sample = character(), variant_type = character(),
                       ref_context = character(), count = integer()),
            paste0(prefix, ".per-sample-types.tsv"), sep = "\t")
@@ -1001,6 +1002,64 @@ if (per_sample) {
       }
 
       save_png(p_ps, paste0(prefix, ".per-sample-types.png"), width = 12)
+
+      # 6b. SV-only per-sample plot (separate file for better visibility)
+      ps_sv <- ps_counts[size_class == "Structural Variants"]
+      if (nrow(ps_sv) > 0 && sum(ps_sv$count) > 0) {
+        ps_sv_summary <- ps_summary[size_class == "Structural Variants"]
+        if (n_samples <= 20) {
+          p_sv <- ggplot() +
+            geom_col(data = ps_sv_summary,
+                     aes(x = variant_type, y = mean_count, fill = ref_context),
+                     width = 0.7, alpha = 0.6) +
+            geom_errorbar(data = ps_sv_summary,
+                          aes(x = variant_type, ymin = min_count, ymax = max_count),
+                          width = 0.3) +
+            geom_point(data = ps_sv,
+                       aes(x = variant_type, y = count, color = ref_context),
+                       position = position_jitter(width = 0.15),
+                       size = 1.5, alpha = 0.8) +
+            scale_fill_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
+                              name = NULL) +
+            scale_color_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
+                               name = NULL) +
+            scale_y_continuous(labels = scales::comma) +
+            facet_wrap(~ ref_context, scales = "free_y") +
+            labs(title = title,
+                 subtitle = paste0("Per-Sample SV Counts ", mode_label, filter_label,
+                                   " (N=", n_samples, " samples, bars=mean)"),
+                 x = "Variant Type", y = "Count") +
+            theme_minimal() +
+            theme(
+              plot.title = element_text(hjust = 0.5, face = "bold"),
+              plot.subtitle = element_text(hjust = 0.5),
+              panel.background = element_rect(fill = "white", color = NA),
+              plot.background  = element_rect(fill = "white", color = NA)
+            )
+        } else {
+          p_sv <- ggplot(ps_sv,
+                         aes(x = variant_type, y = count, fill = ref_context)) +
+            geom_boxplot(width = 0.6, outlier.size = 1) +
+            scale_fill_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
+                              name = NULL) +
+            scale_y_continuous(labels = scales::comma) +
+            facet_wrap(~ ref_context, scales = "free_y") +
+            labs(title = title,
+                 subtitle = paste0("Per-Sample SV Counts ", mode_label, filter_label,
+                                   " (N=", n_samples, " samples)"),
+                 x = "Variant Type", y = "Count") +
+            theme_minimal() +
+            theme(
+              plot.title = element_text(hjust = 0.5, face = "bold"),
+              plot.subtitle = element_text(hjust = 0.5),
+              panel.background = element_rect(fill = "white", color = NA),
+              plot.background  = element_rect(fill = "white", color = NA)
+            )
+        }
+        save_png(p_sv, paste0(prefix, ".per-sample-sv-types.png"), width = 10)
+      } else {
+        file.create(paste0(prefix, ".per-sample-sv-types.png"))
+      }
 
       # -----------------------------------------------------------------------
       # Per-sample GIAB stratification (when --giab-strat-beds + --per-sample)
@@ -1194,6 +1253,7 @@ if (per_sample) {
     } else {
       cat("No variant records; creating empty per-sample outputs.\n")
       file.create(paste0(prefix, ".per-sample-types.png"))
+      file.create(paste0(prefix, ".per-sample-sv-types.png"))
       fwrite(data.table(sample = character(), variant_type = character(),
                         ref_context = character(), count = integer()),
              paste0(prefix, ".per-sample-types.tsv"), sep = "\t")

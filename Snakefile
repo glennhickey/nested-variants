@@ -308,7 +308,7 @@ def per_sample_stats_outputs(callers=None):
     if callers is None:
         callers = ["deconstruct", "call", "deepvariant"]
     outputs = []
-    for suffix in ["per-sample-types.png", "per-sample-types.tsv"]:
+    for suffix in ["per-sample-types.png", "per-sample-types.tsv", "per-sample-sv-types.png"]:
         if "deconstruct" in callers:
             outputs.append(f"{OUT_DIR}/{OUT_NAME}.sites.{suffix}")
             outputs.append(f"{OUT_DIR}/{OUT_NAME}.variants.{suffix}")
@@ -1660,6 +1660,7 @@ rule deconstruct_sites_stats:
           if giab_strat_configured() else []),
         f"{OUT_DIR}/{OUT_NAME}.sites.per-sample-types.png",
         f"{OUT_DIR}/{OUT_NAME}.sites.per-sample-types.tsv",
+        f"{OUT_DIR}/{OUT_NAME}.sites.per-sample-sv-types.png",
         *([ f"{OUT_DIR}/{OUT_NAME}.sites.per-sample-giab-strat.png",
             f"{OUT_DIR}/{OUT_NAME}.sites.per-sample-giab-strat.tsv"]
           if giab_strat_configured() else []),
@@ -1701,6 +1702,7 @@ rule deconstruct_variants_stats:
           if giab_strat_configured() else []),
         f"{OUT_DIR}/{OUT_NAME}.variants.per-sample-types.png",
         f"{OUT_DIR}/{OUT_NAME}.variants.per-sample-types.tsv",
+        f"{OUT_DIR}/{OUT_NAME}.variants.per-sample-sv-types.png",
         *([ f"{OUT_DIR}/{OUT_NAME}.variants.per-sample-giab-strat.png",
             f"{OUT_DIR}/{OUT_NAME}.variants.per-sample-giab-strat.tsv"]
           if giab_strat_configured() else []),
@@ -1813,6 +1815,7 @@ rule merged_call_stats:
           if giab_strat_configured() else []),
         f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.per-sample-types.png",
         f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.per-sample-types.tsv",
+        f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.per-sample-sv-types.png",
         *([ f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.per-sample-giab-strat.png",
             f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.per-sample-giab-strat.tsv"]
           if giab_strat_configured() else []),
@@ -1855,6 +1858,7 @@ rule merged_longread_call_stats:
           if giab_strat_configured() else []),
         f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.per-sample-types.png",
         f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.per-sample-types.tsv",
+        f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.per-sample-sv-types.png",
         *([ f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.per-sample-giab-strat.png",
             f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.per-sample-giab-strat.tsv"]
           if giab_strat_configured() else []),
@@ -1896,6 +1900,7 @@ rule merged_longread_dv_stats:
           if giab_strat_configured() else []),
         f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.per-sample-types.png",
         f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.per-sample-types.tsv",
+        f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.per-sample-sv-types.png",
         *([ f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.per-sample-giab-strat.png",
             f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.per-sample-giab-strat.tsv"]
           if giab_strat_configured() else []),
@@ -1937,6 +1942,7 @@ rule merged_dv_stats:
           if giab_strat_configured() else []),
         f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.per-sample-types.png",
         f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.per-sample-types.tsv",
+        f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.per-sample-sv-types.png",
         *([ f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.per-sample-giab-strat.png",
             f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.per-sample-giab-strat.tsv"]
           if giab_strat_configured() else []),
