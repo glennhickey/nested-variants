@@ -441,7 +441,7 @@ rule summary_per_sample_by_chrom:
     shell:
         "python3 {SCRIPTS}/compose-summary.py"
         " --output {output}"
-        " --title 'Per-Sample Counts by Chromosome'"
+        " --title 'Deconstruct Per-Sample Counts by Chromosome'"
         " --cols 2"
         " --panels"
         " ' :{input.snp}'"
