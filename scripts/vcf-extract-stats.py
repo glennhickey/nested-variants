@@ -73,7 +73,7 @@ def main():
             vtype, size, size_signed = classify(ref_len, alt_lens)
 
             # On-ref vs off-ref
-            ref_context = "Off-reference" if "_alt" in chrom else "On-reference"
+            ref_context = "Off-reference" if chrom.endswith("_alt") else "On-reference"
 
             # AF from INFO
             af_raw = parse_info(info, "AF")

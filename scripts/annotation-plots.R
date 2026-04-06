@@ -165,7 +165,8 @@ if (vcf_mode) {
       snps[, augref_path := CHROM]
     }
 
-    # Classify Ts/Tv
+    # Classify Ts/Tv (exclude multi-allelic sites)
+    snps <- snps[!grepl(",", ALT)]
     transitions <- c("AG", "GA", "CT", "TC")
     snps[, tstv := fifelse(paste0(REF, ALT) %in% transitions, "Ts", "Tv")]
 
