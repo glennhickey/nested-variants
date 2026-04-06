@@ -79,8 +79,10 @@ rule all:
         f"{OUT}/4.per-sample-by-chrom.png",
         *([f"{OUT}/5.call-summary.png",
            f"{OUT}/6.call-by-chrom.png",
+           f"{OUT}/6b.call-per-sample-by-chrom.png",
            f"{OUT}/7.deepvariant-summary.png",
            f"{OUT}/8.deepvariant-by-chrom.png",
+           f"{OUT}/8b.dv-per-sample-by-chrom.png",
           ] if HAS_READS else []),
 
 
@@ -1014,6 +1016,56 @@ if HAS_READS:
             " 'MNP / Indel Counts:{input.indel}'"
             " 'SV Counts:{input.sv}'"
             " 'AF Spectrum:{input.af}'"
+
+
+    rule summary_call_per_sample_by_chrom:
+        """Compose call per-sample by chromosome (figure 6b)"""
+        input:
+            snp=f"{OUT}/all.call.by-chrom.per-sample-snp.png",
+            snp_onref=f"{OUT}/all.call.by-chrom.per-sample-snp-onref.png",
+            indel=f"{OUT}/all.call.by-chrom.per-sample-indel.png",
+            indel_onref=f"{OUT}/all.call.by-chrom.per-sample-indel-onref.png",
+            sv=f"{OUT}/all.call.by-chrom.per-sample-sv.png",
+            sv_onref=f"{OUT}/all.call.by-chrom.per-sample-sv-onref.png",
+        output:
+            f"{OUT}/6b.call-per-sample-by-chrom.png",
+        shell:
+            "python3 {SCRIPTS}/compose-summary.py"
+            " --output {output}"
+            " --title 'vg call Per-Sample by Chromosome'"
+            " --cols 2"
+            " --panels"
+            " ' :{input.snp}'"
+            " ' :{input.snp_onref}'"
+            " ' :{input.indel}'"
+            " ' :{input.indel_onref}'"
+            " ' :{input.sv}'"
+            " ' :{input.sv_onref}'"
+
+
+    rule summary_dv_per_sample_by_chrom:
+        """Compose DV per-sample by chromosome (figure 8b)"""
+        input:
+            snp=f"{OUT}/all.dv.by-chrom.per-sample-snp.png",
+            snp_onref=f"{OUT}/all.dv.by-chrom.per-sample-snp-onref.png",
+            indel=f"{OUT}/all.dv.by-chrom.per-sample-indel.png",
+            indel_onref=f"{OUT}/all.dv.by-chrom.per-sample-indel-onref.png",
+            sv=f"{OUT}/all.dv.by-chrom.per-sample-sv.png",
+            sv_onref=f"{OUT}/all.dv.by-chrom.per-sample-sv-onref.png",
+        output:
+            f"{OUT}/8b.dv-per-sample-by-chrom.png",
+        shell:
+            "python3 {SCRIPTS}/compose-summary.py"
+            " --output {output}"
+            " --title 'DeepVariant Per-Sample by Chromosome'"
+            " --cols 2"
+            " --panels"
+            " ' :{input.snp}'"
+            " ' :{input.snp_onref}'"
+            " ' :{input.indel}'"
+            " ' :{input.indel_onref}'"
+            " ' :{input.sv}'"
+            " ' :{input.sv_onref}'"
 
 
 # --- Summary figures ---
