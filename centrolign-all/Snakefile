@@ -77,12 +77,11 @@ rule all:
         f"{OUT}/2.deconstruct-summary.png",
         f"{OUT}/3.deconstruct-by-chrom.png",
         f"{OUT}/4.per-sample-by-chrom.png",
-        *([f"{OUT}/6.call-by-chrom.png",
+        *([f"{OUT}/5.call-summary.png",
+           f"{OUT}/6.call-by-chrom.png",
+           f"{OUT}/7.deepvariant-summary.png",
            f"{OUT}/8.deepvariant-by-chrom.png",
           ] if HAS_READS else []),
-        *([f"{OUT}/5.call-summary.png",
-           f"{OUT}/7.deepvariant-summary.png",
-          ] if HAS_COMMON_SAMPLES else []),
 
 
 # --- Per-chromosome graph construction ---
@@ -381,6 +380,9 @@ rule deconstruct_by_chrom:
         ps_snp=f"{OUT}/all.by-chrom.per-sample-snp.png",
         ps_indel=f"{OUT}/all.by-chrom.per-sample-indel.png",
         ps_sv=f"{OUT}/all.by-chrom.per-sample-sv.png",
+        ps_snp_onref=f"{OUT}/all.by-chrom.per-sample-snp-onref.png",
+        ps_indel_onref=f"{OUT}/all.by-chrom.per-sample-indel-onref.png",
+        ps_sv_onref=f"{OUT}/all.by-chrom.per-sample-sv-onref.png",
     params:
         stats_labeled=lambda wc, input: " ".join(
             f"{os.path.basename(f).replace('.sites.vcf-stats.tsv', '')}:{f}"
@@ -429,6 +431,9 @@ rule summary_per_sample_by_chrom:
         snp=f"{OUT}/all.by-chrom.per-sample-snp.png",
         indel=f"{OUT}/all.by-chrom.per-sample-indel.png",
         sv=f"{OUT}/all.by-chrom.per-sample-sv.png",
+        snp_onref=f"{OUT}/all.by-chrom.per-sample-snp-onref.png",
+        indel_onref=f"{OUT}/all.by-chrom.per-sample-indel-onref.png",
+        sv_onref=f"{OUT}/all.by-chrom.per-sample-sv-onref.png",
     output:
         f"{OUT}/4.per-sample-by-chrom.png",
     shell:
@@ -440,6 +445,9 @@ rule summary_per_sample_by_chrom:
         " ' :{input.snp}'"
         " ' :{input.indel}'"
         " ' :{input.sv}'"
+        " ' :{input.snp_onref}'"
+        " ' :{input.indel_onref}'"
+        " ' :{input.sv_onref}'"
 
 
 # =========================================================================
@@ -710,96 +718,112 @@ if HAS_READS:
             " --per-sample"
 
 
-    # --- Aggregate call/DV across chromosomes ---
+    # --- Aggregate call/DV across chromosomes (combine per-chrom TSVs) ---
 
-    rule concat_call_vcfs:
-        """Concatenate per-chrom merged call VCFs (subset to common samples)"""
+    rule call_concat_records:
+        """Concatenate per-chrom call records"""
         input:
-            expand(f"{OUT}/{{c}}.merged.call.vcf.gz", c=CALL_CHROMS),
+            expand(f"{OUT}/{{c}}.call.sites.pass.records.tsv", c=CALL_CHROMS),
         output:
-            f"{OUT}/all.merged.call.vcf.gz",
-        params:
-            samples=",".join(COMMON_SAMPLES),
+            f"{OUT}/all.call.sites.pass.records.tsv",
         shell:
-            "TMPDIR=$(mktemp -d) && "
-            "for f in {input}; do "
-            "  bcftools view -s '{params.samples}' $f -Oz"
-            "  -o $TMPDIR/$(basename $f)"
-            "  && tabix -fp vcf $TMPDIR/$(basename $f); "
-            "done && "
-            "bcftools concat -a $TMPDIR/*.vcf.gz -Oz -o {output}"
-            " && tabix -fp vcf {output}"
-            " && rm -rf $TMPDIR"
-
-
-    rule concat_dv_vcfs:
-        """Concatenate per-chrom merged DV VCFs (subset to common samples)"""
-        input:
-            expand(f"{OUT}/{{c}}.merged.deepvariant.vcf.gz", c=CALL_CHROMS),
-        output:
-            f"{OUT}/all.merged.deepvariant.vcf.gz",
-        params:
-            samples=",".join(COMMON_SAMPLES),
-        shell:
-            "TMPDIR=$(mktemp -d) && "
-            "for f in {input}; do "
-            "  bcftools view -s '{params.samples}' $f -Oz"
-            "  -o $TMPDIR/$(basename $f)"
-            "  && tabix -fp vcf $TMPDIR/$(basename $f); "
-            "done && "
-            "bcftools concat -a $TMPDIR/*.vcf.gz -Oz -o {output}"
-            " && tabix -fp vcf {output}"
-            " && rm -rf $TMPDIR"
+            "head -1 {input[0]} > {output}"
+            " && tail -n +2 -q {input} >> {output}"
 
 
     rule call_stats_aggregate:
-        """Aggregate call VCF -> stats + plots"""
+        """Aggregated call records -> plots"""
         input:
-            vcf=f"{OUT}/all.merged.call.vcf.gz",
+            records=f"{OUT}/all.call.sites.pass.records.tsv",
             segs=f"{OUT}/all.augref-segs.tsv",
         output:
             tsv=f"{OUT}/all.call.sites.pass.vcf-stats.tsv",
             types=f"{OUT}/all.call.sites.pass.variant-types.png",
+            af=f"{OUT}/all.call.sites.pass.af-spectrum.png",
             size_dist=f"{OUT}/all.call.sites.pass.size-dist.png",
             size_dist_log=f"{OUT}/all.call.sites.pass.size-dist-log.png",
-            af=f"{OUT}/all.call.sites.pass.af-spectrum.png",
-            per_sample=f"{OUT}/all.call.sites.pass.per-sample-types.png",
-            per_sample_tsv=f"{OUT}/all.call.sites.pass.per-sample-types.tsv",
         resources:
-            mem_mb=32000,
+            mem_mb=64000,
             runtime=480,
         shell:
             "Rscript vcf-stats.R"
-            " {input.vcf} {OUT}/all.call.sites.pass"
-            " --mode sites --af-step 0.05"
+            " {input.records} {OUT}/all.call.sites.pass"
+            " --tsv --mode sites --af-step 0.05"
             " --title '{REF} Call (All Chromosomes)'"
-            " --segs {input.segs} --segs-strip-prefix '{AUGREF}#0#'"
-            " --per-sample"
+            " --segs {input.segs}"
+            " --ref-sample {REF}"
+
+
+    rule call_per_sample_aggregate:
+        """Combine per-chrom call per-sample TSVs into aggregate plot"""
+        input:
+            expand(f"{OUT}/{{c}}.call.sites.pass.per-sample-types.tsv", c=CALL_CHROMS),
+        output:
+            f"{OUT}/all.call.sites.pass.per-sample-types.png",
+        params:
+            labeled=lambda wc, input: " ".join(
+                f"{os.path.basename(f).replace('.call.sites.pass.per-sample-types.tsv', '')}:{f}"
+                for f in input
+            ),
+        shell:
+            "Rscript {SCRIPTS}/vcf-stats-combine.R"
+            " {OUT}/all.call.per-sample-tmp"
+            " --per-sample {params.labeled}"
+            " && mv {OUT}/all.call.per-sample-tmp.per-sample-types.png {output}"
+            " && rm -f {OUT}/all.call.per-sample-tmp.*"
+
+
+    rule dv_concat_records:
+        """Concatenate per-chrom DV records"""
+        input:
+            expand(f"{OUT}/{{c}}.dv.sites.pass.records.tsv", c=CALL_CHROMS),
+        output:
+            f"{OUT}/all.dv.sites.pass.records.tsv",
+        shell:
+            "head -1 {input[0]} > {output}"
+            " && tail -n +2 -q {input} >> {output}"
 
 
     rule dv_stats_aggregate:
-        """Aggregate DV VCF -> stats + plots"""
+        """Aggregated DV records -> plots"""
         input:
-            vcf=f"{OUT}/all.merged.deepvariant.vcf.gz",
+            records=f"{OUT}/all.dv.sites.pass.records.tsv",
             segs=f"{OUT}/all.augref-segs.tsv",
         output:
             tsv=f"{OUT}/all.dv.sites.pass.vcf-stats.tsv",
             types=f"{OUT}/all.dv.sites.pass.variant-types.png",
+            af=f"{OUT}/all.dv.sites.pass.af-spectrum.png",
             size_dist=f"{OUT}/all.dv.sites.pass.size-dist.png",
             size_dist_log=f"{OUT}/all.dv.sites.pass.size-dist-log.png",
-            af=f"{OUT}/all.dv.sites.pass.af-spectrum.png",
-            per_sample=f"{OUT}/all.dv.sites.pass.per-sample-types.png",
-            per_sample_tsv=f"{OUT}/all.dv.sites.pass.per-sample-types.tsv",
         resources:
-            mem_mb=32000,
+            mem_mb=64000,
             runtime=480,
         shell:
             "Rscript vcf-stats.R"
-            " {input.vcf} {OUT}/all.dv.sites.pass"
-            " --mode sites --af-step 0.05"
+            " {input.records} {OUT}/all.dv.sites.pass"
+            " --tsv --mode sites --af-step 0.05"
             " --title '{REF} DeepVariant (All Chromosomes)'"
             " --segs {input.segs}"
-            " --per-sample"
+            " --ref-sample {REF}"
+
+
+    rule dv_per_sample_aggregate:
+        """Combine per-chrom DV per-sample TSVs into aggregate plot"""
+        input:
+            expand(f"{OUT}/{{c}}.dv.sites.pass.per-sample-types.tsv", c=CALL_CHROMS),
+        output:
+            f"{OUT}/all.dv.sites.pass.per-sample-types.png",
+        params:
+            labeled=lambda wc, input: " ".join(
+                f"{os.path.basename(f).replace('.dv.sites.pass.per-sample-types.tsv', '')}:{f}"
+                for f in input
+            ),
+        shell:
+            "Rscript {SCRIPTS}/vcf-stats-combine.R"
+            " {OUT}/all.dv.per-sample-tmp"
+            " --per-sample {params.labeled}"
+            " && mv {OUT}/all.dv.per-sample-tmp.per-sample-types.png {output}"
+            " && rm -f {OUT}/all.dv.per-sample-tmp.*"
 
 
     # --- By-chromosome call/DV breakdown ---
@@ -847,6 +871,9 @@ if HAS_READS:
             ps_snp=f"{OUT}/all.call.by-chrom.per-sample-snp.png",
             ps_indel=f"{OUT}/all.call.by-chrom.per-sample-indel.png",
             ps_sv=f"{OUT}/all.call.by-chrom.per-sample-sv.png",
+            ps_snp_onref=f"{OUT}/all.call.by-chrom.per-sample-snp-onref.png",
+            ps_indel_onref=f"{OUT}/all.call.by-chrom.per-sample-indel-onref.png",
+            ps_sv_onref=f"{OUT}/all.call.by-chrom.per-sample-sv-onref.png",
         params:
             stats_labeled=lambda wc, input: " ".join(
                 f"{os.path.basename(f).replace('.call.sites.pass.vcf-stats.tsv', '')}:{f}"
@@ -882,6 +909,9 @@ if HAS_READS:
             ps_snp=f"{OUT}/all.dv.by-chrom.per-sample-snp.png",
             ps_indel=f"{OUT}/all.dv.by-chrom.per-sample-indel.png",
             ps_sv=f"{OUT}/all.dv.by-chrom.per-sample-sv.png",
+            ps_snp_onref=f"{OUT}/all.dv.by-chrom.per-sample-snp-onref.png",
+            ps_indel_onref=f"{OUT}/all.dv.by-chrom.per-sample-indel-onref.png",
+            ps_sv_onref=f"{OUT}/all.dv.by-chrom.per-sample-sv-onref.png",
         params:
             stats_labeled=lambda wc, input: " ".join(
                 f"{os.path.basename(f).replace('.dv.sites.pass.vcf-stats.tsv', '')}:{f}"
