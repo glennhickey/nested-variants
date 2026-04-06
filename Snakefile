@@ -1202,6 +1202,9 @@ rule giab_strat_augref:
         beds=giab_strat_beds(),
     output:
         augref_giab_strat_beds(),
+    resources:
+        mem_mb=8000,
+        runtime=60,
     params:
         in_str=lambda wc, input: " ".join(input.beds),
         out_str=lambda wc, output: " ".join(output),
@@ -1221,6 +1224,9 @@ rule giab_strat_call_space:
         beds=giab_strat_beds(),
     output:
         call_giab_strat_beds(),
+    resources:
+        mem_mb=8000,
+        runtime=60,
     params:
         in_str=lambda wc, input: " ".join(input.beds),
         out_str=lambda wc, output: " ".join(output),
@@ -1241,6 +1247,9 @@ rule annot_beds_call_space:
         beds=augref_annot_beds(),
     output:
         call_annot_beds(),
+    resources:
+        mem_mb=8000,
+        runtime=60,
     params:
         in_str=lambda wc, input: " ".join(input.beds),
         out_str=lambda wc, output: " ".join(output),
@@ -1497,6 +1506,9 @@ rule mapq_dist_plot:
         bam_mapq=expand("{out}/{s}.bam-mapq.tsv", out=OUT_DIR, s=SAMPLES),
     output:
         f"{OUT_DIR}/mapq-dist.png",
+    resources:
+        mem_mb=8000,
+        runtime=30,
     params:
         gam_arg=lambda wc, input: "--gam-mapq " + ",".join(input.gam_mapq),
         bam_arg=lambda wc, input: "--bam-mapq " + ",".join(input.bam_mapq),
@@ -2711,6 +2723,9 @@ rule vcfeval_chromsplit:
         tp=f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}/tp-baseline.vcf.gz",
     output:
         f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}/chromsplit.tsv",
+    resources:
+        mem_mb=8000,
+        runtime=120,
     params:
         out_dir=f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}",
         subcommand="aardvark-breakdown" if config.get("eval_tool", "aardvark") == "aardvark" else "vcfeval-breakdown",
@@ -2726,6 +2741,9 @@ rule vcfeval_chromsplit_squash:
         tp=f"{OUT_DIR}/vcfeval-squash/{{filt}}/{{sample}}/tp-baseline.vcf.gz",
     output:
         f"{OUT_DIR}/vcfeval-squash/{{filt}}/{{sample}}/chromsplit.tsv",
+    resources:
+        mem_mb=8000,
+        runtime=120,
     params:
         out_dir=f"{OUT_DIR}/vcfeval-squash/{{filt}}/{{sample}}",
         subcommand="aardvark-breakdown" if config.get("eval_tool", "aardvark") == "aardvark" else "vcfeval-breakdown",
@@ -2740,6 +2758,9 @@ rule vcfeval_chromsplit_merge:
                sample=SAMPLES, allow_missing=True),
     output:
         f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.chromsplit.tsv",
+    resources:
+        mem_mb=8000,
+        runtime=30,
     run:
         merge_chromsplit_tsv(input, SAMPLES, output[0])
 
@@ -2750,6 +2771,9 @@ rule vcfeval_chromsplit_squash_merge:
                sample=SAMPLES, allow_missing=True),
     output:
         f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.vcfeval-squash.chromsplit.tsv",
+    resources:
+        mem_mb=8000,
+        runtime=30,
     run:
         merge_chromsplit_tsv(input, SAMPLES, output[0])
 
@@ -2772,6 +2796,7 @@ rule vcfeval_chromsplit_plot:
           if giab_strat_configured() else []),
     resources:
         mem_mb=32000,
+        runtime=120,
     params:
         strip_prefix=f"{AUGREF}#0#",
         annot_arg=lambda wc, input: f"--annot {input.annot}" if annotation_inputs() else "",
@@ -2805,6 +2830,7 @@ rule vcfeval_chromsplit_squash_plot:
           if giab_strat_configured() else []),
     resources:
         mem_mb=32000,
+        runtime=120,
     params:
         strip_prefix=f"{AUGREF}#0#",
         annot_arg=lambda wc, input: f"--annot {input.annot}" if annotation_inputs() else "",
@@ -2855,6 +2881,9 @@ rule vcfeval_lr_chromsplit_merge:
                sample=LR_SAMPLES, allow_missing=True),
     output:
         f"{OUT_DIR}/merged.lr.call-vs-dv.{{filt}}.chromsplit.tsv",
+    resources:
+        mem_mb=8000,
+        runtime=30,
     run:
         merge_chromsplit_tsv(input, LR_SAMPLES, output[0])
 
@@ -2877,6 +2906,7 @@ rule vcfeval_lr_chromsplit_plot:
           if giab_strat_configured() else []),
     resources:
         mem_mb=32000,
+        runtime=120,
     params:
         strip_prefix=f"{AUGREF}#0#",
         annot_arg=lambda wc, input: f"--annot {input.annot}" if annotation_inputs() else "",
@@ -3050,6 +3080,9 @@ rule vcfeval_fb_chromsplit:
         tp=f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/tp-baseline.vcf.gz",
     output:
         f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/chromsplit.tsv",
+    resources:
+        mem_mb=8000,
+        runtime=120,
     params:
         out_dir=f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}",
         subcommand="aardvark-breakdown" if config.get("eval_tool", "aardvark") == "aardvark" else "vcfeval-breakdown",
@@ -3064,6 +3097,9 @@ rule vcfeval_fb_chromsplit_merge:
                sample=SAMPLES, allow_missing=True),
     output:
         f"{OUT_DIR}/merged.call-vs-fb.{{filt}}.chromsplit.tsv",
+    resources:
+        mem_mb=8000,
+        runtime=30,
     run:
         merge_chromsplit_tsv(input, SAMPLES, output[0])
 
@@ -3086,6 +3122,7 @@ rule vcfeval_fb_chromsplit_plot:
           if giab_strat_configured() else []),
     resources:
         mem_mb=32000,
+        runtime=120,
     params:
         strip_prefix=f"{AUGREF}#0#",
         annot_arg=lambda wc, input: f"--annot {input.annot}" if annotation_inputs() else "",
@@ -3132,6 +3169,9 @@ rule vcfeval_fb_lr_chromsplit_merge:
                sample=LR_SAMPLES, allow_missing=True),
     output:
         f"{OUT_DIR}/merged.lr.call-vs-fb.{{filt}}.chromsplit.tsv",
+    resources:
+        mem_mb=8000,
+        runtime=30,
     run:
         merge_chromsplit_tsv(input, LR_SAMPLES, output[0])
 
@@ -3154,6 +3194,7 @@ rule vcfeval_fb_lr_chromsplit_plot:
           if giab_strat_configured() else []),
     resources:
         mem_mb=32000,
+        runtime=120,
     params:
         strip_prefix=f"{AUGREF}#0#",
         annot_arg=lambda wc, input: f"--annot {input.annot}" if annotation_inputs() else "",
@@ -3281,6 +3322,9 @@ rule vcfeval_dv_vs_fb_chromsplit:
         tp=f"{OUT_DIR}/vcfeval-dv-vs-fb/{{filt}}/{{sample}}/tp-baseline.vcf.gz",
     output:
         f"{OUT_DIR}/vcfeval-dv-vs-fb/{{filt}}/{{sample}}/chromsplit.tsv",
+    resources:
+        mem_mb=8000,
+        runtime=120,
     params:
         out_dir=f"{OUT_DIR}/vcfeval-dv-vs-fb/{{filt}}/{{sample}}",
         subcommand="aardvark-breakdown" if config.get("eval_tool", "aardvark") == "aardvark" else "vcfeval-breakdown",
@@ -3295,6 +3339,9 @@ rule vcfeval_dv_vs_fb_chromsplit_merge:
                sample=SAMPLES, allow_missing=True),
     output:
         f"{OUT_DIR}/merged.dv-vs-fb.{{filt}}.chromsplit.tsv",
+    resources:
+        mem_mb=8000,
+        runtime=30,
     run:
         merge_chromsplit_tsv(input, SAMPLES, output[0])
 
@@ -3317,6 +3364,7 @@ rule vcfeval_dv_vs_fb_chromsplit_plot:
           if giab_strat_configured() else []),
     resources:
         mem_mb=32000,
+        runtime=120,
     params:
         strip_prefix=f"{AUGREF}#0#",
         annot_arg=lambda wc, input: f"--annot {input.annot}" if annotation_inputs() else "",
@@ -3364,6 +3412,9 @@ rule vcfeval_dv_vs_fb_lr_chromsplit_merge:
                sample=LR_SAMPLES, allow_missing=True),
     output:
         f"{OUT_DIR}/merged.lr.dv-vs-fb.{{filt}}.chromsplit.tsv",
+    resources:
+        mem_mb=8000,
+        runtime=30,
     run:
         merge_chromsplit_tsv(input, LR_SAMPLES, output[0])
 
@@ -3386,6 +3437,7 @@ rule vcfeval_dv_vs_fb_lr_chromsplit_plot:
           if giab_strat_configured() else []),
     resources:
         mem_mb=32000,
+        runtime=120,
     params:
         strip_prefix=f"{AUGREF}#0#",
         annot_arg=lambda wc, input: f"--annot {input.annot}" if annotation_inputs() else "",
@@ -3497,6 +3549,9 @@ rule summary_augref:
         annot_repeats=[f"{OUT_DIR}/{OUT_NAME}.annot-repeats.png"] if config.get("annot_repeats", "") else [],
     output:
         f"{OUT_DIR}/1.augref-summary.png",
+    resources:
+        mem_mb=4000,
+        runtime=30,
     params:
         panels=lambda wc, input: " ".join(
             [f"'Segment Lengths:{input.length_hist}'",
@@ -3522,6 +3577,9 @@ rule summary_deconstruct:
         giab_strat=[f"{OUT_DIR}/{OUT_NAME}.sites.giab-strat.png"] if giab_strat_configured() else [],
     output:
         f"{OUT_DIR}/2.deconstruct-summary.png",
+    resources:
+        mem_mb=4000,
+        runtime=30,
     params:
         panels=lambda wc, input: " ".join(
             [f"'Variant Types:{input.variant_types}'",
@@ -3572,6 +3630,9 @@ rule summary_call:
         annot_snp=[f"{OUT_DIR}/merged.call.annot-snp-tstv.pass.png"] if annotation_inputs() else [],
     output:
         f"{OUT_DIR}/3.call-summary.png",
+    resources:
+        mem_mb=4000,
+        runtime=30,
     params:
         panels=lambda wc, input: " ".join(
             [f"'Variant Types (PASS):{input.variant_types}'",
@@ -3598,6 +3659,9 @@ rule summary_deepvariant:
         annot_snp=[f"{OUT_DIR}/merged.deepvariant.annot-snp-tstv.pass.png"] if annotation_inputs() else [],
     output:
         f"{OUT_DIR}/4.deepvariant-summary.png",
+    resources:
+        mem_mb=4000,
+        runtime=30,
     params:
         panels=lambda wc, input: " ".join(
             [f"'DV Variant Types (PASS):{input.dv_types}'",
@@ -3623,6 +3687,9 @@ rule summary_freebayes:
         annot_snp=[f"{OUT_DIR}/merged.freebayes.annot-snp-tstv.pass.png"] if annotation_inputs() else [],
     output:
         f"{OUT_DIR}/4b.freebayes-summary.png",
+    resources:
+        mem_mb=4000,
+        runtime=30,
     params:
         panels=lambda wc, input: " ".join(
             [f"'FB Variant Types (PASS):{input.fb_types}'",
@@ -3647,6 +3714,9 @@ rule summary_concordance:
         giab=f"{OUT_DIR}/merged.call-vs-dv.pass.chromsplit-giab.png" if giab_strat_configured() else [],
     output:
         f"{OUT_DIR}/5.concordance-summary.png",
+    resources:
+        mem_mb=4000,
+        runtime=30,
     params:
         panels=lambda wc, input: " ".join(
             [f"'Top Discordant Off-Ref:{input.discordant}'",
@@ -3668,6 +3738,9 @@ rule summary_concordance_onref:
         concordant=f"{OUT_DIR}/merged.call-vs-dv.pass.chromsplit-concordant-onref.png",
     output:
         f"{OUT_DIR}/5b.concordance-onref-summary.png",
+    resources:
+        mem_mb=4000,
+        runtime=30,
     shell:
         "python3 scripts/compose-summary.py"
         " --output {output}"
@@ -3683,6 +3756,9 @@ rule summary_coverage:
         f"{OUT_DIR}/contig-depth-summary.png",
     output:
         f"{OUT_DIR}/5c.coverage-summary.png",
+    resources:
+        mem_mb=4000,
+        runtime=30,
     shell:
         "cp {input} {output}"
 
@@ -3692,6 +3768,9 @@ rule summary_mapq:
         f"{OUT_DIR}/mapq-dist.png",
     output:
         f"{OUT_DIR}/5d.mapq-summary.png",
+    resources:
+        mem_mb=4000,
+        runtime=30,
     shell:
         "cp {input} {output}"
 
@@ -3780,6 +3859,9 @@ rule summary_longread_call:
         giab_per_sample=[f"{OUT_DIR}/merged.longread.call.sites.pass.per-sample-giab-strat.png"] if giab_strat_configured() else [],
     output:
         f"{OUT_DIR}/7.call-summary-longread.png",
+    resources:
+        mem_mb=4000,
+        runtime=30,
     params:
         panels=lambda wc, input: " ".join(
             [f"'Variant Types (PASS):{input.variant_types}'",
@@ -3806,6 +3888,9 @@ rule summary_longread_deepvariant:
         annot_snp=[f"{OUT_DIR}/merged.longread.dv.sites.pass.variant-types-by-annot.png"] if annotation_inputs() else [],
     output:
         f"{OUT_DIR}/8.deepvariant-summary-longread.png",
+    resources:
+        mem_mb=4000,
+        runtime=30,
     params:
         panels=lambda wc, input: " ".join(
             [f"'DV Variant Types (PASS):{input.dv_types}'",
@@ -3833,6 +3918,9 @@ rule summary_longread_freebayes:
         annot_snp=[f"{OUT_DIR}/merged.longread.fb.sites.pass.variant-types-by-annot.png"] if annotation_inputs() else [],
     output:
         f"{OUT_DIR}/8b.freebayes-summary-longread.png",
+    resources:
+        mem_mb=4000,
+        runtime=30,
     params:
         panels=lambda wc, input: " ".join(
             [f"'FB Variant Types (PASS):{input.fb_types}'",
@@ -3858,6 +3946,9 @@ rule summary_longread_concordance:
         giab=f"{OUT_DIR}/merged.lr.call-vs-dv.pass.chromsplit-giab.png" if giab_strat_configured() else [],
     output:
         f"{OUT_DIR}/9.concordance-summary-longread.png",
+    resources:
+        mem_mb=4000,
+        runtime=30,
     params:
         panels=lambda wc, input: " ".join(
             [f"'Top Discordant Off-Ref:{input.discordant}'",
@@ -3879,6 +3970,9 @@ rule summary_longread_concordance_onref:
         concordant=f"{OUT_DIR}/merged.lr.call-vs-dv.pass.chromsplit-concordant-onref.png",
     output:
         f"{OUT_DIR}/9b.concordance-onref-summary-longread.png",
+    resources:
+        mem_mb=4000,
+        runtime=30,
     shell:
         "python3 scripts/compose-summary.py"
         " --output {output}"
@@ -3894,6 +3988,9 @@ rule summary_longread_coverage:
         f"{OUT_DIR}/contig-depth-summary.lr.png",
     output:
         f"{OUT_DIR}/9c.coverage-summary-longread.png",
+    resources:
+        mem_mb=4000,
+        runtime=30,
     shell:
         "cp {input} {output}"
 
@@ -3903,6 +4000,9 @@ rule summary_longread_mapq:
         f"{OUT_DIR}/mapq-dist.lr.png",
     output:
         f"{OUT_DIR}/9d.mapq-summary-longread.png",
+    resources:
+        mem_mb=4000,
+        runtime=30,
     shell:
         "cp {input} {output}"
 
@@ -3916,6 +4016,9 @@ rule summary_pantree:
         density=f"{OUT_DIR}/pantree.density.png",
     output:
         f"{OUT_DIR}/6.pantree-summary.png",
+    resources:
+        mem_mb=4000,
+        runtime=30,
     shell:
         "python3 scripts/compose-summary.py"
         " --output {output}"
@@ -3943,6 +4046,9 @@ rule summary_freebayes_concordance:
         giab=f"{OUT_DIR}/merged.call-vs-fb.pass.chromsplit-giab.png" if giab_strat_configured() else [],
     output:
         f"{OUT_DIR}/10.freebayes-concordance-summary.png",
+    resources:
+        mem_mb=4000,
+        runtime=30,
     params:
         panels=lambda wc, input: " ".join(
             [f"'Call vs FB Discordant:{input.call_disc}'",
@@ -3968,6 +4074,9 @@ rule summary_freebayes_concordance_onref:
         dv_conc=f"{OUT_DIR}/merged.dv-vs-fb.pass.chromsplit-concordant-onref.png",
     output:
         f"{OUT_DIR}/10b.freebayes-concordance-onref-summary.png",
+    resources:
+        mem_mb=4000,
+        runtime=30,
     shell:
         "python3 scripts/compose-summary.py"
         " --output {output}"
@@ -3990,6 +4099,9 @@ rule summary_longread_freebayes_concordance:
         giab=f"{OUT_DIR}/merged.lr.call-vs-fb.pass.chromsplit-giab.png" if giab_strat_configured() else [],
     output:
         f"{OUT_DIR}/11.freebayes-concordance-summary-longread.png",
+    resources:
+        mem_mb=4000,
+        runtime=30,
     params:
         panels=lambda wc, input: " ".join(
             [f"'Call vs FB Discordant:{input.call_disc}'",
@@ -4015,6 +4127,9 @@ rule summary_longread_freebayes_concordance_onref:
         dv_conc=f"{OUT_DIR}/merged.lr.dv-vs-fb.pass.chromsplit-concordant-onref.png",
     output:
         f"{OUT_DIR}/11b.freebayes-concordance-onref-summary-longread.png",
+    resources:
+        mem_mb=4000,
+        runtime=30,
     shell:
         "python3 scripts/compose-summary.py"
         " --output {output}"
