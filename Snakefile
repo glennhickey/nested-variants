@@ -1441,6 +1441,31 @@ rule deepvariant:
         " --tmpdir {resources.tmpdir}"
         " --local"
 
+rule freebayes:
+    """BAM + FASTA → VCF via FreeBayes (parallel by region)"""
+    input:
+        bam=f"{OUT_DIR}/{{sample}}.bam",
+        ref=f"{OUT_DIR}/{OUT_NAME}.fa.gz",
+    output:
+        f"{OUT_DIR}/{{sample}}.freebayes.vcf.gz",
+    threads: rule_cpus("freebayes", 96)
+    resources:
+        mem_mb=rule_mem_gb("freebayes", 1024) * 1024,
+        runtime=rule_runtime("freebayes"),
+    params:
+        mem_gb=rule_mem_gb("freebayes", 1024),
+        region_size=config.get("freebayes_region_size", 100000),
+    shell:
+        "scripts/freebayes.sh"
+        " --bam {input.bam}"
+        " --ref {input.ref}"
+        " --sample {wildcards.sample}"
+        " --out-dir {OUT_DIR}"
+        " --out-name {wildcards.sample}.freebayes.vcf.gz"
+        " --region-size {params.region_size}"
+        " --cpus {threads} --mem {params.mem_gb}gb"
+        " --local"
+
 rule call_plots:
     """Per-sample call VCF → density ideogram"""
     input:
