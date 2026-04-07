@@ -165,10 +165,6 @@ def annotation_snp_outputs(callers=None):
                 for s in SAMPLES:
                     outputs.append(f"{OUT_DIR}/{s}.pangenie.{plot}.{filt}.png")
                 outputs.append(f"{OUT_DIR}/merged.pangenie.{plot}.{filt}.png")
-                for s in LR_SAMPLES:
-                    outputs.append(f"{OUT_DIR}/{s}.pangenie.{plot}.{filt}.png")
-                if LR_SAMPLES:
-                    outputs.append(f"{OUT_DIR}/merged.longread.pangenie.{plot}.{filt}.png")
     if config.get("annot_pclai", ""):
         for plot in ["annot-pclai-snp-counts", "annot-pclai-snp-tstv"]:
             if "deconstruct" in callers:
@@ -205,10 +201,6 @@ def annotation_snp_outputs(callers=None):
                     for s in SAMPLES:
                         outputs.append(f"{OUT_DIR}/{s}.pangenie.{plot}.{filt}.png")
                     outputs.append(f"{OUT_DIR}/merged.pangenie.{plot}.{filt}.png")
-                    for s in LR_SAMPLES:
-                        outputs.append(f"{OUT_DIR}/{s}.pangenie.{plot}.{filt}.png")
-                    if LR_SAMPLES:
-                        outputs.append(f"{OUT_DIR}/merged.longread.pangenie.{plot}.{filt}.png")
     return outputs
 
 def annotation_stats_outputs(callers=None):
@@ -258,14 +250,11 @@ def annotation_stats_outputs(callers=None):
                     outputs.append(f"{OUT_DIR}/merged.longread.fb.variants.{filt}.{suffix}")
         if "pangenie" in callers:
             for filt in ["all", "pass"]:
-                for s in SAMPLES + LR_SAMPLES:
+                for s in SAMPLES:
                     outputs.append(f"{OUT_DIR}/{s}.pg.sites.{filt}.{suffix}")
                     outputs.append(f"{OUT_DIR}/{s}.pg.variants.{filt}.{suffix}")
                 outputs.append(f"{OUT_DIR}/merged.pg.sites.{filt}.{suffix}")
                 outputs.append(f"{OUT_DIR}/merged.pg.variants.{filt}.{suffix}")
-                if LR_SAMPLES:
-                    outputs.append(f"{OUT_DIR}/merged.longread.pg.sites.{filt}.{suffix}")
-                    outputs.append(f"{OUT_DIR}/merged.longread.pg.variants.{filt}.{suffix}")
     return outputs
 
 def augref_annot_beds():
@@ -369,14 +358,11 @@ def giab_strat_stats_outputs(callers=None):
                     outputs.append(f"{OUT_DIR}/merged.longread.fb.variants.{filt}.{suffix}")
         if "pangenie" in callers:
             for filt in ["all", "pass"]:
-                for s in SAMPLES + LR_SAMPLES:
+                for s in SAMPLES:
                     outputs.append(f"{OUT_DIR}/{s}.pg.sites.{filt}.{suffix}")
                     outputs.append(f"{OUT_DIR}/{s}.pg.variants.{filt}.{suffix}")
                 outputs.append(f"{OUT_DIR}/merged.pg.sites.{filt}.{suffix}")
                 outputs.append(f"{OUT_DIR}/merged.pg.variants.{filt}.{suffix}")
-                if LR_SAMPLES:
-                    outputs.append(f"{OUT_DIR}/merged.longread.pg.sites.{filt}.{suffix}")
-                    outputs.append(f"{OUT_DIR}/merged.longread.pg.variants.{filt}.{suffix}")
     return outputs
 
 def per_sample_stats_outputs(callers=None):
@@ -413,9 +399,6 @@ def per_sample_stats_outputs(callers=None):
             for filt in ["all", "pass"]:
                 outputs.append(f"{OUT_DIR}/merged.pg.sites.{filt}.{suffix}")
                 outputs.append(f"{OUT_DIR}/merged.pg.variants.{filt}.{suffix}")
-                if LR_SAMPLES:
-                    outputs.append(f"{OUT_DIR}/merged.longread.pg.sites.{filt}.{suffix}")
-                    outputs.append(f"{OUT_DIR}/merged.longread.pg.variants.{filt}.{suffix}")
     if giab_strat_configured():
         for suffix in ["per-sample-giab-strat.png", "per-sample-giab-strat.tsv"]:
             if "deconstruct" in callers:
@@ -446,9 +429,6 @@ def per_sample_stats_outputs(callers=None):
                 for filt in ["all", "pass"]:
                     outputs.append(f"{OUT_DIR}/merged.pg.sites.{filt}.{suffix}")
                     outputs.append(f"{OUT_DIR}/merged.pg.variants.{filt}.{suffix}")
-                    if LR_SAMPLES:
-                        outputs.append(f"{OUT_DIR}/merged.longread.pg.sites.{filt}.{suffix}")
-                        outputs.append(f"{OUT_DIR}/merged.longread.pg.variants.{filt}.{suffix}")
     return outputs
 
 def compare_call_dv_outputs():
@@ -605,24 +585,8 @@ def vcfeval_pg_compare_outputs():
     return outputs
 
 def vcfeval_lr_pg_compare_outputs():
-    """Return vcfeval-based call-vs-PG comparison outputs for long-read samples."""
-    if not LR_SAMPLES:
-        return []
-    outputs = []
-    for filt in ["all", "pass"]:
-        outputs.append(f"{OUT_DIR}/merged.lr.call-vs-pg.{filt}.vcfeval-compare.png")
-        outputs.append(f"{OUT_DIR}/merged.lr.call-vs-pg.{filt}.vcfeval-compare.tsv")
-        outputs.append(f"{OUT_DIR}/merged.lr.call-vs-pg.{filt}.chromsplit.tsv")
-        outputs.append(f"{OUT_DIR}/merged.lr.call-vs-pg.{filt}.chromsplit.png")
-        outputs.append(f"{OUT_DIR}/merged.lr.call-vs-pg.{filt}.chromsplit-top.png")
-        outputs.append(f"{OUT_DIR}/merged.lr.call-vs-pg.{filt}.chromsplit-concordant.png")
-        outputs.append(f"{OUT_DIR}/merged.lr.call-vs-pg.{filt}.chromsplit-top-onref.png")
-        outputs.append(f"{OUT_DIR}/merged.lr.call-vs-pg.{filt}.chromsplit-concordant-onref.png")
-        if annotation_inputs():
-            outputs.append(f"{OUT_DIR}/merged.lr.call-vs-pg.{filt}.chromsplit-annot.png")
-        if giab_strat_configured():
-            outputs.append(f"{OUT_DIR}/merged.lr.call-vs-pg.{filt}.chromsplit-giab.png")
-    return outputs
+    """PanGenie does not support long reads — always returns empty list."""
+    return []
 
 def vcfeval_dv_vs_pg_compare_outputs():
     """Return vcfeval-based DV-vs-PG comparison outputs when samples are configured."""
@@ -645,24 +609,8 @@ def vcfeval_dv_vs_pg_compare_outputs():
     return outputs
 
 def vcfeval_lr_dv_vs_pg_compare_outputs():
-    """Return vcfeval-based DV-vs-PG comparison outputs for long-read samples."""
-    if not LR_SAMPLES:
-        return []
-    outputs = []
-    for filt in ["all", "pass"]:
-        outputs.append(f"{OUT_DIR}/merged.lr.dv-vs-pg.{filt}.vcfeval-compare.png")
-        outputs.append(f"{OUT_DIR}/merged.lr.dv-vs-pg.{filt}.vcfeval-compare.tsv")
-        outputs.append(f"{OUT_DIR}/merged.lr.dv-vs-pg.{filt}.chromsplit.tsv")
-        outputs.append(f"{OUT_DIR}/merged.lr.dv-vs-pg.{filt}.chromsplit.png")
-        outputs.append(f"{OUT_DIR}/merged.lr.dv-vs-pg.{filt}.chromsplit-top.png")
-        outputs.append(f"{OUT_DIR}/merged.lr.dv-vs-pg.{filt}.chromsplit-concordant.png")
-        outputs.append(f"{OUT_DIR}/merged.lr.dv-vs-pg.{filt}.chromsplit-top-onref.png")
-        outputs.append(f"{OUT_DIR}/merged.lr.dv-vs-pg.{filt}.chromsplit-concordant-onref.png")
-        if annotation_inputs():
-            outputs.append(f"{OUT_DIR}/merged.lr.dv-vs-pg.{filt}.chromsplit-annot.png")
-        if giab_strat_configured():
-            outputs.append(f"{OUT_DIR}/merged.lr.dv-vs-pg.{filt}.chromsplit-giab.png")
-    return outputs
+    """PanGenie does not support long reads — always returns empty list."""
+    return []
 
 def vcfeval_compare_outputs():
     """Return vcfeval-based call-vs-DV comparison outputs when samples are configured."""
@@ -765,15 +713,12 @@ def summary_figure_outputs():
         outputs.append(f"{OUT_DIR}/7.call-summary-longread.png")
         outputs.append(f"{OUT_DIR}/8.deepvariant-summary-longread.png")
         outputs.append(f"{OUT_DIR}/8b.freebayes-summary-longread.png")
-        outputs.append(f"{OUT_DIR}/8c.pangenie-summary-longread.png")
         outputs.append(f"{OUT_DIR}/9.concordance-summary-longread.png")
         outputs.append(f"{OUT_DIR}/9b.concordance-onref-summary-longread.png")
         outputs.append(f"{OUT_DIR}/9c.coverage-summary-longread.png")
         outputs.append(f"{OUT_DIR}/9d.mapq-summary-longread.png")
         outputs.append(f"{OUT_DIR}/11.freebayes-concordance-summary-longread.png")
         outputs.append(f"{OUT_DIR}/11b.freebayes-concordance-onref-summary-longread.png")
-        outputs.append(f"{OUT_DIR}/13.pangenie-concordance-summary-longread.png")
-        outputs.append(f"{OUT_DIR}/13b.pangenie-concordance-onref-summary-longread.png")
     if config.get("pantree_vcf", ""):
         outputs.append(f"{OUT_DIR}/6.pantree-summary.png")
     return outputs
@@ -832,8 +777,6 @@ rule all:
         expand("{out}/{s}.dv-offref.png", out=OUT_DIR, s=LR_SAMPLES),
         expand("{out}/{s}.freebayes.vcf.gz", out=OUT_DIR, s=LR_SAMPLES),
         expand("{out}/{s}.fb-offref.png", out=OUT_DIR, s=LR_SAMPLES),
-        expand("{out}/{s}.pangenie.vcf.gz", out=OUT_DIR, s=LR_SAMPLES),
-        expand("{out}/{s}.pg-offref.png", out=OUT_DIR, s=LR_SAMPLES),
         expand("{out}/{s}.call.{mode}.{filt}.vcf-stats.tsv", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
         expand("{out}/{s}.call.{mode}.{filt}.variant-types.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
         expand("{out}/{s}.call.{mode}.{filt}.size-dist.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
@@ -846,10 +789,6 @@ rule all:
         expand("{out}/{s}.fb.{mode}.{filt}.variant-types.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
         expand("{out}/{s}.fb.{mode}.{filt}.size-dist.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
         expand("{out}/{s}.fb.{mode}.{filt}.size-dist-log.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
-        expand("{out}/{s}.pg.{mode}.{filt}.vcf-stats.tsv", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
-        expand("{out}/{s}.pg.{mode}.{filt}.variant-types.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
-        expand("{out}/{s}.pg.{mode}.{filt}.size-dist.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
-        expand("{out}/{s}.pg.{mode}.{filt}.size-dist-log.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
         expand("{out}/{s}.call.sites.{filt}.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.call.sites.{filt}.variant-types.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.call.sites.{filt}.size-dist.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
@@ -983,10 +922,9 @@ rule all:
         # merged long-read outputs (when longread_samples configured)
         *([f"{OUT_DIR}/merged.longread.call.vcf.gz",
            f"{OUT_DIR}/merged.longread.deepvariant.vcf.gz",
-           f"{OUT_DIR}/merged.longread.freebayes.vcf.gz",
-           f"{OUT_DIR}/merged.longread.pangenie.vcf.gz"]
+           f"{OUT_DIR}/merged.longread.freebayes.vcf.gz"]
           + [f"{OUT_DIR}/merged.longread.{caller}.{mode}.{filt}.{suffix}"
-             for caller in ["call", "dv", "fb", "pg"]
+             for caller in ["call", "dv", "fb"]
              for mode in ["sites", "variants"]
              for filt in ["all", "pass"]
              for suffix in ["vcf-stats.tsv", "variant-types.png", "size-dist.png",
@@ -2209,24 +2147,6 @@ rule merge_pg_vcfs:
         " | bcftools +fill-tags -Oz -o {output} -- -t AF,AC,AN"
         " && tabix -p vcf {output}"
 
-rule merge_longread_pg_vcfs:
-    """Merge long-read per-sample PanGenie VCFs"""
-    input:
-        expand("{out}/{s}.pangenie.vcf.gz", out=OUT_DIR, s=LR_SAMPLES),
-    output:
-        f"{OUT_DIR}/merged.longread.pangenie.vcf.gz",
-    resources:
-        mem_mb=256000,
-        runtime=2880,
-    run:
-        if len(input) == 1:
-            shell("bcftools +fill-tags {input} -Oz -o {output} -- -t AF,AC,AN"
-                  " && tabix -p vcf {output}")
-        else:
-            shell("bcftools merge {input} -Oz"
-                  " | bcftools +fill-tags -Oz -o {output} -- -t AF,AC,AN"
-                  " && tabix -p vcf {output}")
-
 rule merge_pg_pass_vcfs:
     """Merge PASS-filtered per-sample PanGenie VCFs"""
     input:
@@ -2240,24 +2160,6 @@ rule merge_pg_pass_vcfs:
         "bcftools merge {input} -Oz"
         " | bcftools +fill-tags -Oz -o {output} -- -t AF,AC,AN"
         " && tabix -p vcf {output}"
-
-rule merge_longread_pg_pass_vcfs:
-    """Merge PASS-filtered long-read per-sample PanGenie VCFs"""
-    input:
-        expand("{out}/{s}.pangenie.pass-only.vcf.gz", out=OUT_DIR, s=LR_SAMPLES),
-    output:
-        f"{OUT_DIR}/merged.longread.pangenie.pass-prefiltered.vcf.gz",
-    resources:
-        mem_mb=256000,
-        runtime=2880,
-    run:
-        if len(input) == 1:
-            shell("bcftools +fill-tags {input} -Oz -o {output} -- -t AF,AC,AN"
-                  " && tabix -p vcf {output}")
-        else:
-            shell("bcftools merge {input} -Oz"
-                  " | bcftools +fill-tags -Oz -o {output} -- -t AF,AC,AN"
-                  " && tabix -p vcf {output}")
 
 rule merged_call_plots:
     """Merged call VCF → density ideogram"""
@@ -2848,48 +2750,6 @@ rule merged_pg_stats:
     shell:
         "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.pg.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged PanGenie'"
-        " --segs {input.segs}"
-        " {params.annot_arg} {params.giab_arg} --per-sample --no-sv"
-
-rule merged_longread_pg_stats:
-    """Merged long-read PanGenie VCF → variant stats + plots"""
-    input:
-        vcf=lambda wc: f"{OUT_DIR}/merged.longread.pangenie.pass-prefiltered{'.normed' if wc.mode == 'variants' else ''}.vcf.gz" if wc.filt == "pass" else (f"{OUT_DIR}/merged.longread.pangenie.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.longread.pangenie.vcf.gz"),
-        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
-        annot_beds=augref_annot_beds(),
-        giab_beds=augref_giab_strat_beds(),
-    output:
-        f"{OUT_DIR}/merged.longread.pg.{{mode}}.{{filt}}.vcf-stats.tsv",
-        f"{OUT_DIR}/merged.longread.pg.{{mode}}.{{filt}}.variant-types.png",
-        f"{OUT_DIR}/merged.longread.pg.{{mode}}.{{filt}}.size-dist.png",
-        f"{OUT_DIR}/merged.longread.pg.{{mode}}.{{filt}}.size-dist-log.png",
-        f"{OUT_DIR}/merged.longread.pg.{{mode}}.{{filt}}.af-spectrum.png",
-        *([ f"{OUT_DIR}/merged.longread.pg.{{mode}}.{{filt}}.variant-types-by-annot.png",
-            f"{OUT_DIR}/merged.longread.pg.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv"]
-          if annotation_inputs() else []),
-        *([ f"{OUT_DIR}/merged.longread.pg.{{mode}}.{{filt}}.giab-strat.png",
-            f"{OUT_DIR}/merged.longread.pg.{{mode}}.{{filt}}.giab-strat.tsv"]
-          if giab_strat_configured() else []),
-        f"{OUT_DIR}/merged.longread.pg.{{mode}}.{{filt}}.per-sample-types.png",
-        f"{OUT_DIR}/merged.longread.pg.{{mode}}.{{filt}}.per-sample-types.tsv",
-        f"{OUT_DIR}/merged.longread.pg.{{mode}}.{{filt}}.per-sample-sv-types.png",
-        *([ f"{OUT_DIR}/merged.longread.pg.{{mode}}.{{filt}}.per-sample-giab-strat.png",
-            f"{OUT_DIR}/merged.longread.pg.{{mode}}.{{filt}}.per-sample-giab-strat.tsv"]
-          if giab_strat_configured() else []),
-    resources:
-        mem_mb=256000,
-        runtime=2880,
-    params:
-        annot_arg=lambda wc, input: (
-            f"--annot-beds {','.join(input.annot_beds)} --annot-names {','.join(annotation_names())}"
-            if annotation_inputs() else ""),
-        giab_arg=lambda wc, input: (
-            f"--giab-strat-beds {','.join(input.giab_beds)}"
-            f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
-            if giab_strat_configured() else ""),
-    shell:
-        "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.longread.pg.{wildcards.mode}.{wildcards.filt}"
-        " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged Long-Read PanGenie'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample --no-sv"
 
@@ -4836,78 +4696,6 @@ rule vcfeval_pg_chromsplit_plot:
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg}"
 
-rule vcfeval_pg_lr_compare_plot:
-    """Aggregate long-read per-sample vcfeval results (PanGenie) into comparison plot"""
-    input:
-        tp_baseline=expand(f"{OUT_DIR}/vcfeval-pg/{{filt}}/{{sample}}/tp-baseline.vcf.gz", sample=LR_SAMPLES, allow_missing=True),
-        fp=expand(f"{OUT_DIR}/vcfeval-pg/{{filt}}/{{sample}}/fp.vcf.gz", sample=LR_SAMPLES, allow_missing=True),
-        fn=expand(f"{OUT_DIR}/vcfeval-pg/{{filt}}/{{sample}}/fn.vcf.gz", sample=LR_SAMPLES, allow_missing=True),
-    output:
-        f"{OUT_DIR}/merged.lr.call-vs-pg.{{filt}}.vcfeval-compare.png",
-        f"{OUT_DIR}/merged.lr.call-vs-pg.{{filt}}.vcfeval-compare.tsv",
-    params:
-        vcfeval_dirs=lambda wc, input: ",".join(
-            [f"{OUT_DIR}/vcfeval-pg/{wc.filt}/{s}" for s in LR_SAMPLES]),
-        sample_names=",".join(LR_SAMPLES),
-    resources:
-        mem_mb=32000,
-        runtime=120,
-    shell:
-        "Rscript scripts/vcf-compare-vcfeval.R"
-        " {OUT_DIR}/merged.lr.call-vs-pg.{wildcards.filt}"
-        " --vcfeval-dirs {params.vcfeval_dirs}"
-        " --samples {params.sample_names}"
-        " --label-a Call --label-b PanGenie"
-        " --title '{REF} Long-Read Call vs PanGenie (vcfeval)'"
-        " --no-sv"
-
-rule vcfeval_pg_lr_chromsplit_merge:
-    """Merge long-read per-sample PanGenie chromsplit breakdowns into a single long-format TSV"""
-    input:
-        expand(f"{OUT_DIR}/vcfeval-pg/{{filt}}/{{sample}}/chromsplit.tsv",
-               sample=LR_SAMPLES, allow_missing=True),
-    output:
-        f"{OUT_DIR}/merged.lr.call-vs-pg.{{filt}}.chromsplit.tsv",
-    resources:
-        mem_mb=8000,
-        runtime=30,
-    run:
-        merge_chromsplit_tsv(input, LR_SAMPLES, output[0])
-
-rule vcfeval_pg_lr_chromsplit_plot:
-    """Long-read per-contig FP/FN scatter and top-discordant bar chart (PanGenie)"""
-    input:
-        tsv=f"{OUT_DIR}/merged.lr.call-vs-pg.{{filt}}.chromsplit.tsv",
-        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
-        annot=f"{OUT_DIR}/{OUT_NAME}.annot-per-segment.tsv" if annotation_inputs() else [],
-        giab_beds=giab_strat_beds(),
-    output:
-        f"{OUT_DIR}/merged.lr.call-vs-pg.{{filt}}.chromsplit.png",
-        f"{OUT_DIR}/merged.lr.call-vs-pg.{{filt}}.chromsplit-top.png",
-        f"{OUT_DIR}/merged.lr.call-vs-pg.{{filt}}.chromsplit-concordant.png",
-        f"{OUT_DIR}/merged.lr.call-vs-pg.{{filt}}.chromsplit-top-onref.png",
-        f"{OUT_DIR}/merged.lr.call-vs-pg.{{filt}}.chromsplit-concordant-onref.png",
-        *([ f"{OUT_DIR}/merged.lr.call-vs-pg.{{filt}}.chromsplit-annot.png"]
-          if annotation_inputs() else []),
-        *([ f"{OUT_DIR}/merged.lr.call-vs-pg.{{filt}}.chromsplit-giab.png"]
-          if giab_strat_configured() else []),
-    resources:
-        mem_mb=32000,
-        runtime=120,
-    params:
-        strip_prefix=f"{AUGREF}#0#",
-        annot_arg=lambda wc, input: f"--annot {input.annot}" if annotation_inputs() else "",
-        giab_arg=lambda wc, input: (
-            f"--giab-beds {','.join(input.giab_beds)} --giab-names {','.join(GIAB_STRAT_DISPLAY)}"
-            if giab_strat_configured() else ""),
-    shell:
-        "Rscript scripts/vcf-chromsplit-plot.R {input.tsv}"
-        " {OUT_DIR}/merged.lr.call-vs-pg.{wildcards.filt}"
-        " --title '{REF} Long-Read Call vs PanGenie Per-Contig'"
-        " --strip-prefix '{params.strip_prefix}'"
-        " --segs {input.segs}"
-        " {params.annot_arg} {params.giab_arg}"
-
 ############################################################################
 # DV vs PanGenie comparison (vcfeval/aardvark)
 ############################################################################
@@ -5078,79 +4866,6 @@ rule vcfeval_dv_vs_pg_chromsplit_plot:
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg}"
 
-# Long-read DV-vs-PG comparison
-rule vcfeval_dv_vs_pg_lr_compare_plot:
-    """Aggregate long-read per-sample DV-vs-PG vcfeval results"""
-    input:
-        tp_baseline=expand(f"{OUT_DIR}/vcfeval-dv-vs-pg/{{filt}}/{{sample}}/tp-baseline.vcf.gz", sample=LR_SAMPLES, allow_missing=True),
-        fp=expand(f"{OUT_DIR}/vcfeval-dv-vs-pg/{{filt}}/{{sample}}/fp.vcf.gz", sample=LR_SAMPLES, allow_missing=True),
-        fn=expand(f"{OUT_DIR}/vcfeval-dv-vs-pg/{{filt}}/{{sample}}/fn.vcf.gz", sample=LR_SAMPLES, allow_missing=True),
-    output:
-        f"{OUT_DIR}/merged.lr.dv-vs-pg.{{filt}}.vcfeval-compare.png",
-        f"{OUT_DIR}/merged.lr.dv-vs-pg.{{filt}}.vcfeval-compare.tsv",
-    params:
-        vcfeval_dirs=lambda wc, input: ",".join(
-            [f"{OUT_DIR}/vcfeval-dv-vs-pg/{wc.filt}/{s}" for s in LR_SAMPLES]),
-        sample_names=",".join(LR_SAMPLES),
-    resources:
-        mem_mb=32000,
-        runtime=120,
-    shell:
-        "Rscript scripts/vcf-compare-vcfeval.R"
-        " {OUT_DIR}/merged.lr.dv-vs-pg.{wildcards.filt}"
-        " --vcfeval-dirs {params.vcfeval_dirs}"
-        " --samples {params.sample_names}"
-        " --label-a DeepVariant --label-b PanGenie"
-        " --title '{REF} Long-Read DeepVariant vs PanGenie (vcfeval)'"
-        " --no-sv"
-
-rule vcfeval_dv_vs_pg_lr_chromsplit_merge:
-    """Merge long-read per-sample DV-vs-PG chromsplit breakdowns"""
-    input:
-        expand(f"{OUT_DIR}/vcfeval-dv-vs-pg/{{filt}}/{{sample}}/chromsplit.tsv",
-               sample=LR_SAMPLES, allow_missing=True),
-    output:
-        f"{OUT_DIR}/merged.lr.dv-vs-pg.{{filt}}.chromsplit.tsv",
-    resources:
-        mem_mb=8000,
-        runtime=30,
-    run:
-        merge_chromsplit_tsv(input, LR_SAMPLES, output[0])
-
-rule vcfeval_dv_vs_pg_lr_chromsplit_plot:
-    """Long-read DV-vs-PG per-contig concordance plots"""
-    input:
-        tsv=f"{OUT_DIR}/merged.lr.dv-vs-pg.{{filt}}.chromsplit.tsv",
-        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
-        annot=f"{OUT_DIR}/{OUT_NAME}.annot-per-segment.tsv" if annotation_inputs() else [],
-        giab_beds=giab_strat_beds(),
-    output:
-        f"{OUT_DIR}/merged.lr.dv-vs-pg.{{filt}}.chromsplit.png",
-        f"{OUT_DIR}/merged.lr.dv-vs-pg.{{filt}}.chromsplit-top.png",
-        f"{OUT_DIR}/merged.lr.dv-vs-pg.{{filt}}.chromsplit-concordant.png",
-        f"{OUT_DIR}/merged.lr.dv-vs-pg.{{filt}}.chromsplit-top-onref.png",
-        f"{OUT_DIR}/merged.lr.dv-vs-pg.{{filt}}.chromsplit-concordant-onref.png",
-        *([ f"{OUT_DIR}/merged.lr.dv-vs-pg.{{filt}}.chromsplit-annot.png"]
-          if annotation_inputs() else []),
-        *([ f"{OUT_DIR}/merged.lr.dv-vs-pg.{{filt}}.chromsplit-giab.png"]
-          if giab_strat_configured() else []),
-    resources:
-        mem_mb=32000,
-        runtime=120,
-    params:
-        strip_prefix=f"{AUGREF}#0#",
-        annot_arg=lambda wc, input: f"--annot {input.annot}" if annotation_inputs() else "",
-        giab_arg=lambda wc, input: (
-            f"--giab-beds {','.join(input.giab_beds)} --giab-names {','.join(GIAB_STRAT_DISPLAY)}"
-            if giab_strat_configured() else ""),
-    shell:
-        "Rscript scripts/vcf-chromsplit-plot.R {input.tsv}"
-        " {OUT_DIR}/merged.lr.dv-vs-pg.{wildcards.filt}"
-        " --title '{REF} Long-Read DeepVariant vs PanGenie Per-Contig'"
-        " --strip-prefix '{params.strip_prefix}'"
-        " --segs {input.segs}"
-        " {params.annot_arg} {params.giab_arg}"
-
 ############################################################################
 # PanGenie summary panels
 ############################################################################
@@ -5180,36 +4895,6 @@ rule summary_pangenie:
         "python3 scripts/compose-summary.py"
         " --output {output}"
         " --title 'PanGenie (PASS)'"
-        " --cols 2"
-        " --panels {params.panels}"
-
-rule summary_longread_pangenie:
-    """Compose long-read PanGenie summary figure"""
-    input:
-        pg_types=f"{OUT_DIR}/merged.longread.pg.sites.pass.variant-types.png",
-        pg_per_sample=f"{OUT_DIR}/merged.longread.pg.sites.pass.per-sample-types.png",
-        vcfeval=f"{OUT_DIR}/merged.lr.call-vs-pg.pass.vcfeval-compare.png",
-        pg_giab=[f"{OUT_DIR}/merged.longread.pg.sites.pass.giab-strat.png"] if giab_strat_configured() else [],
-        pg_per_sample_giab=[f"{OUT_DIR}/merged.longread.pg.sites.pass.per-sample-giab-strat.png"] if giab_strat_configured() else [],
-        annot_snp=[f"{OUT_DIR}/merged.longread.pg.sites.pass.variant-types-by-annot.png"] if annotation_inputs() else [],
-    output:
-        f"{OUT_DIR}/8c.pangenie-summary-longread.png",
-    resources:
-        mem_mb=4000,
-        runtime=30,
-    params:
-        panels=lambda wc, input: " ".join(
-            [f"'PG Variant Types (PASS):{input.pg_types}'",
-             f"'PG Per-Sample Types (PASS):{input.pg_per_sample}'",
-             f"'Call vs PG (vcfeval):{input.vcfeval}'"]
-            + ([f"'PG GIAB Stratification:{input.pg_giab[0]}'"] if input.pg_giab else [])
-            + ([f"'PG Per-Sample GIAB:{input.pg_per_sample_giab[0]}'"] if input.pg_per_sample_giab else [])
-            + ([f"'PG Types by Annotation:{input.annot_snp[0]}'"] if input.annot_snp else [])
-        ),
-    shell:
-        "python3 scripts/compose-summary.py"
-        " --output {output}"
-        " --title 'Long-Read PanGenie (PASS)'"
         " --cols 2"
         " --panels {params.panels}"
 
@@ -5270,55 +4955,3 @@ rule summary_pangenie_concordance_onref:
         " 'Call vs PG Concordant:{input.call_conc}'"
         " 'DV vs PG Concordant:{input.dv_conc}'"
 
-rule summary_longread_pangenie_concordance:
-    """Compose LR PG concordance summary: call-vs-PG and DV-vs-PG (off-ref)"""
-    input:
-        call_disc=f"{OUT_DIR}/merged.lr.call-vs-pg.pass.chromsplit-top.png",
-        call_conc=f"{OUT_DIR}/merged.lr.call-vs-pg.pass.chromsplit-concordant.png",
-        dv_disc=f"{OUT_DIR}/merged.lr.dv-vs-pg.pass.chromsplit-top.png",
-        dv_conc=f"{OUT_DIR}/merged.lr.dv-vs-pg.pass.chromsplit-concordant.png",
-        annot=f"{OUT_DIR}/merged.lr.call-vs-pg.pass.chromsplit-annot.png" if annotation_inputs() else [],
-        giab=f"{OUT_DIR}/merged.lr.call-vs-pg.pass.chromsplit-giab.png" if giab_strat_configured() else [],
-    output:
-        f"{OUT_DIR}/13.pangenie-concordance-summary-longread.png",
-    resources:
-        mem_mb=4000,
-        runtime=30,
-    params:
-        panels=lambda wc, input: " ".join(
-            [f"'Call vs PG Discordant:{input.call_disc}'",
-             f"'DV vs PG Discordant:{input.dv_disc}'",
-             f"'Call vs PG Concordant:{input.call_conc}'",
-             f"'DV vs PG Concordant:{input.dv_conc}'"]
-            + ([f"'Call vs PG by Annotation:{input.annot}'"] if input.annot else [])
-            + ([f"'Call vs PG by GIAB:{input.giab}'"] if input.giab else [])
-        ),
-    shell:
-        "python3 scripts/compose-summary.py"
-        " --output {output}"
-        " --title 'Long-Read PanGenie Concordance — Off-Ref (PASS)'"
-        " --cols 2"
-        " --panels {params.panels}"
-
-rule summary_longread_pangenie_concordance_onref:
-    """Compose LR PG concordance summary: call-vs-PG and DV-vs-PG (on-ref)"""
-    input:
-        call_disc=f"{OUT_DIR}/merged.lr.call-vs-pg.pass.chromsplit-top-onref.png",
-        call_conc=f"{OUT_DIR}/merged.lr.call-vs-pg.pass.chromsplit-concordant-onref.png",
-        dv_disc=f"{OUT_DIR}/merged.lr.dv-vs-pg.pass.chromsplit-top-onref.png",
-        dv_conc=f"{OUT_DIR}/merged.lr.dv-vs-pg.pass.chromsplit-concordant-onref.png",
-    output:
-        f"{OUT_DIR}/13b.pangenie-concordance-onref-summary-longread.png",
-    resources:
-        mem_mb=4000,
-        runtime=30,
-    shell:
-        "python3 scripts/compose-summary.py"
-        " --output {output}"
-        " --title 'Long-Read PanGenie Concordance — On-Ref (PASS)'"
-        " --cols 2"
-        " --panels"
-        " 'Call vs PG Discordant:{input.call_disc}'"
-        " 'DV vs PG Discordant:{input.dv_disc}'"
-        " 'Call vs PG Concordant:{input.call_conc}'"
-        " 'DV vs PG Concordant:{input.dv_conc}'"
