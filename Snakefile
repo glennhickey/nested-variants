@@ -3788,6 +3788,127 @@ rule vcfeval_dv_vs_fb_lr_chromsplit_plot:
         " {params.annot_arg} {params.giab_arg}"
 
 ############################################################################
+# On-reference GIAB stratification for vcfeval comparisons
+# (direct intersection of on-ref variants with GIAB BEDs)
+############################################################################
+
+rule vcfeval_onref_giab:
+    """On-ref GIAB stratification for call-vs-DV comparison"""
+    input:
+        tp=expand(f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}/tp-baseline.vcf.gz", sample=SAMPLES, allow_missing=True),
+        fp=expand(f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}/fp.vcf.gz", sample=SAMPLES, allow_missing=True),
+        fn=expand(f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}/fn.vcf.gz", sample=SAMPLES, allow_missing=True),
+        giab_beds=giab_strat_beds(),
+    output:
+        f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.onref-giab.tsv",
+        f"{OUT_DIR}/merged.call-vs-dv.{{filt}}.onref-giab.png",
+    resources:
+        mem_mb=8000,
+        runtime=120,
+    params:
+        tp_vcfs=lambda wc, input: ",".join(input.tp),
+        fp_vcfs=lambda wc, input: ",".join(input.fp),
+        fn_vcfs=lambda wc, input: ",".join(input.fn),
+        giab_beds=lambda wc, input: ",".join(input.giab_beds),
+        giab_names=",".join(GIAB_STRAT_DISPLAY),
+    shell:
+        "bash scripts/vcfeval-onref-giab.sh"
+        " {params.tp_vcfs} {params.fp_vcfs} {params.fn_vcfs}"
+        " {params.giab_beds} {params.giab_names}"
+        " {OUT_DIR}/merged.call-vs-dv.{wildcards.filt}.onref-giab.tsv"
+        " && Rscript scripts/vcfeval-onref-giab-plot.R"
+        " {OUT_DIR}/merged.call-vs-dv.{wildcards.filt}.onref-giab.tsv"
+        " {OUT_DIR}/merged.call-vs-dv.{wildcards.filt}.onref-giab.png"
+        " --title '{REF} Call vs DeepVariant On-Reference'"
+
+rule vcfeval_lr_onref_giab:
+    """On-ref GIAB stratification for long-read call-vs-DV comparison"""
+    input:
+        tp=expand(f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}/tp-baseline.vcf.gz", sample=LR_SAMPLES, allow_missing=True),
+        fp=expand(f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}/fp.vcf.gz", sample=LR_SAMPLES, allow_missing=True),
+        fn=expand(f"{OUT_DIR}/vcfeval/{{filt}}/{{sample}}/fn.vcf.gz", sample=LR_SAMPLES, allow_missing=True),
+        giab_beds=giab_strat_beds(),
+    output:
+        f"{OUT_DIR}/merged.lr.call-vs-dv.{{filt}}.onref-giab.tsv",
+        f"{OUT_DIR}/merged.lr.call-vs-dv.{{filt}}.onref-giab.png",
+    resources:
+        mem_mb=8000,
+        runtime=120,
+    params:
+        tp_vcfs=lambda wc, input: ",".join(input.tp),
+        fp_vcfs=lambda wc, input: ",".join(input.fp),
+        fn_vcfs=lambda wc, input: ",".join(input.fn),
+        giab_beds=lambda wc, input: ",".join(input.giab_beds),
+        giab_names=",".join(GIAB_STRAT_DISPLAY),
+    shell:
+        "bash scripts/vcfeval-onref-giab.sh"
+        " {params.tp_vcfs} {params.fp_vcfs} {params.fn_vcfs}"
+        " {params.giab_beds} {params.giab_names}"
+        " {OUT_DIR}/merged.lr.call-vs-dv.{wildcards.filt}.onref-giab.tsv"
+        " && Rscript scripts/vcfeval-onref-giab-plot.R"
+        " {OUT_DIR}/merged.lr.call-vs-dv.{wildcards.filt}.onref-giab.tsv"
+        " {OUT_DIR}/merged.lr.call-vs-dv.{wildcards.filt}.onref-giab.png"
+        " --title '{REF} Long-Read Call vs DeepVariant On-Reference'"
+
+rule vcfeval_fb_onref_giab:
+    """On-ref GIAB stratification for call-vs-FB comparison"""
+    input:
+        tp=expand(f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/tp-baseline.vcf.gz", sample=SAMPLES, allow_missing=True),
+        fp=expand(f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/fp.vcf.gz", sample=SAMPLES, allow_missing=True),
+        fn=expand(f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/fn.vcf.gz", sample=SAMPLES, allow_missing=True),
+        giab_beds=giab_strat_beds(),
+    output:
+        f"{OUT_DIR}/merged.call-vs-fb.{{filt}}.onref-giab.tsv",
+        f"{OUT_DIR}/merged.call-vs-fb.{{filt}}.onref-giab.png",
+    resources:
+        mem_mb=8000,
+        runtime=120,
+    params:
+        tp_vcfs=lambda wc, input: ",".join(input.tp),
+        fp_vcfs=lambda wc, input: ",".join(input.fp),
+        fn_vcfs=lambda wc, input: ",".join(input.fn),
+        giab_beds=lambda wc, input: ",".join(input.giab_beds),
+        giab_names=",".join(GIAB_STRAT_DISPLAY),
+    shell:
+        "bash scripts/vcfeval-onref-giab.sh"
+        " {params.tp_vcfs} {params.fp_vcfs} {params.fn_vcfs}"
+        " {params.giab_beds} {params.giab_names}"
+        " {OUT_DIR}/merged.call-vs-fb.{wildcards.filt}.onref-giab.tsv"
+        " && Rscript scripts/vcfeval-onref-giab-plot.R"
+        " {OUT_DIR}/merged.call-vs-fb.{wildcards.filt}.onref-giab.tsv"
+        " {OUT_DIR}/merged.call-vs-fb.{wildcards.filt}.onref-giab.png"
+        " --title '{REF} Call vs FreeBayes On-Reference'"
+
+rule vcfeval_fb_lr_onref_giab:
+    """On-ref GIAB stratification for long-read call-vs-FB comparison"""
+    input:
+        tp=expand(f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/tp-baseline.vcf.gz", sample=LR_SAMPLES, allow_missing=True),
+        fp=expand(f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/fp.vcf.gz", sample=LR_SAMPLES, allow_missing=True),
+        fn=expand(f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/fn.vcf.gz", sample=LR_SAMPLES, allow_missing=True),
+        giab_beds=giab_strat_beds(),
+    output:
+        f"{OUT_DIR}/merged.lr.call-vs-fb.{{filt}}.onref-giab.tsv",
+        f"{OUT_DIR}/merged.lr.call-vs-fb.{{filt}}.onref-giab.png",
+    resources:
+        mem_mb=8000,
+        runtime=120,
+    params:
+        tp_vcfs=lambda wc, input: ",".join(input.tp),
+        fp_vcfs=lambda wc, input: ",".join(input.fp),
+        fn_vcfs=lambda wc, input: ",".join(input.fn),
+        giab_beds=lambda wc, input: ",".join(input.giab_beds),
+        giab_names=",".join(GIAB_STRAT_DISPLAY),
+    shell:
+        "bash scripts/vcfeval-onref-giab.sh"
+        " {params.tp_vcfs} {params.fp_vcfs} {params.fn_vcfs}"
+        " {params.giab_beds} {params.giab_names}"
+        " {OUT_DIR}/merged.lr.call-vs-fb.{wildcards.filt}.onref-giab.tsv"
+        " && Rscript scripts/vcfeval-onref-giab-plot.R"
+        " {OUT_DIR}/merged.lr.call-vs-fb.{wildcards.filt}.onref-giab.tsv"
+        " {OUT_DIR}/merged.lr.call-vs-fb.{wildcards.filt}.onref-giab.png"
+        " --title '{REF} Long-Read Call vs FreeBayes On-Reference'"
+
+############################################################################
 # Pantree comparison rules (optional — only when pantree_vcf is set)
 ############################################################################
 
@@ -4071,17 +4192,24 @@ rule summary_concordance_onref:
     input:
         discordant=f"{OUT_DIR}/merged.call-vs-dv.pass.chromsplit-top-onref.png",
         concordant=f"{OUT_DIR}/merged.call-vs-dv.pass.chromsplit-concordant-onref.png",
+        onref_giab=[f"{OUT_DIR}/merged.call-vs-dv.pass.onref-giab.png"] if giab_strat_configured() else [],
     output:
         f"{OUT_DIR}/5b.concordance-onref-summary.png",
     resources:
         mem_mb=4000,
         runtime=30,
+    params:
+        panels=lambda wc, input: " ".join(
+            [f"'Top Discordant On-Ref:{input.discordant}'",
+             f"'Top Concordant On-Ref:{input.concordant}'"]
+            + ([f"'On-Ref GIAB Stratification:{input.onref_giab[0]}'"] if input.onref_giab else [])
+        ),
     shell:
         "python3 scripts/compose-summary.py"
         " --output {output}"
         " --title 'Call vs DeepVariant Concordance — On-Ref (PASS)'"
         " --cols 2"
-        " --panels"
+        " --panels {params.panels}"
         " 'Top Discordant On-Ref:{input.discordant}'"
         " 'Top Concordant On-Ref:{input.concordant}'"
 
@@ -4303,19 +4431,24 @@ rule summary_longread_concordance_onref:
     input:
         discordant=f"{OUT_DIR}/merged.lr.call-vs-dv.pass.chromsplit-top-onref.png",
         concordant=f"{OUT_DIR}/merged.lr.call-vs-dv.pass.chromsplit-concordant-onref.png",
+        onref_giab=[f"{OUT_DIR}/merged.lr.call-vs-dv.pass.onref-giab.png"] if giab_strat_configured() else [],
     output:
         f"{OUT_DIR}/9b.concordance-onref-summary-longread.png",
     resources:
         mem_mb=4000,
         runtime=30,
+    params:
+        panels=lambda wc, input: " ".join(
+            [f"'Top Discordant On-Ref:{input.discordant}'",
+             f"'Top Concordant On-Ref:{input.concordant}'"]
+            + ([f"'On-Ref GIAB Stratification:{input.onref_giab[0]}'"] if input.onref_giab else [])
+        ),
     shell:
         "python3 scripts/compose-summary.py"
         " --output {output}"
         " --title 'Long-Read Call vs DeepVariant Concordance — On-Ref (PASS)'"
         " --cols 2"
-        " --panels"
-        " 'Top Discordant On-Ref:{input.discordant}'"
-        " 'Top Concordant On-Ref:{input.concordant}'"
+        " --panels {params.panels}"
 
 rule summary_longread_coverage:
     """Long-read contig depth summary"""
