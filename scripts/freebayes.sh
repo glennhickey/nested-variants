@@ -152,14 +152,20 @@ if [[ "$REF" == *.gz ]]; then
     REF="$REF_PLAIN"
 fi
 
-# Generate regions from FAI
+# Generate regions from FAI, filtered to contigs present in the BAM.
+# Without this, HPRC-scale FASTAs with 283k contigs generate hundreds of
+# thousands of freebayes invocations on empty contigs.
 FAI="${REF}.fai"
 if [ ! -f "$FAI" ]; then
     samtools faidx "$REF"
 fi
 
+BAM_CONTIGS="${OUTPUT_DIR}/${OUTPUT_NAME%.vcf.gz}.bam-contigs.txt"
+samtools idxstats "$BAM" | awk '$3 > 0 {print $1}' > "$BAM_CONTIGS"
+echo "BAM has reads on $(wc -l < "$BAM_CONTIGS") of $(wc -l < "$FAI") contigs"
+
 REGIONS_FILE="${OUTPUT_DIR}/${OUTPUT_NAME%.vcf.gz}.regions.txt"
-awk -v size="$REGION_SIZE" '{
+awk -v size="$REGION_SIZE" 'NR==FNR{keep[$1]=1;next} ($1 in keep) {
     chrom = $1; len = $2; pos = 0
     while (pos < len) {
         end = pos + size
@@ -167,7 +173,8 @@ awk -v size="$REGION_SIZE" '{
         print chrom ":" pos "-" end
         pos = end
     }
-}' "$FAI" > "$REGIONS_FILE"
+}' "$BAM_CONTIGS" "$FAI" > "$REGIONS_FILE"
+rm -f "$BAM_CONTIGS"
 
 echo "Generated $(wc -l < "$REGIONS_FILE") regions (${REGION_SIZE}bp chunks)"
 
