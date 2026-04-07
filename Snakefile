@@ -1877,8 +1877,8 @@ rule pangenie_prepare_panel:
     output:
         f"{OUT_DIR}/{OUT_NAME}.pangenie-panel.vcf.gz",
     resources:
-        mem_mb=32000,
-        runtime=120,
+        mem_mb=256000,
+        runtime=2880,
     params:
         exclude_samples=config.get("pangenie_exclude_samples", ""),
     shell:
