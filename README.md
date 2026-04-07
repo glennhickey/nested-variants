@@ -223,6 +223,31 @@ snakemake --profile profiles/slurm all \
     --rerun-incomplete --default-resources slurm_partition=high_priority
 ```
 
+### 2b. Run CHM13 + HG002 two-haplotype graph
+
+A simpler test case with CHM13 reference plus a single sample (HG002), using the same annotations as the full HPRC run:
+
+```bash
+ANNOT=data/hprc-v2-annotations
+GIAB=data/giab-reads
+snakemake --profile profiles/slurm all \
+  --config \
+    ref=CHM13 \
+    vg=/private/home/ghickey/dev/work/hprc-chm-hg002-v2.0/hprc-chm-hg002-v2.0.vg \
+    out_dir=output/chm-hg002-v2.0 \
+    out_name=hprc-chm-hg002-v2.0.nested \
+    min_surject_len=1000 \
+    annot_genes=$ANNOT/hprc-v2-genes-grch38-chm13.bed \
+    annot_repeats=$ANNOT/hprc-v2-rm-grch38-chm13.bed \
+    annot_segdups=$ANNOT/hprc-v2-sd-grch38-chm13.bed \
+    annot_censat=$ANNOT/hprc-v2-censat-grch38-chm13.bed \
+    annot_pclai=$ANNOT/hprc-v2-pclai-grch38-chm13.bed \
+    giab_strat=$ANNOT/hprc-v2-giab \
+    "samples={HG002: $GIAB/HG002.novaseq.pcr-free.gs.paths}" \
+    "longread_samples={HG002-hifi: $GIAB/HG002.hifi-revio.ncbi.paths}" \
+    --rerun-incomplete --default-resources slurm_partition=high_priority
+```
+
 ### Filtering short alt contigs
 
 When `min_surject_len` is set (default: 0), the pipeline filters augmented reference contigs shorter than this threshold from the surjected BAMs and called VCFs. The GBZ retains all contigs (controlled by `min_augref_len`), so deconstruct results are unaffected. Setting `min_surject_len=1000` is recommended for runs that include DeepVariant, which struggles with very large numbers of reference contigs.
