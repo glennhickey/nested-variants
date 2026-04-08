@@ -70,6 +70,11 @@ def decon_opts():
         opts.append("--star-allele")
     return " ".join(opts)
 
+def pangenie_enabled():
+    """True when PanGenie is enabled (default true, set enable_pangenie=false to disable)."""
+    val = config.get("enable_pangenie", "true")
+    return str(val).lower() not in ("false", "0", "no", "")
+
 def surject_filtering():
     """True when min_surject_len > 0 (filter contigs for surject/call)."""
     val = config.get("min_surject_len", 0)
@@ -160,7 +165,7 @@ def annotation_snp_outputs(callers=None):
                     outputs.append(f"{OUT_DIR}/{s}.freebayes.{plot}.{filt}.png")
                 if LR_SAMPLES:
                     outputs.append(f"{OUT_DIR}/merged.longread.freebayes.{plot}.{filt}.png")
-        if "pangenie" in callers:
+        if "pangenie" in callers and pangenie_enabled():
             for filt in ["all", "pass"]:
                 for s in SAMPLES:
                     outputs.append(f"{OUT_DIR}/{s}.pangenie.{plot}.{filt}.png")
@@ -196,7 +201,7 @@ def annotation_snp_outputs(callers=None):
                         outputs.append(f"{OUT_DIR}/{s}.freebayes.{plot}.{filt}.png")
                     if LR_SAMPLES:
                         outputs.append(f"{OUT_DIR}/merged.longread.freebayes.{plot}.{filt}.png")
-            if "pangenie" in callers:
+            if "pangenie" in callers and pangenie_enabled():
                 for filt in ["all", "pass"]:
                     for s in SAMPLES:
                         outputs.append(f"{OUT_DIR}/{s}.pangenie.{plot}.{filt}.png")
@@ -248,7 +253,7 @@ def annotation_stats_outputs(callers=None):
                 if LR_SAMPLES:
                     outputs.append(f"{OUT_DIR}/merged.longread.fb.sites.{filt}.{suffix}")
                     outputs.append(f"{OUT_DIR}/merged.longread.fb.variants.{filt}.{suffix}")
-        if "pangenie" in callers:
+        if "pangenie" in callers and pangenie_enabled():
             for filt in ["all", "pass"]:
                 for s in SAMPLES:
                     outputs.append(f"{OUT_DIR}/{s}.pg.sites.{filt}.{suffix}")
@@ -356,7 +361,7 @@ def giab_strat_stats_outputs(callers=None):
                 if LR_SAMPLES:
                     outputs.append(f"{OUT_DIR}/merged.longread.fb.sites.{filt}.{suffix}")
                     outputs.append(f"{OUT_DIR}/merged.longread.fb.variants.{filt}.{suffix}")
-        if "pangenie" in callers:
+        if "pangenie" in callers and pangenie_enabled():
             for filt in ["all", "pass"]:
                 for s in SAMPLES:
                     outputs.append(f"{OUT_DIR}/{s}.pg.sites.{filt}.{suffix}")
@@ -395,7 +400,7 @@ def per_sample_stats_outputs(callers=None):
                 if LR_SAMPLES:
                     outputs.append(f"{OUT_DIR}/merged.longread.fb.sites.{filt}.{suffix}")
                     outputs.append(f"{OUT_DIR}/merged.longread.fb.variants.{filt}.{suffix}")
-        if "pangenie" in callers:
+        if "pangenie" in callers and pangenie_enabled():
             for filt in ["all", "pass"]:
                 outputs.append(f"{OUT_DIR}/merged.pg.sites.{filt}.{suffix}")
                 outputs.append(f"{OUT_DIR}/merged.pg.variants.{filt}.{suffix}")
@@ -425,7 +430,7 @@ def per_sample_stats_outputs(callers=None):
                     if LR_SAMPLES:
                         outputs.append(f"{OUT_DIR}/merged.longread.fb.sites.{filt}.{suffix}")
                         outputs.append(f"{OUT_DIR}/merged.longread.fb.variants.{filt}.{suffix}")
-            if "pangenie" in callers:
+            if "pangenie" in callers and pangenie_enabled():
                 for filt in ["all", "pass"]:
                     outputs.append(f"{OUT_DIR}/merged.pg.sites.{filt}.{suffix}")
                     outputs.append(f"{OUT_DIR}/merged.pg.variants.{filt}.{suffix}")
@@ -555,7 +560,7 @@ def vcfeval_lr_dv_vs_fb_compare_outputs():
 
 def compare_call_pg_outputs():
     """Return call-vs-PG comparison outputs when samples are configured."""
-    if not SAMPLES:
+    if not SAMPLES or not pangenie_enabled():
         return []
     outputs = []
     for mode in ["sites", "variants"]:
@@ -566,7 +571,7 @@ def compare_call_pg_outputs():
 
 def vcfeval_pg_compare_outputs():
     """Return vcfeval-based call-vs-PG comparison outputs when samples are configured."""
-    if not SAMPLES:
+    if not SAMPLES or not pangenie_enabled():
         return []
     outputs = []
     for filt in ["all", "pass"]:
@@ -590,7 +595,7 @@ def vcfeval_lr_pg_compare_outputs():
 
 def vcfeval_dv_vs_pg_compare_outputs():
     """Return vcfeval-based DV-vs-PG comparison outputs when samples are configured."""
-    if not SAMPLES:
+    if not SAMPLES or not pangenie_enabled():
         return []
     outputs = []
     for filt in ["all", "pass"]:
@@ -700,15 +705,17 @@ def summary_figure_outputs():
         outputs.append(f"{OUT_DIR}/3.call-summary.png")
         outputs.append(f"{OUT_DIR}/4.deepvariant-summary.png")
         outputs.append(f"{OUT_DIR}/4b.freebayes-summary.png")
-        outputs.append(f"{OUT_DIR}/4c.pangenie-summary.png")
+        if pangenie_enabled():
+            outputs.append(f"{OUT_DIR}/4c.pangenie-summary.png")
         outputs.append(f"{OUT_DIR}/5.concordance-summary.png")
         outputs.append(f"{OUT_DIR}/5b.concordance-onref-summary.png")
         outputs.append(f"{OUT_DIR}/5c.coverage-summary.png")
         outputs.append(f"{OUT_DIR}/5d.mapq-summary.png")
         outputs.append(f"{OUT_DIR}/10.freebayes-concordance-summary.png")
         outputs.append(f"{OUT_DIR}/10b.freebayes-concordance-onref-summary.png")
-        outputs.append(f"{OUT_DIR}/12.pangenie-concordance-summary.png")
-        outputs.append(f"{OUT_DIR}/12b.pangenie-concordance-onref-summary.png")
+        if pangenie_enabled():
+            outputs.append(f"{OUT_DIR}/12.pangenie-concordance-summary.png")
+            outputs.append(f"{OUT_DIR}/12b.pangenie-concordance-onref-summary.png")
     if LR_SAMPLES:
         outputs.append(f"{OUT_DIR}/7.call-summary-longread.png")
         outputs.append(f"{OUT_DIR}/8.deepvariant-summary-longread.png")
@@ -819,26 +826,22 @@ rule all:
         expand("{out}/{s}.fb.variants.{filt}.variant-types.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.fb.variants.{filt}.size-dist.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.fb.variants.{filt}.size-dist-log.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
-        # per-sample pangenie outputs
-        expand("{out}/{s}.pangenie.vcf.gz", out=OUT_DIR, s=SAMPLES),
-        expand("{out}/{s}.pg-offref.png", out=OUT_DIR, s=SAMPLES),
-        expand("{out}/{s}.pg.sites.{filt}.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.pg.sites.{filt}.variant-types.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.pg.sites.{filt}.size-dist.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.pg.sites.{filt}.size-dist-log.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.pg.variants.{filt}.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.pg.variants.{filt}.variant-types.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.pg.variants.{filt}.size-dist.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.pg.variants.{filt}.size-dist-log.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
+        # per-sample pangenie outputs (when enabled)
+        *(expand("{out}/{s}.pangenie.vcf.gz", out=OUT_DIR, s=SAMPLES)
+          + expand("{out}/{s}.pg-offref.png", out=OUT_DIR, s=SAMPLES)
+          + expand("{out}/{s}.pg.{mode}.{filt}.{suffix}", out=OUT_DIR, s=SAMPLES,
+                   mode=["sites", "variants"], filt=["all", "pass"],
+                   suffix=["vcf-stats.tsv", "variant-types.png", "size-dist.png", "size-dist-log.png"])
+          if pangenie_enabled() else []),
         # merged outputs
         f"{OUT_DIR}/merged.call.vcf.gz",
         f"{OUT_DIR}/merged.deepvariant.vcf.gz",
         f"{OUT_DIR}/merged.freebayes.vcf.gz",
-        f"{OUT_DIR}/merged.pangenie.vcf.gz",
+        *([f"{OUT_DIR}/merged.pangenie.vcf.gz",
+           f"{OUT_DIR}/merged.pg-offref.png"] if pangenie_enabled() else []),
         f"{OUT_DIR}/merged.call-offref.png",
         f"{OUT_DIR}/merged.dv-offref.png",
         f"{OUT_DIR}/merged.fb-offref.png",
-        f"{OUT_DIR}/merged.pg-offref.png",
         f"{OUT_DIR}/merged.call.sites.all.vcf-stats.tsv",
         f"{OUT_DIR}/merged.call.sites.all.variant-types.png",
         f"{OUT_DIR}/merged.call.sites.all.size-dist.png",
@@ -899,26 +902,12 @@ rule all:
         f"{OUT_DIR}/merged.fb.variants.pass.size-dist.png",
         f"{OUT_DIR}/merged.fb.variants.pass.size-dist-log.png",
         f"{OUT_DIR}/merged.fb.variants.pass.af-spectrum.png",
-        f"{OUT_DIR}/merged.pg.sites.all.vcf-stats.tsv",
-        f"{OUT_DIR}/merged.pg.sites.all.variant-types.png",
-        f"{OUT_DIR}/merged.pg.sites.all.size-dist.png",
-        f"{OUT_DIR}/merged.pg.sites.all.size-dist-log.png",
-        f"{OUT_DIR}/merged.pg.sites.all.af-spectrum.png",
-        f"{OUT_DIR}/merged.pg.sites.pass.vcf-stats.tsv",
-        f"{OUT_DIR}/merged.pg.sites.pass.variant-types.png",
-        f"{OUT_DIR}/merged.pg.sites.pass.size-dist.png",
-        f"{OUT_DIR}/merged.pg.sites.pass.size-dist-log.png",
-        f"{OUT_DIR}/merged.pg.sites.pass.af-spectrum.png",
-        f"{OUT_DIR}/merged.pg.variants.all.vcf-stats.tsv",
-        f"{OUT_DIR}/merged.pg.variants.all.variant-types.png",
-        f"{OUT_DIR}/merged.pg.variants.all.size-dist.png",
-        f"{OUT_DIR}/merged.pg.variants.all.size-dist-log.png",
-        f"{OUT_DIR}/merged.pg.variants.all.af-spectrum.png",
-        f"{OUT_DIR}/merged.pg.variants.pass.vcf-stats.tsv",
-        f"{OUT_DIR}/merged.pg.variants.pass.variant-types.png",
-        f"{OUT_DIR}/merged.pg.variants.pass.size-dist.png",
-        f"{OUT_DIR}/merged.pg.variants.pass.size-dist-log.png",
-        f"{OUT_DIR}/merged.pg.variants.pass.af-spectrum.png",
+        *([f"{OUT_DIR}/merged.pg.{mode}.{filt}.{suffix}"
+           for mode in ["sites", "variants"]
+           for filt in ["all", "pass"]
+           for suffix in ["vcf-stats.tsv", "variant-types.png", "size-dist.png",
+                          "size-dist-log.png", "af-spectrum.png"]]
+          if pangenie_enabled() else []),
         # merged long-read outputs (when longread_samples configured)
         *([f"{OUT_DIR}/merged.longread.call.vcf.gz",
            f"{OUT_DIR}/merged.longread.deepvariant.vcf.gz",
