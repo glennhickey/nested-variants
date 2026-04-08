@@ -39,7 +39,8 @@ for i in "${!BEDS[@]}"; do
           | awk -F'\t' '$1 !~ /_alt$/ {
                 r=length($4); a=length($5);
                 if(r==1 && a==1) t="SNP"; else t="Indel";
-                print $1"\t"$2-1"\t"$2"\t"t
+                chrom=$1; sub(/^augref_/, "", chrom);
+                print chrom"\t"$2-1"\t"$2"\t"t
             }' \
           | bedtools intersect -a - -b "$BED" -u 2>/dev/null \
           | cut -f4 | sort | uniq -c \
