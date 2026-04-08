@@ -3457,17 +3457,91 @@ rule vcfeval_fb_relaxed_per_sample:
         "    {params.out_dir}/fb.qfilt.vcf.gz"
         "    {params.out_dir}/fb.qfilt.vcf.gz.tbi"
 
+rule vcfeval_fb_recall_per_sample:
+    """Relaxed recall: PASS call (truth) vs ALL FB (calls, no QUAL filter).
+
+    Measures what fraction of PASS call variants FB detects at any confidence.
+    FN from this run = PASS call variants that FB doesn't see at all.
+    """
+    input:
+        call_vcf=f"{OUT_DIR}/{{sample}}.filtered.vcf.gz" if surject_filtering() else f"{OUT_DIR}/{{sample}}.vcf.gz",
+        fb_vcf=f"{OUT_DIR}/{{sample}}.freebayes.vcf.gz",
+        ref=f"{OUT_DIR}/{OUT_NAME}.fa.gz",
+        paths=f"{OUT_DIR}/{OUT_NAME}.filtered-paths.txt" if surject_filtering() else [],
+    output:
+        tp_baseline=f"{OUT_DIR}/vcfeval-fb-recall/{{sample}}/tp-baseline.vcf.gz",
+        fp=f"{OUT_DIR}/vcfeval-fb-recall/{{sample}}/fp.vcf.gz",
+        fn=f"{OUT_DIR}/vcfeval-fb-recall/{{sample}}/fn.vcf.gz",
+    threads: rule_cpus("vcfeval", 64)
+    resources:
+        mem_mb=rule_mem_gb("vcfeval", 128) * 1024,
+        runtime=rule_runtime("vcfeval"),
+    params:
+        out_dir=f"{OUT_DIR}/vcfeval-fb-recall/{{sample}}",
+        eval_tool=config.get("eval_tool", "aardvark"),
+        docker_arg=lambda wc: f"--docker {config['vcfeval_docker']}" if config.get("vcfeval_docker") else "",
+        no_docker="" if config.get("vcfeval_docker") else "--no-docker",
+        augref_prefix=f"{AUGREF}#0#",
+        min_vcfeval_len=config.get("min_vcfeval_len", 0),
+    shell:
+        # Rename call CHROMs and PASS-filter (same as standard comparison)
+        "export RTG_MEM=$(({resources.mem_mb} / 1024))g"
+        " && mkdir -p {params.out_dir}"
+        " && bcftools query -f '%CHROM\\n' {input.call_vcf} | sort -u"
+        "    | sed -n '/^{params.augref_prefix}/!s/^\\(.*\\)/\\1\\t{params.augref_prefix}\\1/p'"
+        "    > {params.out_dir}/rename-chrs.txt"
+        " && if [ -s {params.out_dir}/rename-chrs.txt ]; then"
+        "      bcftools annotate --rename-chrs {params.out_dir}/rename-chrs.txt"
+        "        {input.call_vcf}"
+        "        | awk '/^##contig=/{{id=$0; sub(/.*ID=/, \"\", id); sub(/[,>].*/, \"\", id);"
+        "                if(seen[id]++) next}} {{print}}';"
+        "    else"
+        "      bcftools view {input.call_vcf};"
+        "    fi"
+        "    | bcftools view -f PASS 2>/dev/null"
+        "    | bgzip > {params.out_dir}/call.renamed.vcf.gz"
+        " && tabix -fp vcf {params.out_dir}/call.renamed.vcf.gz"
+        # FB VCF: NO QUAL filter, just use raw (FILTER already set to PASS by freebayes.sh)
+        # Stage to scratch
+        " && WORK_TMPDIR=$(mktemp -d \"${{TMPDIR:-{params.out_dir}}}/vcfeval.XXXXXX\")"
+        " && trap 'rm -rf \"$WORK_TMPDIR\"' EXIT"
+        " && cp {params.out_dir}/call.renamed.vcf.gz"
+        "       {params.out_dir}/call.renamed.vcf.gz.tbi"
+        "       {input.fb_vcf} {input.fb_vcf}.tbi"
+        "       {input.ref} {input.ref}.fai"
+        "       \"$WORK_TMPDIR/\""
+        " && {{ [ -f {input.ref}.gzi ]"
+        "       && cp {input.ref}.gzi \"$WORK_TMPDIR/\" || true; }}"
+        " && python3 scripts/vcfcomp.py {params.eval_tool}"
+        "    --truth $WORK_TMPDIR/call.renamed.vcf.gz"
+        "    --calls $WORK_TMPDIR/$(basename {input.fb_vcf})"
+        "    --ref $WORK_TMPDIR/$(basename {input.ref})"
+        "    --out-dir $WORK_TMPDIR"
+        "    --threads {threads}"
+        "    --min-contig-len {params.min_vcfeval_len}"
+        "    {params.docker_arg} {params.no_docker}"
+        " && for f in tp-baseline.vcf.gz tp-baseline.vcf.gz.tbi"
+        "          fp.vcf.gz fp.vcf.gz.tbi fn.vcf.gz fn.vcf.gz.tbi"
+        "          summary.txt snp_roc.tsv.gz non_snp_roc.tsv.gz weighted_roc.tsv.gz"
+        "          phasing.txt vcfeval.log progress"
+        "          query.vcf.gz query.vcf.gz.tbi truth.vcf.gz truth.vcf.gz.tbi; do"
+        "    [ -f \"$WORK_TMPDIR/$f\" ] && cp \"$WORK_TMPDIR/$f\" {params.out_dir}/;"
+        "  done"
+        " && rm -f {params.out_dir}/call.renamed.vcf.gz"
+        "    {params.out_dir}/call.renamed.vcf.gz.tbi"
+        "    {params.out_dir}/rename-chrs.txt"
+
 rule vcfeval_fb_relaxed_combine:
     """Combine PASS precision (TP/FP) with relaxed recall (FN) per sample.
 
     Precision from standard PASS comparison: TP and FP from vcfeval-fb/pass/
-    Recall from relaxed comparison: FN from vcfeval-fb-relaxed/
+    Recall from recall comparison: FN from vcfeval-fb-recall/ (PASS call vs ALL FB)
     Combined into vcfeval-fb-combined/ for plotting.
     """
     input:
         pass_tp=f"{OUT_DIR}/vcfeval-fb/pass/{{sample}}/tp-baseline.vcf.gz",
         pass_fp=f"{OUT_DIR}/vcfeval-fb/pass/{{sample}}/fp.vcf.gz",
-        relaxed_fn=f"{OUT_DIR}/vcfeval-fb-relaxed/{{sample}}/fn.vcf.gz",
+        recall_fn=f"{OUT_DIR}/vcfeval-fb-recall/{{sample}}/fn.vcf.gz",
     output:
         tp=f"{OUT_DIR}/vcfeval-fb-combined/{{sample}}/tp-baseline.vcf.gz",
         fp=f"{OUT_DIR}/vcfeval-fb-combined/{{sample}}/fp.vcf.gz",
@@ -3479,7 +3553,7 @@ rule vcfeval_fb_relaxed_combine:
         "mkdir -p {OUT_DIR}/vcfeval-fb-combined/{wildcards.sample}"
         " && cp {input.pass_tp} {output.tp}"
         " && cp {input.pass_fp} {output.fp}"
-        " && cp {input.relaxed_fn} {output.fn}"
+        " && cp {input.recall_fn} {output.fn}"
 
 rule vcfeval_fb_relaxed_compare_plot:
     """Combined comparison plot: PASS precision + relaxed recall"""
