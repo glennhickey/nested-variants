@@ -49,6 +49,9 @@ scale_type: log1p
 # DeepVariant Docker image version
 dv_version: "1.9.0"
 
+# FreeBayes minimum QUAL for vcfeval comparisons (applied during pre-filtering, not to raw VCF)
+freebayes_min_qual: 20
+
 # vcfeval Docker image for haplotype-aware VCF comparison
 # Leave empty to use rtg directly (must be on PATH); set to use Docker instead
 vcfeval_docker: ""

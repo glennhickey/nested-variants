@@ -3301,6 +3301,7 @@ rule vcfeval_fb_per_sample:
         no_docker="" if config.get("vcfeval_docker") else "--no-docker",
         augref_prefix=f"{AUGREF}#0#",
         min_vcfeval_len=config.get("min_vcfeval_len", 0),
+        fb_min_qual=config.get("freebayes_min_qual", 20),
     shell:
         # Build contig rename map: only rename CHROMs missing the augref prefix
         # (idempotent: works with both old vg [plain names] and fixed vg [augref names])
@@ -3323,9 +3324,10 @@ rule vcfeval_fb_per_sample:
         "      else cat; fi"
         "    | bgzip > {params.out_dir}/call.renamed.vcf.gz"
         " && tabix -fp vcf {params.out_dir}/call.renamed.vcf.gz"
-        # Pre-filter FB VCF to PASS if needed
+        # Pre-filter FB VCF: apply QUAL threshold then PASS filter
         " && if [ '{wildcards.filt}' = 'pass' ]; then"
-        "      bcftools view -f PASS {input.fb_vcf} 2>/dev/null"
+        "      bcftools filter -e 'QUAL<{params.fb_min_qual}' -s LowQual {input.fb_vcf} 2>/dev/null"
+        "        | bcftools view -f PASS 2>/dev/null"
         "        | bgzip > {params.out_dir}/fb.pass.vcf.gz"
         "      && tabix -fp vcf {params.out_dir}/fb.pass.vcf.gz;"
         "    fi"
@@ -3559,16 +3561,18 @@ rule vcfeval_dv_vs_fb_per_sample:
         no_docker="" if config.get("vcfeval_docker") else "--no-docker",
         augref_prefix=f"{AUGREF}#0#",
         min_vcfeval_len=config.get("min_vcfeval_len", 0),
+        fb_min_qual=config.get("freebayes_min_qual", 20),
     shell:
         # Both DV and FB VCFs use augref CHROM names — no rename needed
         "export RTG_MEM=$(({resources.mem_mb} / 1024))g"
         " && mkdir -p {params.out_dir}"
-        # Pre-filter to PASS if needed
+        # Pre-filter to PASS if needed (FB gets QUAL filter first)
         " && if [ '{wildcards.filt}' = 'pass' ]; then"
         "      bcftools view -f PASS {input.dv_vcf} 2>/dev/null"
         "        | bgzip > {params.out_dir}/dv.pass.vcf.gz"
         "      && tabix -fp vcf {params.out_dir}/dv.pass.vcf.gz;"
-        "      bcftools view -f PASS {input.fb_vcf} 2>/dev/null"
+        "      bcftools filter -e 'QUAL<{params.fb_min_qual}' -s LowQual {input.fb_vcf} 2>/dev/null"
+        "        | bcftools view -f PASS 2>/dev/null"
         "        | bgzip > {params.out_dir}/fb.pass.vcf.gz"
         "      && tabix -fp vcf {params.out_dir}/fb.pass.vcf.gz;"
         "    fi"
