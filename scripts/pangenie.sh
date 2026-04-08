@@ -159,17 +159,41 @@ else
     cp "$VCF" "${WORK_TMPDIR}/panel.vcf"
 fi
 
-# Concatenate all FASTQ files from reads index into one uncompressed file
+# Download remote reads and concatenate into one uncompressed file
 echo "Preparing reads"
 > "${WORK_TMPDIR}/reads.fq"
 while IFS= read -r fq || [ -n "$fq" ]; do
+    # Download remote URLs to scratch first
+    case "$fq" in
+        gs://*)
+            LOCAL_FQ="${WORK_TMPDIR}/$(basename "$fq")"
+            echo "Downloading $(basename "$fq") from GCS"
+            gsutil cp "$fq" "$LOCAL_FQ"
+            fq="$LOCAL_FQ"
+            ;;
+        http://*|https://*)
+            LOCAL_FQ="${WORK_TMPDIR}/$(basename "$fq")"
+            echo "Downloading $(basename "$fq")"
+            curl -sL -o "$LOCAL_FQ" "$fq"
+            fq="$LOCAL_FQ"
+            ;;
+    esac
+    # Decompress and append
     case "$fq" in
         *.gz)
             gunzip -c "$fq" >> "${WORK_TMPDIR}/reads.fq"
             ;;
+        *.bam)
+            echo "Converting BAM to FASTQ: $fq"
+            samtools fastq -@ 4 "$fq" >> "${WORK_TMPDIR}/reads.fq"
+            ;;
         *)
             cat "$fq" >> "${WORK_TMPDIR}/reads.fq"
             ;;
+    esac
+    # Clean up downloaded files to save scratch space
+    case "$fq" in
+        "${WORK_TMPDIR}/"*) rm -f "$fq" ;;
     esac
 done < "$READS"
 
