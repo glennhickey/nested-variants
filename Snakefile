@@ -3457,18 +3457,42 @@ rule vcfeval_fb_relaxed_per_sample:
         "    {params.out_dir}/fb.qfilt.vcf.gz"
         "    {params.out_dir}/fb.qfilt.vcf.gz.tbi"
 
-rule vcfeval_fb_relaxed_compare_plot:
-    """Aggregate relaxed call-vs-FB comparison across samples"""
+rule vcfeval_fb_relaxed_combine:
+    """Combine PASS precision (TP/FP) with relaxed recall (FN) per sample.
+
+    Precision from standard PASS comparison: TP and FP from vcfeval-fb/pass/
+    Recall from relaxed comparison: FN from vcfeval-fb-relaxed/
+    Combined into vcfeval-fb-combined/ for plotting.
+    """
     input:
-        tp_baseline=expand(f"{OUT_DIR}/vcfeval-fb-relaxed/{{sample}}/tp-baseline.vcf.gz", sample=SAMPLES),
-        fp=expand(f"{OUT_DIR}/vcfeval-fb-relaxed/{{sample}}/fp.vcf.gz", sample=SAMPLES),
-        fn=expand(f"{OUT_DIR}/vcfeval-fb-relaxed/{{sample}}/fn.vcf.gz", sample=SAMPLES),
+        pass_tp=f"{OUT_DIR}/vcfeval-fb/pass/{{sample}}/tp-baseline.vcf.gz",
+        pass_fp=f"{OUT_DIR}/vcfeval-fb/pass/{{sample}}/fp.vcf.gz",
+        relaxed_fn=f"{OUT_DIR}/vcfeval-fb-relaxed/{{sample}}/fn.vcf.gz",
+    output:
+        tp=f"{OUT_DIR}/vcfeval-fb-combined/{{sample}}/tp-baseline.vcf.gz",
+        fp=f"{OUT_DIR}/vcfeval-fb-combined/{{sample}}/fp.vcf.gz",
+        fn=f"{OUT_DIR}/vcfeval-fb-combined/{{sample}}/fn.vcf.gz",
+    resources:
+        mem_mb=4000,
+        runtime=30,
+    shell:
+        "mkdir -p {OUT_DIR}/vcfeval-fb-combined/{wildcards.sample}"
+        " && cp {input.pass_tp} {output.tp}"
+        " && cp {input.pass_fp} {output.fp}"
+        " && cp {input.relaxed_fn} {output.fn}"
+
+rule vcfeval_fb_relaxed_compare_plot:
+    """Combined comparison plot: PASS precision + relaxed recall"""
+    input:
+        tp_baseline=expand(f"{OUT_DIR}/vcfeval-fb-combined/{{sample}}/tp-baseline.vcf.gz", sample=SAMPLES),
+        fp=expand(f"{OUT_DIR}/vcfeval-fb-combined/{{sample}}/fp.vcf.gz", sample=SAMPLES),
+        fn=expand(f"{OUT_DIR}/vcfeval-fb-combined/{{sample}}/fn.vcf.gz", sample=SAMPLES),
     output:
         f"{OUT_DIR}/merged.call-vs-fb.relaxed.vcfeval-compare.png",
         f"{OUT_DIR}/merged.call-vs-fb.relaxed.vcfeval-compare.tsv",
     params:
         vcfeval_dirs=lambda wc, input: ",".join(
-            [f"{OUT_DIR}/vcfeval-fb-relaxed/{s}" for s in SAMPLES]),
+            [f"{OUT_DIR}/vcfeval-fb-combined/{s}" for s in SAMPLES]),
         sample_names=",".join(SAMPLES),
     resources:
         mem_mb=32000,
@@ -3478,22 +3502,22 @@ rule vcfeval_fb_relaxed_compare_plot:
         " {OUT_DIR}/merged.call-vs-fb.relaxed"
         " --vcfeval-dirs {params.vcfeval_dirs}"
         " --samples {params.sample_names}"
-        " --label-a 'Call (all)' --label-b 'FreeBayes (QUAL>={config[freebayes_min_qual]})'"
-        " --title '{REF} Call (unfiltered) vs FreeBayes (vcfeval)'"
+        " --label-a 'Call (PASS)' --label-b 'FreeBayes (QUAL>={config[freebayes_min_qual]})'"
+        " --title '{REF} Call vs FreeBayes — relaxed recall (vcfeval)'"
         " --no-sv"
 
 rule vcfeval_fb_relaxed_lr_compare_plot:
-    """Aggregate relaxed call-vs-FB comparison for long-read samples"""
+    """Combined comparison plot for long-read: PASS precision + relaxed recall"""
     input:
-        tp_baseline=expand(f"{OUT_DIR}/vcfeval-fb-relaxed/{{sample}}/tp-baseline.vcf.gz", sample=LR_SAMPLES),
-        fp=expand(f"{OUT_DIR}/vcfeval-fb-relaxed/{{sample}}/fp.vcf.gz", sample=LR_SAMPLES),
-        fn=expand(f"{OUT_DIR}/vcfeval-fb-relaxed/{{sample}}/fn.vcf.gz", sample=LR_SAMPLES),
+        tp_baseline=expand(f"{OUT_DIR}/vcfeval-fb-combined/{{sample}}/tp-baseline.vcf.gz", sample=LR_SAMPLES),
+        fp=expand(f"{OUT_DIR}/vcfeval-fb-combined/{{sample}}/fp.vcf.gz", sample=LR_SAMPLES),
+        fn=expand(f"{OUT_DIR}/vcfeval-fb-combined/{{sample}}/fn.vcf.gz", sample=LR_SAMPLES),
     output:
         f"{OUT_DIR}/merged.lr.call-vs-fb.relaxed.vcfeval-compare.png",
         f"{OUT_DIR}/merged.lr.call-vs-fb.relaxed.vcfeval-compare.tsv",
     params:
         vcfeval_dirs=lambda wc, input: ",".join(
-            [f"{OUT_DIR}/vcfeval-fb-relaxed/{s}" for s in LR_SAMPLES]),
+            [f"{OUT_DIR}/vcfeval-fb-combined/{s}" for s in LR_SAMPLES]),
         sample_names=",".join(LR_SAMPLES),
     resources:
         mem_mb=32000,
@@ -3503,8 +3527,8 @@ rule vcfeval_fb_relaxed_lr_compare_plot:
         " {OUT_DIR}/merged.lr.call-vs-fb.relaxed"
         " --vcfeval-dirs {params.vcfeval_dirs}"
         " --samples {params.sample_names}"
-        " --label-a 'Call (all)' --label-b 'FreeBayes (QUAL>={config[freebayes_min_qual]})'"
-        " --title '{REF} Long-Read Call (unfiltered) vs FreeBayes (vcfeval)'"
+        " --label-a 'Call (PASS)' --label-b 'FreeBayes (QUAL>={config[freebayes_min_qual]})'"
+        " --title '{REF} Long-Read Call vs FreeBayes — relaxed recall (vcfeval)'"
         " --no-sv"
 
 rule vcfeval_fb_compare_plot:
