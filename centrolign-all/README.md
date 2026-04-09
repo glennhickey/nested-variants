@@ -2,7 +2,8 @@
 
 Multi-chromosome centromere augref analysis. Runs the augref +
 deconstruct pipeline on each chromosome independently, then aggregates
-results into cross-chromosome summary figures.
+results into cross-chromosome summary figures. Optionally maps reads
+and calls variants with vg call and DeepVariant.
 
 ## Prerequisites
 
@@ -15,33 +16,65 @@ source ../venv-nested-variants/bin/activate
 Place `*.gbz` files (one per chromosome) in this directory. Chromosomes
 are auto-discovered from GBZ filenames (excluding `*.giraffe.gbz`).
 
+For mapping/calling, place HiFi read files in `reads/` named as
+`{chrom}.{sample}.{hap}.real.fastq.gz`. Both haplotypes (.1 and .2) for
+a sample are concatenated before mapping. Samples are auto-discovered.
+
 ## Running
 
-### Local (subset)
+### Local
 
 ```bash
-snakemake --cores 8 --config 'chroms=chr12,chr17'
+# Subset of chromosomes:
+snakemake --cores 8 --config 'chroms=chr12,chr17' mem_gb=14
+
+# All chromosomes (if enough memory):
+snakemake --cores 8
 ```
 
-### Cluster (all chromosomes)
+### Cluster (SLURM)
 
 ```bash
-snakemake --profile ../profiles/slurm
+snakemake --profile ../profiles/slurm \
+  --default-resources slurm_partition=long
 ```
 
-### Cluster (subset)
+Subset:
 
 ```bash
-snakemake --profile ../profiles/slurm --config 'chroms=chr12,chr17'
+snakemake --profile ../profiles/slurm \
+  --default-resources slurm_partition=long \
+  --config 'chroms=chr12,chr17'
+```
+
+If a chromosome has loops that prevent haplotype index construction:
+
+```bash
+snakemake --profile ../profiles/slurm \
+  --default-resources slurm_partition=long \
+  --config 'skip_hapl=chr6'
 ```
 
 Output goes to `output-all/`.
 
 ## Output figures
 
+### Deconstruct (panels 1-4, no reads required)
+
 | Figure | Description |
 |--------|-------------|
 | `1.augref-summary.png` | Segment lengths (cumulative + log-log) + density ideogram |
 | `2.deconstruct-summary.png` | Aggregate variant types, size distribution, AF spectrum, per-sample |
 | `3.deconstruct-by-chrom.png` | SNP, MNP/Indel, SV counts + AF spectrum by chromosome |
-| `4.per-sample-by-chrom.png` | Per-sample SNP, MNP/Indel, SV box plots by chromosome |
+| `4.per-sample-by-chrom.png` | Deconstruct per-sample counts by chromosome (off-ref + on-ref) |
+
+### Mapping and calling (panels 5-8b, require reads)
+
+| Figure | Description |
+|--------|-------------|
+| `5.call-summary.png` | Aggregate vg call variant types, size dist, AF, per-sample |
+| `6.call-by-chrom.png` | vg call SNP/MNP-Indel/SV counts + AF by chromosome |
+| `6b.call-per-sample-by-chrom.png` | vg call per-sample counts by chromosome (off-ref + on-ref) |
+| `7.deepvariant-summary.png` | Aggregate DeepVariant variant types, size dist, AF, per-sample |
+| `8.deepvariant-by-chrom.png` | DeepVariant SNP/MNP-Indel/SV counts + AF by chromosome |
+| `8b.dv-per-sample-by-chrom.png` | DeepVariant per-sample counts by chromosome (off-ref + on-ref) |
