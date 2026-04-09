@@ -26,6 +26,7 @@ GBZ=""
 REF=""
 OUTPUT_DIR="."
 OUTPUT_NAME=""
+HAPL_OPTS=""
 
 # SLURM resource defaults
 CPUS="16"
@@ -73,6 +74,10 @@ while [[ $# -gt 0 ]]; do
         --local)
             LOCAL=true
             shift
+            ;;
+        --haplotypes-opts)
+            HAPL_OPTS="$2"
+            shift 2
             ;;
         -h|--help)
             echo "Usage: $0 --gbz <file.gbz> --ref <ref> --out-dir <dir> --out-name <name> [options]"
@@ -144,7 +149,7 @@ RI="${OUTPUT_DIR}/${OUTPUT_NAME%.hapl}.ri.tmp"
 # 4. Clean up intermediate files
 CMD="/usr/bin/time -v vg index -t ${CPUS} -j \"${DIST}\" \"${GBZ}\" --no-nested-distance -P ${REF} && \
 /usr/bin/time -v vg gbwt --num-threads ${CPUS} -r \"${RI}\" -Z \"${GBZ}\" && \
-/usr/bin/time -v vg haplotypes -t ${CPUS} -H \"${HAPL}\" -d \"${DIST}\" -r \"${RI}\" \"${GBZ}\" && \
+/usr/bin/time -v vg haplotypes -t ${CPUS} -H \"${HAPL}\" -d \"${DIST}\" -r \"${RI}\" ${HAPL_OPTS} \"${GBZ}\" && \
 rm -f \"${DIST}\" \"${RI}\""
 
 if $LOCAL; then
