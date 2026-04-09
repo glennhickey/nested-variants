@@ -75,6 +75,11 @@ def pangenie_enabled():
     val = config.get("enable_pangenie", "true")
     return str(val).lower() not in ("false", "0", "no", "")
 
+def freebayes_longread_enabled():
+    """True when FreeBayes on long reads is enabled (default true)."""
+    val = config.get("enable_freebayes_longread", "true")
+    return str(val).lower() not in ("false", "0", "no", "")
+
 def surject_filtering():
     """True when min_surject_len > 0 (filter contigs for surject/call)."""
     val = config.get("min_surject_len", 0)
@@ -161,10 +166,11 @@ def annotation_snp_outputs(callers=None):
                 for s in SAMPLES:
                     outputs.append(f"{OUT_DIR}/{s}.freebayes.{plot}.{filt}.png")
                 outputs.append(f"{OUT_DIR}/merged.freebayes.{plot}.{filt}.png")
-                for s in LR_SAMPLES:
-                    outputs.append(f"{OUT_DIR}/{s}.freebayes.{plot}.{filt}.png")
-                if LR_SAMPLES:
-                    outputs.append(f"{OUT_DIR}/merged.longread.freebayes.{plot}.{filt}.png")
+                if freebayes_longread_enabled():
+                    for s in LR_SAMPLES:
+                        outputs.append(f"{OUT_DIR}/{s}.freebayes.{plot}.{filt}.png")
+                    if LR_SAMPLES:
+                        outputs.append(f"{OUT_DIR}/merged.longread.freebayes.{plot}.{filt}.png")
         if "pangenie" in callers and pangenie_enabled():
             for filt in ["all", "pass"]:
                 for s in SAMPLES:
@@ -197,10 +203,11 @@ def annotation_snp_outputs(callers=None):
                     for s in SAMPLES:
                         outputs.append(f"{OUT_DIR}/{s}.freebayes.{plot}.{filt}.png")
                     outputs.append(f"{OUT_DIR}/merged.freebayes.{plot}.{filt}.png")
-                    for s in LR_SAMPLES:
-                        outputs.append(f"{OUT_DIR}/{s}.freebayes.{plot}.{filt}.png")
-                    if LR_SAMPLES:
-                        outputs.append(f"{OUT_DIR}/merged.longread.freebayes.{plot}.{filt}.png")
+                    if freebayes_longread_enabled():
+                        for s in LR_SAMPLES:
+                            outputs.append(f"{OUT_DIR}/{s}.freebayes.{plot}.{filt}.png")
+                        if LR_SAMPLES:
+                            outputs.append(f"{OUT_DIR}/merged.longread.freebayes.{plot}.{filt}.png")
             if "pangenie" in callers and pangenie_enabled():
                 for filt in ["all", "pass"]:
                     for s in SAMPLES:
@@ -245,12 +252,13 @@ def annotation_stats_outputs(callers=None):
                     outputs.append(f"{OUT_DIR}/merged.longread.dv.variants.{filt}.{suffix}")
         if "freebayes" in callers:
             for filt in ["all", "pass"]:
-                for s in SAMPLES + LR_SAMPLES:
+                fb_samples = SAMPLES + LR_SAMPLES if freebayes_longread_enabled() else SAMPLES
+                for s in fb_samples:
                     outputs.append(f"{OUT_DIR}/{s}.fb.sites.{filt}.{suffix}")
                     outputs.append(f"{OUT_DIR}/{s}.fb.variants.{filt}.{suffix}")
                 outputs.append(f"{OUT_DIR}/merged.fb.sites.{filt}.{suffix}")
                 outputs.append(f"{OUT_DIR}/merged.fb.variants.{filt}.{suffix}")
-                if LR_SAMPLES:
+                if LR_SAMPLES and freebayes_longread_enabled():
                     outputs.append(f"{OUT_DIR}/merged.longread.fb.sites.{filt}.{suffix}")
                     outputs.append(f"{OUT_DIR}/merged.longread.fb.variants.{filt}.{suffix}")
         if "pangenie" in callers and pangenie_enabled():
@@ -353,12 +361,13 @@ def giab_strat_stats_outputs(callers=None):
                     outputs.append(f"{OUT_DIR}/merged.longread.dv.variants.{filt}.{suffix}")
         if "freebayes" in callers:
             for filt in ["all", "pass"]:
-                for s in SAMPLES + LR_SAMPLES:
+                fb_samples = SAMPLES + LR_SAMPLES if freebayes_longread_enabled() else SAMPLES
+                for s in fb_samples:
                     outputs.append(f"{OUT_DIR}/{s}.fb.sites.{filt}.{suffix}")
                     outputs.append(f"{OUT_DIR}/{s}.fb.variants.{filt}.{suffix}")
                 outputs.append(f"{OUT_DIR}/merged.fb.sites.{filt}.{suffix}")
                 outputs.append(f"{OUT_DIR}/merged.fb.variants.{filt}.{suffix}")
-                if LR_SAMPLES:
+                if LR_SAMPLES and freebayes_longread_enabled():
                     outputs.append(f"{OUT_DIR}/merged.longread.fb.sites.{filt}.{suffix}")
                     outputs.append(f"{OUT_DIR}/merged.longread.fb.variants.{filt}.{suffix}")
         if "pangenie" in callers and pangenie_enabled():
@@ -397,7 +406,7 @@ def per_sample_stats_outputs(callers=None):
             for filt in ["all", "pass"]:
                 outputs.append(f"{OUT_DIR}/merged.fb.sites.{filt}.{suffix}")
                 outputs.append(f"{OUT_DIR}/merged.fb.variants.{filt}.{suffix}")
-                if LR_SAMPLES:
+                if LR_SAMPLES and freebayes_longread_enabled():
                     outputs.append(f"{OUT_DIR}/merged.longread.fb.sites.{filt}.{suffix}")
                     outputs.append(f"{OUT_DIR}/merged.longread.fb.variants.{filt}.{suffix}")
         if "pangenie" in callers and pangenie_enabled():
@@ -427,7 +436,7 @@ def per_sample_stats_outputs(callers=None):
                 for filt in ["all", "pass"]:
                     outputs.append(f"{OUT_DIR}/merged.fb.sites.{filt}.{suffix}")
                     outputs.append(f"{OUT_DIR}/merged.fb.variants.{filt}.{suffix}")
-                    if LR_SAMPLES:
+                    if LR_SAMPLES and freebayes_longread_enabled():
                         outputs.append(f"{OUT_DIR}/merged.longread.fb.sites.{filt}.{suffix}")
                         outputs.append(f"{OUT_DIR}/merged.longread.fb.variants.{filt}.{suffix}")
             if "pangenie" in callers and pangenie_enabled():
@@ -500,7 +509,7 @@ def vcfeval_fb_compare_outputs():
 
 def vcfeval_lr_fb_compare_outputs():
     """Return vcfeval-based call-vs-FB comparison outputs for long-read samples."""
-    if not LR_SAMPLES:
+    if not LR_SAMPLES or not freebayes_longread_enabled():
         return []
     outputs = []
     for filt in ["all", "pass"]:
@@ -540,7 +549,7 @@ def vcfeval_dv_vs_fb_compare_outputs():
 
 def vcfeval_lr_dv_vs_fb_compare_outputs():
     """Return vcfeval-based DV-vs-FB comparison outputs for long-read samples."""
-    if not LR_SAMPLES:
+    if not LR_SAMPLES or not freebayes_longread_enabled():
         return []
     outputs = []
     for filt in ["all", "pass"]:
@@ -719,13 +728,15 @@ def summary_figure_outputs():
     if LR_SAMPLES:
         outputs.append(f"{OUT_DIR}/7.call-summary-longread.png")
         outputs.append(f"{OUT_DIR}/8.deepvariant-summary-longread.png")
-        outputs.append(f"{OUT_DIR}/8b.freebayes-summary-longread.png")
+        if freebayes_longread_enabled():
+            outputs.append(f"{OUT_DIR}/8b.freebayes-summary-longread.png")
         outputs.append(f"{OUT_DIR}/9.concordance-summary-longread.png")
         outputs.append(f"{OUT_DIR}/9b.concordance-onref-summary-longread.png")
         outputs.append(f"{OUT_DIR}/9c.coverage-summary-longread.png")
         outputs.append(f"{OUT_DIR}/9d.mapq-summary-longread.png")
-        outputs.append(f"{OUT_DIR}/11.freebayes-concordance-summary-longread.png")
-        outputs.append(f"{OUT_DIR}/11b.freebayes-concordance-onref-summary-longread.png")
+        if freebayes_longread_enabled():
+            outputs.append(f"{OUT_DIR}/11.freebayes-concordance-summary-longread.png")
+            outputs.append(f"{OUT_DIR}/11b.freebayes-concordance-onref-summary-longread.png")
     if config.get("pantree_vcf", ""):
         outputs.append(f"{OUT_DIR}/6.pantree-summary.png")
     return outputs
@@ -763,7 +774,7 @@ rule all:
         *vcfeval_fb_compare_outputs(),
         *vcfeval_lr_fb_compare_outputs(),
         *([f"{OUT_DIR}/merged.call-vs-fb.relaxed.vcfeval-compare.png"] if SAMPLES else []),
-        *([f"{OUT_DIR}/merged.lr.call-vs-fb.relaxed.vcfeval-compare.png"] if LR_SAMPLES else []),
+        *([f"{OUT_DIR}/merged.lr.call-vs-fb.relaxed.vcfeval-compare.png"] if LR_SAMPLES and freebayes_longread_enabled() else []),
         *vcfeval_dv_vs_fb_compare_outputs(),
         *vcfeval_lr_dv_vs_fb_compare_outputs(),
         *compare_call_pg_outputs(),
@@ -784,8 +795,9 @@ rule all:
         expand("{out}/{s}.contig-depth.png", out=OUT_DIR, s=LR_SAMPLES),
         expand("{out}/{s}.deepvariant.vcf.gz", out=OUT_DIR, s=LR_SAMPLES),
         expand("{out}/{s}.dv-offref.png", out=OUT_DIR, s=LR_SAMPLES),
-        expand("{out}/{s}.freebayes.vcf.gz", out=OUT_DIR, s=LR_SAMPLES),
-        expand("{out}/{s}.fb-offref.png", out=OUT_DIR, s=LR_SAMPLES),
+        *(expand("{out}/{s}.freebayes.vcf.gz", out=OUT_DIR, s=LR_SAMPLES)
+          + expand("{out}/{s}.fb-offref.png", out=OUT_DIR, s=LR_SAMPLES)
+          if freebayes_longread_enabled() else []),
         expand("{out}/{s}.call.{mode}.{filt}.vcf-stats.tsv", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
         expand("{out}/{s}.call.{mode}.{filt}.variant-types.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
         expand("{out}/{s}.call.{mode}.{filt}.size-dist.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
@@ -794,10 +806,11 @@ rule all:
         expand("{out}/{s}.dv.{mode}.{filt}.variant-types.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
         expand("{out}/{s}.dv.{mode}.{filt}.size-dist.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
         expand("{out}/{s}.dv.{mode}.{filt}.size-dist-log.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
-        expand("{out}/{s}.fb.{mode}.{filt}.vcf-stats.tsv", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
-        expand("{out}/{s}.fb.{mode}.{filt}.variant-types.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
-        expand("{out}/{s}.fb.{mode}.{filt}.size-dist.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
-        expand("{out}/{s}.fb.{mode}.{filt}.size-dist-log.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
+        *(expand("{out}/{s}.fb.{mode}.{filt}.vcf-stats.tsv", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"])
+          + expand("{out}/{s}.fb.{mode}.{filt}.variant-types.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"])
+          + expand("{out}/{s}.fb.{mode}.{filt}.size-dist.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"])
+          + expand("{out}/{s}.fb.{mode}.{filt}.size-dist-log.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"])
+          if freebayes_longread_enabled() else []),
         expand("{out}/{s}.call.sites.{filt}.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.call.sites.{filt}.variant-types.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.call.sites.{filt}.size-dist.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
@@ -912,10 +925,10 @@ rule all:
           if pangenie_enabled() else []),
         # merged long-read outputs (when longread_samples configured)
         *([f"{OUT_DIR}/merged.longread.call.vcf.gz",
-           f"{OUT_DIR}/merged.longread.deepvariant.vcf.gz",
-           f"{OUT_DIR}/merged.longread.freebayes.vcf.gz"]
+           f"{OUT_DIR}/merged.longread.deepvariant.vcf.gz"]
+          + ([f"{OUT_DIR}/merged.longread.freebayes.vcf.gz"] if freebayes_longread_enabled() else [])
           + [f"{OUT_DIR}/merged.longread.{caller}.{mode}.{filt}.{suffix}"
-             for caller in ["call", "dv", "fb"]
+             for caller in ["call", "dv"] + (["fb"] if freebayes_longread_enabled() else [])
              for mode in ["sites", "variants"]
              for filt in ["all", "pass"]
              for suffix in ["vcf-stats.tsv", "variant-types.png", "size-dist.png",
