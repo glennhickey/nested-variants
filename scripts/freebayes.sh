@@ -24,6 +24,7 @@ SAMPLE=""
 OUTPUT_DIR="."
 OUTPUT_NAME=""
 REGION_SIZE=100000
+EXTRA_ARGS=""
 
 # SLURM resource defaults
 CPUS="16"
@@ -58,6 +59,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --region-size)
             REGION_SIZE="$2"
+            shift 2
+            ;;
+        --extra-args)
+            EXTRA_ARGS="$2"
             shift 2
             ;;
         --cpus)
@@ -183,7 +188,7 @@ echo "Generated $(wc -l < "$REGIONS_FILE") regions (${REGION_SIZE}bp chunks)"
 # then bgzip and index.
 /usr/bin/time -v cat "$REGIONS_FILE" \
   | parallel -k -j "$CPUS" \
-      freebayes -f "$REF" "$BAM" --region {} \
+      freebayes -f "$REF" "$BAM" --region {} $EXTRA_ARGS \
   | awk 'BEGIN{OFS="\t"; p=1} /^#/{if(p)print; if(/^#CHROM/)p=0; next} {if($7==".") $7="PASS"; print}' \
   | bcftools annotate -x FORMAT/DPR \
   | bcftools reheader -s <(echo "$SAMPLE") \
