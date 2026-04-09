@@ -58,6 +58,9 @@ freebayes_longread_args: "--haplotype-length 0 --limit-coverage 100"
 # FreeBayes extra args for short-read samples (empty = defaults)
 freebayes_extra_args: ""
 
+# Set to false to skip FreeBayes for long-read samples (default: true)
+# enable_freebayes_longread: true
+
 # vcfeval Docker image for haplotype-aware VCF comparison
 # Leave empty to use rtg directly (must be on PATH); set to use Docker instead
 vcfeval_docker: ""
