@@ -96,7 +96,7 @@ rule gbz_to_vg:
         "{chrom}.vg",
     resources:
         mem_mb=32000,
-        runtime=480,
+        runtime=960,
     shell:
         "vg convert -f {input}"
         " | python3 fix-path-names.py --ref {REF} --header-only"
@@ -131,7 +131,7 @@ rule gbz:
         f"{OUT}/{{chrom}}.augref.gbz",
     resources:
         mem_mb=32000,
-        runtime=480,
+        runtime=960,
     shell:
         "vg gbwt -G {input} --gbz-format -g {output}"
 
@@ -141,7 +141,7 @@ rule gbz:
 rule length_hist:
     resources:
         mem_mb=32000,
-        runtime=480,
+        runtime=960,
     """All augref-segs -> cumulative length histogram"""
     input:
         expand(f"{OUT}/{{c}}.augref-segs.tsv", c=CHROMS),
@@ -154,7 +154,7 @@ rule length_hist:
 rule length_hist_log:
     resources:
         mem_mb=32000,
-        runtime=480,
+        runtime=960,
     """All augref-segs -> log-log length histogram"""
     input:
         expand(f"{OUT}/{{c}}.augref-segs.tsv", c=CHROMS),
@@ -167,7 +167,7 @@ rule length_hist_log:
 rule concat_segs:
     resources:
         mem_mb=32000,
-        runtime=480,
+        runtime=960,
     """Concatenate per-chromosome augref-segs, rewriting ref_contig to include chrom"""
     input:
         expand(f"{OUT}/{{c}}.augref-segs.tsv", c=CHROMS),
@@ -188,7 +188,7 @@ rule concat_segs:
 rule segment_density:
     resources:
         mem_mb=32000,
-        runtime=480,
+        runtime=960,
     """All augref-segs -> chromosome density ideogram"""
     input:
         f"{OUT}/all.augref-segs.tsv",
@@ -231,7 +231,7 @@ rule fasta:
     threads: 8
     resources:
         mem_mb=32000,
-        runtime=480,
+        runtime=960,
     shell:
         "{SCRIPTS}/fasta.sh"
         " --gbz {input}"
@@ -251,7 +251,7 @@ rule annotate_tr:
         f"{OUT}/{{chrom}}.tr.vcf.gz",
     resources:
         mem_mb=32000,
-        runtime=480,
+        runtime=960,
     shell:
         "python3 {SCRIPTS}/annotate-tr.py"
         " --vcf {input.vcf} --ref {input.ref}"
@@ -269,7 +269,7 @@ rule extract_records:
         f"{OUT}/{{chrom}}.sites.records.tsv",
     resources:
         mem_mb=8000,
-        runtime=480,
+        runtime=960,
     shell:
         "python3 {SCRIPTS}/vcf-extract-stats.py {input} > {output}"
 
@@ -304,7 +304,7 @@ rule vcf_stats_per_chrom:
 rule concat_records:
     resources:
         mem_mb=32000,
-        runtime=480,
+        runtime=960,
     """Concatenate per-chromosome per-record TSVs"""
     input:
         expand(f"{OUT}/{{c}}.sites.records.tsv", c=CHROMS),
@@ -322,7 +322,7 @@ rule vcf_stats_aggregate:
         segs=f"{OUT}/all.augref-segs.tsv",
     resources:
         mem_mb=64000,
-        runtime=480,
+        runtime=960,
     output:
         tsv=f"{OUT}/all.sites.vcf-stats.tsv",
         types=f"{OUT}/all.sites.variant-types.png",
@@ -341,7 +341,7 @@ rule vcf_stats_aggregate:
 rule per_sample_aggregate:
     resources:
         mem_mb=32000,
-        runtime=480,
+        runtime=960,
     """Combine per-chromosome per-sample TSVs into aggregate per-sample plot"""
     input:
         expand(f"{OUT}/{{c}}.sites.per-sample-types.tsv", c=CHROMS),
@@ -363,7 +363,7 @@ rule per_sample_aggregate:
 rule summary_deconstruct:
     resources:
         mem_mb=32000,
-        runtime=480,
+        runtime=960,
     """Compose aggregate deconstruct summary (figure 2)"""
     input:
         types=f"{OUT}/all.sites.variant-types.png",
@@ -390,7 +390,7 @@ rule deconstruct_by_chrom:
     """Per-chromosome breakdown plots (variant counts, AF, per-sample)"""
     resources:
         mem_mb=64000,
-        runtime=480,
+        runtime=960,
     input:
         stats=expand(f"{OUT}/{{c}}.sites.vcf-stats.tsv", c=CHROMS),
         per_sample=expand(f"{OUT}/{{c}}.sites.per-sample-types.tsv", c=CHROMS),
@@ -430,7 +430,7 @@ rule deconstruct_by_chrom:
 rule summary_deconstruct_by_chrom:
     resources:
         mem_mb=32000,
-        runtime=480,
+        runtime=960,
     """Compose per-chromosome variant counts + AF (figure 3)"""
     input:
         snp=f"{OUT}/all.by-chrom.snp-counts.png",
@@ -454,7 +454,7 @@ rule summary_deconstruct_by_chrom:
 rule summary_per_sample_by_chrom:
     resources:
         mem_mb=32000,
-        runtime=480,
+        runtime=960,
     """Compose per-sample by chromosome (figure 4)"""
     input:
         snp=f"{OUT}/all.by-chrom.per-sample-snp.png",
@@ -509,7 +509,7 @@ if HAS_READS:
         """Concatenate per-haplotype fastqs into one per-sample fastq"""
         resources:
             mem_mb=32000,
-            runtime=480,
+            runtime=960,
         input:
             lambda wc: CHROM_SAMPLES.get(wc.chrom, {}).get(wc.sample, []),
         output:
@@ -535,7 +535,7 @@ if HAS_READS:
         """Create reads index file for giraffe.sh"""
         resources:
             mem_mb=32000,
-            runtime=480,
+            runtime=960,
         input:
             f"{OUT}/{{chrom}}.{{sample}}.fastq.gz",
         output:
@@ -656,7 +656,7 @@ if HAS_READS:
         """VCF -> PASS-only VCF"""
         resources:
             mem_mb=32000,
-            runtime=480,
+            runtime=960,
         input:
             f"{OUT}/{{chrom}}.{{sample}}.{{caller}}.vcf.gz",
         output:
@@ -721,7 +721,7 @@ if HAS_READS:
             per_sample_tsv=f"{OUT}/{{chrom}}.call.sites.pass.per-sample-types.tsv",
         resources:
             mem_mb=32000,
-            runtime=480,
+            runtime=960,
         shell:
             "Rscript vcf-stats.R"
             " {input.vcf} {OUT}/{wildcards.chrom}.call.sites.pass"
@@ -746,7 +746,7 @@ if HAS_READS:
             per_sample_tsv=f"{OUT}/{{chrom}}.dv.sites.pass.per-sample-types.tsv",
         resources:
             mem_mb=32000,
-            runtime=480,
+            runtime=960,
         shell:
             "Rscript vcf-stats.R"
             " {input.vcf} {OUT}/{wildcards.chrom}.dv.sites.pass"
@@ -762,7 +762,7 @@ if HAS_READS:
         """Concatenate per-chrom call records"""
         resources:
             mem_mb=32000,
-            runtime=480,
+            runtime=960,
         input:
             expand(f"{OUT}/{{c}}.call.sites.pass.records.tsv", c=CALL_CHROMS),
         output:
@@ -785,7 +785,7 @@ if HAS_READS:
             size_dist_log=f"{OUT}/all.call.sites.pass.size-dist-log.png",
         resources:
             mem_mb=64000,
-            runtime=480,
+            runtime=960,
         shell:
             "Rscript vcf-stats.R"
             " {input.records} {OUT}/all.call.sites.pass"
@@ -799,7 +799,7 @@ if HAS_READS:
         """Combine per-chrom call per-sample TSVs into aggregate plot"""
         resources:
             mem_mb=32000,
-            runtime=480,
+            runtime=960,
         input:
             expand(f"{OUT}/{{c}}.call.sites.pass.per-sample-types.tsv", c=CALL_CHROMS),
         output:
@@ -821,7 +821,7 @@ if HAS_READS:
         """Concatenate per-chrom DV records"""
         resources:
             mem_mb=32000,
-            runtime=480,
+            runtime=960,
         input:
             expand(f"{OUT}/{{c}}.dv.sites.pass.records.tsv", c=CALL_CHROMS),
         output:
@@ -844,7 +844,7 @@ if HAS_READS:
             size_dist_log=f"{OUT}/all.dv.sites.pass.size-dist-log.png",
         resources:
             mem_mb=64000,
-            runtime=480,
+            runtime=960,
         shell:
             "Rscript vcf-stats.R"
             " {input.records} {OUT}/all.dv.sites.pass"
@@ -858,7 +858,7 @@ if HAS_READS:
         """Combine per-chrom DV per-sample TSVs into aggregate plot"""
         resources:
             mem_mb=32000,
-            runtime=480,
+            runtime=960,
         input:
             expand(f"{OUT}/{{c}}.dv.sites.pass.per-sample-types.tsv", c=CALL_CHROMS),
         output:
@@ -886,7 +886,7 @@ if HAS_READS:
             f"{OUT}/{{chrom}}.call.sites.pass.records.tsv",
         resources:
             mem_mb=8000,
-            runtime=480,
+            runtime=960,
         shell:
             "python3 {SCRIPTS}/vcf-extract-stats.py {input} > {output}"
 
@@ -899,7 +899,7 @@ if HAS_READS:
             f"{OUT}/{{chrom}}.dv.sites.pass.records.tsv",
         resources:
             mem_mb=8000,
-            runtime=480,
+            runtime=960,
         shell:
             "python3 {SCRIPTS}/vcf-extract-stats.py {input} > {output}"
 
@@ -908,7 +908,7 @@ if HAS_READS:
         """Per-chromosome call breakdown plots"""
         resources:
             mem_mb=128000,
-            runtime=480,
+            runtime=960,
         input:
             stats=expand(f"{OUT}/{{c}}.call.sites.pass.vcf-stats.tsv", c=CALL_CHROMS),
             per_sample=expand(f"{OUT}/{{c}}.call.sites.pass.per-sample-types.tsv", c=CALL_CHROMS),
@@ -946,7 +946,7 @@ if HAS_READS:
         """Per-chromosome DV breakdown plots"""
         resources:
             mem_mb=128000,
-            runtime=480,
+            runtime=960,
         input:
             stats=expand(f"{OUT}/{{c}}.dv.sites.pass.vcf-stats.tsv", c=CALL_CHROMS),
             per_sample=expand(f"{OUT}/{{c}}.dv.sites.pass.per-sample-types.tsv", c=CALL_CHROMS),
@@ -986,7 +986,7 @@ if HAS_READS:
         """Compose call summary (figure 5)"""
         resources:
             mem_mb=32000,
-            runtime=480,
+            runtime=960,
         input:
             types=f"{OUT}/all.call.sites.pass.variant-types.png",
             sizedist=f"{OUT}/all.call.sites.pass.size-dist-log.png",
@@ -1010,7 +1010,7 @@ if HAS_READS:
         """Compose call by chromosome (figure 6)"""
         resources:
             mem_mb=32000,
-            runtime=480,
+            runtime=960,
         input:
             snp=f"{OUT}/all.call.by-chrom.snp-counts.png",
             indel=f"{OUT}/all.call.by-chrom.indel-counts.png",
@@ -1034,7 +1034,7 @@ if HAS_READS:
         """Compose DeepVariant summary (figure 7)"""
         resources:
             mem_mb=32000,
-            runtime=480,
+            runtime=960,
         input:
             types=f"{OUT}/all.dv.sites.pass.variant-types.png",
             sizedist=f"{OUT}/all.dv.sites.pass.size-dist-log.png",
@@ -1058,7 +1058,7 @@ if HAS_READS:
         """Compose DeepVariant by chromosome (figure 8)"""
         resources:
             mem_mb=32000,
-            runtime=480,
+            runtime=960,
         input:
             snp=f"{OUT}/all.dv.by-chrom.snp-counts.png",
             indel=f"{OUT}/all.dv.by-chrom.indel-counts.png",
@@ -1082,7 +1082,7 @@ if HAS_READS:
         """Compose call per-sample by chromosome (figure 6b)"""
         resources:
             mem_mb=32000,
-            runtime=480,
+            runtime=960,
         input:
             snp=f"{OUT}/all.call.by-chrom.per-sample-snp.png",
             snp_onref=f"{OUT}/all.call.by-chrom.per-sample-snp-onref.png",
@@ -1110,7 +1110,7 @@ if HAS_READS:
         """Compose DV per-sample by chromosome (figure 8b)"""
         resources:
             mem_mb=32000,
-            runtime=480,
+            runtime=960,
         input:
             snp=f"{OUT}/all.dv.by-chrom.per-sample-snp.png",
             snp_onref=f"{OUT}/all.dv.by-chrom.per-sample-snp-onref.png",
@@ -1139,7 +1139,7 @@ if HAS_READS:
 rule summary_augref:
     resources:
         mem_mb=32000,
-        runtime=480,
+        runtime=960,
     """Compose augref segment summary (figure 1)"""
     input:
         hist=f"{OUT}/all.augref-length-hist.png",
