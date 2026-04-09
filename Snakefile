@@ -2775,7 +2775,7 @@ rule compare_call_dv:
         mem_mb=256000,
         runtime=2880,
     shell:
-        "Rscript scripts/vcf-compare.R {input.call_vcf} {input.dv_vcf}"
+        "ulimit -s unlimited; Rscript scripts/vcf-compare.R {input.call_vcf} {input.dv_vcf}"
         " {OUT_DIR}/merged.call-vs-dv.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt}"
         " --label-a Call --label-b DeepVariant"
@@ -3278,7 +3278,7 @@ rule compare_call_fb:
         mem_mb=256000,
         runtime=2880,
     shell:
-        "Rscript scripts/vcf-compare.R {input.call_vcf} {input.fb_vcf}"
+        "ulimit -s unlimited; Rscript scripts/vcf-compare.R {input.call_vcf} {input.fb_vcf}"
         " {OUT_DIR}/merged.call-vs-fb.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt}"
         " --label-a Call --label-b FreeBayes"
@@ -4865,7 +4865,7 @@ rule compare_call_pg:
         mem_mb=256000,
         runtime=2880,
     shell:
-        "Rscript scripts/vcf-compare.R {input.call_vcf} {input.pg_vcf}"
+        "ulimit -s unlimited; Rscript scripts/vcf-compare.R {input.call_vcf} {input.pg_vcf}"
         " {OUT_DIR}/merged.call-vs-pg.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt}"
         " --label-a Call --label-b PanGenie"
