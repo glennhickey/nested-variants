@@ -1160,7 +1160,7 @@ rule length_hist:
         mem_mb=256000,
         runtime=2880,
     shell:
-        "Rscript scripts/offref-length-hist.R {output} {input} TRUE"
+        "ulimit -s unlimited && Rscript scripts/offref-length-hist.R {output} {input} TRUE"
 
 rule segment_density:
     """Augref segments → off-reference segment density ideogram"""
@@ -1177,7 +1177,7 @@ rule segment_density:
              f"--segdups '{config['annot_segdups']}'" if config.get("annot_segdups", "") else "",
              f"--genes '{config['annot_genes']}'" if config.get("annot_genes", "") else ""]),
     shell:
-        "Rscript scripts/chrom-density-tsv.R"
+        "ulimit -s unlimited && Rscript scripts/chrom-density-tsv.R"
         " {input} {output}"
         " '{REF} Off-Reference Segment Density'"
         " {config[min_augref_len]} '{config[refgaps_bed]}' {config[scale_type]}"
@@ -1200,7 +1200,7 @@ rule plots:
              f"--segdups '{config['annot_segdups']}'" if config.get("annot_segdups", "") else "",
              f"--genes '{config['annot_genes']}'" if config.get("annot_genes", "") else ""]),
     shell:
-        "Rscript scripts/chrom-density-segs.R"
+        "ulimit -s unlimited && Rscript scripts/chrom-density-segs.R"
         " {input.vcf} {input.segs} {output}"
         " '{REF} Off-Reference Variant Density'"
         " 0 '{config[refgaps_bed]}' {config[scale_type]}"
@@ -1412,7 +1412,7 @@ rule annotation_plots:
         mem_mb=256000,
         runtime=2880,
     shell:
-        "Rscript scripts/annotation-plots.R {input.per_seg} {OUT_DIR}/{OUT_NAME}"
+        "ulimit -s unlimited && Rscript scripts/annotation-plots.R {input.per_seg} {OUT_DIR}/{OUT_NAME}"
         " --min-overlap 0.5 --title '{REF} Annotation Overlap'"
         " --genome-coverage {input.genome_cov}"
 
@@ -1475,7 +1475,7 @@ rule annotation_snp_heatmaps:
         mem_mb=256000,
         runtime=2880,
     shell:
-        "Rscript scripts/annotation-plots.R {input.annot}"
+        "ulimit -s unlimited && Rscript scripts/annotation-plots.R {input.annot}"
         " {OUT_DIR}/{wildcards.vcf_prefix}.annot-snp"
         " --vcf {input.vcf}"
         " --augref-prefix 'augref_{REF}#0#'"
@@ -1496,7 +1496,7 @@ rule segment_polymorphism:
     params:
         annot_arg=lambda wc, input: f"--annot {input.annot}" if annotation_inputs() else "",
     shell:
-        "Rscript scripts/segment-polymorphism.R"
+        "ulimit -s unlimited && Rscript scripts/segment-polymorphism.R"
         " --vcf {input.vcf}"
         " --augref-prefix '{AUGREF}#0#'"
         " {params.annot_arg}"
@@ -1601,7 +1601,7 @@ rule contig_depth_plot:
         mem_mb=4000,
         runtime=30,
     shell:
-        "Rscript scripts/contig-depth-plot.R"
+        "ulimit -s unlimited && Rscript scripts/contig-depth-plot.R"
         " --depth {input.depth}"
         " --segs {input.segs}"
         " --sample {wildcards.sample}"
@@ -1650,7 +1650,7 @@ rule mapq_dist_plot:
         gam_arg=lambda wc, input: "--gam-mapq " + ",".join(input.gam_mapq),
         bam_arg=lambda wc, input: "--bam-mapq " + ",".join(input.bam_mapq),
     shell:
-        "Rscript scripts/mapq-dist-plot.R"
+        "ulimit -s unlimited && Rscript scripts/mapq-dist-plot.R"
         " {params.gam_arg}"
         " {params.bam_arg}"
         " --output {output}"
@@ -1698,7 +1698,7 @@ rule contig_depth_summary:
         bam_q5_arg=lambda wc, input: "--bam-q5-depths " + ",".join(input.bam_q5_depths),
         min_surject_len=config.get("min_surject_len", 0),
     shell:
-        "Rscript scripts/contig-depth-summary.R"
+        "ulimit -s unlimited && Rscript scripts/contig-depth-summary.R"
         " {params.pack_arg}"
         " {params.bam_arg}"
         " {params.bam_q5_arg}"
@@ -1886,7 +1886,7 @@ rule call_plots:
         mem_mb=256000,
         runtime=2880,
     shell:
-        "Rscript scripts/chrom-density-segs.R"
+        "ulimit -s unlimited && Rscript scripts/chrom-density-segs.R"
         " {input.vcf} {input.segs} {output}"
         " '{REF} Call Off-Reference Density ({wildcards.sample})'"
         " 0 '{config[refgaps_bed]}' {config[scale_type]}"
@@ -1903,7 +1903,7 @@ rule dv_plots:
         mem_mb=256000,
         runtime=2880,
     shell:
-        "Rscript scripts/chrom-density-segs.R"
+        "ulimit -s unlimited && Rscript scripts/chrom-density-segs.R"
         " {input.vcf} {input.segs} {output}"
         " '{REF} DeepVariant Off-Reference Density ({wildcards.sample})'"
         " 0 '{config[refgaps_bed]}' {config[scale_type]}"
@@ -1920,7 +1920,7 @@ rule fb_plots:
         mem_mb=256000,
         runtime=2880,
     shell:
-        "Rscript scripts/chrom-density-segs.R"
+        "ulimit -s unlimited && Rscript scripts/chrom-density-segs.R"
         " {input.vcf} {input.segs} {output}"
         " '{REF} FreeBayes Off-Reference Density ({wildcards.sample})'"
         " 0 '{config[refgaps_bed]}' {config[scale_type]}"
@@ -1937,7 +1937,7 @@ rule pg_plots:
         mem_mb=256000,
         runtime=2880,
     shell:
-        "Rscript scripts/chrom-density-segs.R"
+        "ulimit -s unlimited && Rscript scripts/chrom-density-segs.R"
         " {input.vcf} {input.segs} {output}"
         " '{REF} PanGenie Off-Reference Density ({wildcards.sample})'"
         " 0 '{config[refgaps_bed]}' {config[scale_type]}"
@@ -2178,7 +2178,7 @@ rule merged_call_plots:
         mem_mb=256000,
         runtime=2880,
     shell:
-        "Rscript scripts/chrom-density-segs.R"
+        "ulimit -s unlimited && Rscript scripts/chrom-density-segs.R"
         " {input.vcf} {input.segs} {output}"
         " '{REF} Merged Call Off-Reference Density'"
         " 0 '{config[refgaps_bed]}' {config[scale_type]}"
@@ -2195,7 +2195,7 @@ rule merged_dv_plots:
         mem_mb=256000,
         runtime=2880,
     shell:
-        "Rscript scripts/chrom-density-segs.R"
+        "ulimit -s unlimited && Rscript scripts/chrom-density-segs.R"
         " {input.vcf} {input.segs} {output}"
         " '{REF} Merged DeepVariant Off-Reference Density'"
         " 0 '{config[refgaps_bed]}' {config[scale_type]}"
@@ -2212,7 +2212,7 @@ rule merged_fb_plots:
         mem_mb=256000,
         runtime=2880,
     shell:
-        "Rscript scripts/chrom-density-segs.R"
+        "ulimit -s unlimited && Rscript scripts/chrom-density-segs.R"
         " {input.vcf} {input.segs} {output}"
         " '{REF} Merged FreeBayes Off-Reference Density'"
         " 0 '{config[refgaps_bed]}' {config[scale_type]}"
@@ -2229,7 +2229,7 @@ rule merged_pg_plots:
         mem_mb=256000,
         runtime=2880,
     shell:
-        "Rscript scripts/chrom-density-segs.R"
+        "ulimit -s unlimited && Rscript scripts/chrom-density-segs.R"
         " {input.vcf} {input.segs} {output}"
         " '{REF} Merged PanGenie Off-Reference Density'"
         " 0 '{config[refgaps_bed]}' {config[scale_type]}"
@@ -2276,7 +2276,7 @@ rule deconstruct_sites_stats:
             f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
             if giab_strat_configured() else ""),
     shell:
-        "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{OUT_NAME}.sites"
+        "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{OUT_NAME}.sites"
         " --mode sites --af-step 0.05 --title '{REF} Deconstruct'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample --ref-sample {REF}"
@@ -2318,7 +2318,7 @@ rule deconstruct_variants_stats:
             f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
             if giab_strat_configured() else ""),
     shell:
-        "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{OUT_NAME}.variants"
+        "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{OUT_NAME}.variants"
         " --mode variants --af-step 0.05 --title '{REF} Deconstruct'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample --ref-sample {REF}"
@@ -2353,7 +2353,7 @@ rule call_stats:
             f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
             if giab_strat_configured() else ""),
     shell:
-        "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{wildcards.sample}.call.{wildcards.mode}.{wildcards.filt}"
+        "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{wildcards.sample}.call.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Call ({wildcards.sample})'"
         " --segs {input.segs} --segs-strip-prefix '{AUGREF}#0#'"
         " {params.annot_arg} {params.giab_arg}"
@@ -2388,7 +2388,7 @@ rule dv_stats:
             f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
             if giab_strat_configured() else ""),
     shell:
-        "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{wildcards.sample}.dv.{wildcards.mode}.{wildcards.filt}"
+        "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{wildcards.sample}.dv.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} DeepVariant ({wildcards.sample})'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --no-sv"
@@ -2423,7 +2423,7 @@ rule fb_stats:
             f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
             if giab_strat_configured() else ""),
     shell:
-        "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{wildcards.sample}.fb.{wildcards.mode}.{wildcards.filt}"
+        "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{wildcards.sample}.fb.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} FreeBayes ({wildcards.sample})'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --no-sv"
@@ -2458,7 +2458,7 @@ rule pg_stats:
             f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
             if giab_strat_configured() else ""),
     shell:
-        "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{wildcards.sample}.pg.{wildcards.mode}.{wildcards.filt}"
+        "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{wildcards.sample}.pg.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} PanGenie ({wildcards.sample})'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --no-sv"
@@ -2501,7 +2501,7 @@ rule merged_call_stats:
             f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
             if giab_strat_configured() else ""),
     shell:
-        "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.call.{wildcards.mode}.{wildcards.filt}"
+        "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.call.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged Call'"
         " --segs {input.segs} --segs-strip-prefix '{AUGREF}#0#'"
         " {params.annot_arg} {params.giab_arg} --per-sample"
@@ -2544,7 +2544,7 @@ rule merged_longread_call_stats:
             f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
             if giab_strat_configured() else ""),
     shell:
-        "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.longread.call.{wildcards.mode}.{wildcards.filt}"
+        "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.longread.call.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged Long-Read Call'"
         " --segs {input.segs} --segs-strip-prefix '{AUGREF}#0#'"
         " {params.annot_arg} {params.giab_arg} --per-sample"
@@ -2586,7 +2586,7 @@ rule merged_longread_dv_stats:
             f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
             if giab_strat_configured() else ""),
     shell:
-        "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.longread.dv.{wildcards.mode}.{wildcards.filt}"
+        "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.longread.dv.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged Long-Read DeepVariant'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample --no-sv"
@@ -2628,7 +2628,7 @@ rule merged_dv_stats:
             f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
             if giab_strat_configured() else ""),
     shell:
-        "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.dv.{wildcards.mode}.{wildcards.filt}"
+        "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.dv.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged DeepVariant'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample --no-sv"
@@ -2670,7 +2670,7 @@ rule merged_fb_stats:
             f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
             if giab_strat_configured() else ""),
     shell:
-        "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.fb.{wildcards.mode}.{wildcards.filt}"
+        "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.fb.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged FreeBayes'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample --no-sv"
@@ -2712,7 +2712,7 @@ rule merged_longread_fb_stats:
             f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
             if giab_strat_configured() else ""),
     shell:
-        "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.longread.fb.{wildcards.mode}.{wildcards.filt}"
+        "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.longread.fb.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged Long-Read FreeBayes'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample --no-sv"
@@ -2754,7 +2754,7 @@ rule merged_pg_stats:
             f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
             if giab_strat_configured() else ""),
     shell:
-        "Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.pg.{wildcards.mode}.{wildcards.filt}"
+        "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.pg.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged PanGenie'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample --no-sv"
@@ -2906,7 +2906,7 @@ rule vcfeval_compare_plot:
         mem_mb=32000,
         runtime=120,
     shell:
-        "Rscript scripts/vcf-compare-vcfeval.R"
+        "ulimit -s unlimited && Rscript scripts/vcf-compare-vcfeval.R"
         " {OUT_DIR}/merged.call-vs-dv.{wildcards.filt}"
         " --vcfeval-dirs {params.vcfeval_dirs}"
         " --samples {params.sample_names}"
@@ -3048,7 +3048,7 @@ rule vcfeval_compare_plot_squash:
         mem_mb=32000,
         runtime=120,
     shell:
-        "Rscript scripts/vcf-compare-vcfeval.R"
+        "ulimit -s unlimited && Rscript scripts/vcf-compare-vcfeval.R"
         " {OUT_DIR}/merged.call-vs-dv.{wildcards.filt}.vcfeval-squash"
         " --vcfeval-dirs {params.vcfeval_dirs}"
         " --samples {params.sample_names}"
@@ -3145,7 +3145,7 @@ rule vcfeval_chromsplit_plot:
             f"--giab-beds {','.join(input.giab_beds)} --giab-names {','.join(GIAB_STRAT_DISPLAY)}"
             if giab_strat_configured() else ""),
     shell:
-        "Rscript scripts/vcf-chromsplit-plot.R {input.tsv}"
+        "ulimit -s unlimited && Rscript scripts/vcf-chromsplit-plot.R {input.tsv}"
         " {OUT_DIR}/merged.call-vs-dv.{wildcards.filt}"
         " --title '{REF} Call vs DeepVariant Per-Contig'"
         " --strip-prefix '{params.strip_prefix}'"
@@ -3179,7 +3179,7 @@ rule vcfeval_chromsplit_squash_plot:
             f"--giab-beds {','.join(input.giab_beds)} --giab-names {','.join(GIAB_STRAT_DISPLAY)}"
             if giab_strat_configured() else ""),
     shell:
-        "Rscript scripts/vcf-chromsplit-plot.R {input.tsv}"
+        "ulimit -s unlimited && Rscript scripts/vcf-chromsplit-plot.R {input.tsv}"
         " {OUT_DIR}/merged.call-vs-dv.{wildcards.filt}.vcfeval-squash"
         " --title '{REF} Call vs DeepVariant Per-Contig (squash-ploidy)'"
         " --strip-prefix '{params.strip_prefix}'"
@@ -3207,7 +3207,7 @@ rule vcfeval_lr_compare_plot:
         mem_mb=32000,
         runtime=120,
     shell:
-        "Rscript scripts/vcf-compare-vcfeval.R"
+        "ulimit -s unlimited && Rscript scripts/vcf-compare-vcfeval.R"
         " {OUT_DIR}/merged.lr.call-vs-dv.{wildcards.filt}"
         " --vcfeval-dirs {params.vcfeval_dirs}"
         " --samples {params.sample_names}"
@@ -3255,7 +3255,7 @@ rule vcfeval_lr_chromsplit_plot:
             f"--giab-beds {','.join(input.giab_beds)} --giab-names {','.join(GIAB_STRAT_DISPLAY)}"
             if giab_strat_configured() else ""),
     shell:
-        "Rscript scripts/vcf-chromsplit-plot.R {input.tsv}"
+        "ulimit -s unlimited && Rscript scripts/vcf-chromsplit-plot.R {input.tsv}"
         " {OUT_DIR}/merged.lr.call-vs-dv.{wildcards.filt}"
         " --title '{REF} Long-Read Call vs DeepVariant Per-Contig'"
         " --strip-prefix '{params.strip_prefix}'"
@@ -3587,7 +3587,7 @@ rule vcfeval_fb_relaxed_compare_plot:
         mem_mb=32000,
         runtime=120,
     shell:
-        "Rscript scripts/vcf-compare-vcfeval.R"
+        "ulimit -s unlimited && Rscript scripts/vcf-compare-vcfeval.R"
         " {OUT_DIR}/merged.call-vs-fb.relaxed"
         " --vcfeval-dirs {params.vcfeval_dirs}"
         " --samples {params.sample_names}"
@@ -3612,7 +3612,7 @@ rule vcfeval_fb_relaxed_lr_compare_plot:
         mem_mb=32000,
         runtime=120,
     shell:
-        "Rscript scripts/vcf-compare-vcfeval.R"
+        "ulimit -s unlimited && Rscript scripts/vcf-compare-vcfeval.R"
         " {OUT_DIR}/merged.lr.call-vs-fb.relaxed"
         " --vcfeval-dirs {params.vcfeval_dirs}"
         " --samples {params.sample_names}"
@@ -3637,7 +3637,7 @@ rule vcfeval_fb_compare_plot:
         mem_mb=32000,
         runtime=120,
     shell:
-        "Rscript scripts/vcf-compare-vcfeval.R"
+        "ulimit -s unlimited && Rscript scripts/vcf-compare-vcfeval.R"
         " {OUT_DIR}/merged.call-vs-fb.{wildcards.filt}"
         " --vcfeval-dirs {params.vcfeval_dirs}"
         " --samples {params.sample_names}"
@@ -3703,7 +3703,7 @@ rule vcfeval_fb_chromsplit_plot:
             f"--giab-beds {','.join(input.giab_beds)} --giab-names {','.join(GIAB_STRAT_DISPLAY)}"
             if giab_strat_configured() else ""),
     shell:
-        "Rscript scripts/vcf-chromsplit-plot.R {input.tsv}"
+        "ulimit -s unlimited && Rscript scripts/vcf-chromsplit-plot.R {input.tsv}"
         " {OUT_DIR}/merged.call-vs-fb.{wildcards.filt}"
         " --title '{REF} Call vs FreeBayes Per-Contig'"
         " --strip-prefix '{params.strip_prefix}'"
@@ -3727,7 +3727,7 @@ rule vcfeval_fb_lr_compare_plot:
         mem_mb=32000,
         runtime=120,
     shell:
-        "Rscript scripts/vcf-compare-vcfeval.R"
+        "ulimit -s unlimited && Rscript scripts/vcf-compare-vcfeval.R"
         " {OUT_DIR}/merged.lr.call-vs-fb.{wildcards.filt}"
         " --vcfeval-dirs {params.vcfeval_dirs}"
         " --samples {params.sample_names}"
@@ -3775,7 +3775,7 @@ rule vcfeval_fb_lr_chromsplit_plot:
             f"--giab-beds {','.join(input.giab_beds)} --giab-names {','.join(GIAB_STRAT_DISPLAY)}"
             if giab_strat_configured() else ""),
     shell:
-        "Rscript scripts/vcf-chromsplit-plot.R {input.tsv}"
+        "ulimit -s unlimited && Rscript scripts/vcf-chromsplit-plot.R {input.tsv}"
         " {OUT_DIR}/merged.lr.call-vs-fb.{wildcards.filt}"
         " --title '{REF} Long-Read Call vs FreeBayes Per-Contig'"
         " --strip-prefix '{params.strip_prefix}'"
@@ -3881,7 +3881,7 @@ rule vcfeval_dv_vs_fb_compare_plot:
         mem_mb=32000,
         runtime=120,
     shell:
-        "Rscript scripts/vcf-compare-vcfeval.R"
+        "ulimit -s unlimited && Rscript scripts/vcf-compare-vcfeval.R"
         " {OUT_DIR}/merged.dv-vs-fb.{wildcards.filt}"
         " --vcfeval-dirs {params.vcfeval_dirs}"
         " --samples {params.sample_names}"
@@ -3947,7 +3947,7 @@ rule vcfeval_dv_vs_fb_chromsplit_plot:
             f"--giab-beds {','.join(input.giab_beds)} --giab-names {','.join(GIAB_STRAT_DISPLAY)}"
             if giab_strat_configured() else ""),
     shell:
-        "Rscript scripts/vcf-chromsplit-plot.R {input.tsv}"
+        "ulimit -s unlimited && Rscript scripts/vcf-chromsplit-plot.R {input.tsv}"
         " {OUT_DIR}/merged.dv-vs-fb.{wildcards.filt}"
         " --title '{REF} DeepVariant vs FreeBayes Per-Contig'"
         " --strip-prefix '{params.strip_prefix}'"
@@ -3972,7 +3972,7 @@ rule vcfeval_dv_vs_fb_lr_compare_plot:
         mem_mb=32000,
         runtime=120,
     shell:
-        "Rscript scripts/vcf-compare-vcfeval.R"
+        "ulimit -s unlimited && Rscript scripts/vcf-compare-vcfeval.R"
         " {OUT_DIR}/merged.lr.dv-vs-fb.{wildcards.filt}"
         " --vcfeval-dirs {params.vcfeval_dirs}"
         " --samples {params.sample_names}"
@@ -4020,7 +4020,7 @@ rule vcfeval_dv_vs_fb_lr_chromsplit_plot:
             f"--giab-beds {','.join(input.giab_beds)} --giab-names {','.join(GIAB_STRAT_DISPLAY)}"
             if giab_strat_configured() else ""),
     shell:
-        "Rscript scripts/vcf-chromsplit-plot.R {input.tsv}"
+        "ulimit -s unlimited && Rscript scripts/vcf-chromsplit-plot.R {input.tsv}"
         " {OUT_DIR}/merged.lr.dv-vs-fb.{wildcards.filt}"
         " --title '{REF} Long-Read DeepVariant vs FreeBayes Per-Contig'"
         " --strip-prefix '{params.strip_prefix}'"
@@ -4056,7 +4056,7 @@ rule vcfeval_onref_giab:
         " {params.tp_vcfs} {params.fp_vcfs} {params.fn_vcfs}"
         " {params.giab_beds} {params.giab_names}"
         " {OUT_DIR}/merged.call-vs-dv.{wildcards.filt}.onref-giab.tsv"
-        " && Rscript scripts/vcfeval-onref-giab-plot.R"
+        " && ulimit -s unlimited && Rscript scripts/vcfeval-onref-giab-plot.R"
         " {OUT_DIR}/merged.call-vs-dv.{wildcards.filt}.onref-giab.tsv"
         " {OUT_DIR}/merged.call-vs-dv.{wildcards.filt}.onref-giab.png"
         " --title '{REF} Call vs DeepVariant On-Reference'"
@@ -4085,7 +4085,7 @@ rule vcfeval_lr_onref_giab:
         " {params.tp_vcfs} {params.fp_vcfs} {params.fn_vcfs}"
         " {params.giab_beds} {params.giab_names}"
         " {OUT_DIR}/merged.lr.call-vs-dv.{wildcards.filt}.onref-giab.tsv"
-        " && Rscript scripts/vcfeval-onref-giab-plot.R"
+        " && ulimit -s unlimited && Rscript scripts/vcfeval-onref-giab-plot.R"
         " {OUT_DIR}/merged.lr.call-vs-dv.{wildcards.filt}.onref-giab.tsv"
         " {OUT_DIR}/merged.lr.call-vs-dv.{wildcards.filt}.onref-giab.png"
         " --title '{REF} Long-Read Call vs DeepVariant On-Reference'"
@@ -4114,7 +4114,7 @@ rule vcfeval_fb_onref_giab:
         " {params.tp_vcfs} {params.fp_vcfs} {params.fn_vcfs}"
         " {params.giab_beds} {params.giab_names}"
         " {OUT_DIR}/merged.call-vs-fb.{wildcards.filt}.onref-giab.tsv"
-        " && Rscript scripts/vcfeval-onref-giab-plot.R"
+        " && ulimit -s unlimited && Rscript scripts/vcfeval-onref-giab-plot.R"
         " {OUT_DIR}/merged.call-vs-fb.{wildcards.filt}.onref-giab.tsv"
         " {OUT_DIR}/merged.call-vs-fb.{wildcards.filt}.onref-giab.png"
         " --title '{REF} Call vs FreeBayes On-Reference'"
@@ -4143,7 +4143,7 @@ rule vcfeval_fb_lr_onref_giab:
         " {params.tp_vcfs} {params.fp_vcfs} {params.fn_vcfs}"
         " {params.giab_beds} {params.giab_names}"
         " {OUT_DIR}/merged.lr.call-vs-fb.{wildcards.filt}.onref-giab.tsv"
-        " && Rscript scripts/vcfeval-onref-giab-plot.R"
+        " && ulimit -s unlimited && Rscript scripts/vcfeval-onref-giab-plot.R"
         " {OUT_DIR}/merged.lr.call-vs-fb.{wildcards.filt}.onref-giab.tsv"
         " {OUT_DIR}/merged.lr.call-vs-fb.{wildcards.filt}.onref-giab.png"
         " --title '{REF} Long-Read Call vs FreeBayes On-Reference'"
@@ -4179,7 +4179,7 @@ rule pantree_stats:
         mem_mb=32000,
         runtime=120,
     shell:
-        "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/pantree"
+        "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input} {OUT_DIR}/pantree"
         " --tsv --title 'Pantree'"
 
 rule deconstruct_records:
@@ -4192,7 +4192,7 @@ rule deconstruct_records:
         mem_mb=int(rule_mem_gb("deconstruct_stats", 512)) * 1024,
         runtime=2880,
     shell:
-        "Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{OUT_NAME}"
+        "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{OUT_NAME}"
         " --mode sites --dump-records --records-only"
         " --title '{REF} Deconstruct'"
 
@@ -4211,7 +4211,7 @@ rule pantree_compare:
         mem_mb=32000,
         runtime=120,
     shell:
-        "Rscript scripts/pantree-compare.R"
+        "ulimit -s unlimited && Rscript scripts/pantree-compare.R"
         " --ours {input.ours} --pantree {input.pantree}"
         " --prefix {OUT_DIR}/{OUT_NAME}"
         " --title 'Deconstruct vs Pantree'"
@@ -4226,7 +4226,7 @@ rule pantree_density:
         mem_mb=32000,
         runtime=120,
     shell:
-        "Rscript scripts/pantree-density.R"
+        "ulimit -s unlimited && Rscript scripts/pantree-density.R"
         " {input} {output}"
         " 'Pantree Off-Reference Variant Density'"
         " --ref {REF}"
@@ -4307,7 +4307,7 @@ rule call_summary_panel:
         annot_arg=lambda wc, input: f"--annot {input.annot[0]}" if input.annot else "",
         min_sv_size=config.get("min_augref_len", 50),
     shell:
-        "Rscript scripts/call-summary-panel.R"
+        "ulimit -s unlimited && Rscript scripts/call-summary-panel.R"
         " --per-sample {input.per_sample}"
         " --vcf {input.vcf}"
         " --min-sv-size {params.min_sv_size}"
@@ -4496,7 +4496,7 @@ rule longread_call_summary_panel:
         annot_arg=lambda wc, input: f"--annot {input.annot[0]}" if input.annot else "",
         min_sv_size=config.get("min_augref_len", 50),
     shell:
-        "Rscript scripts/call-summary-panel.R"
+        "ulimit -s unlimited && Rscript scripts/call-summary-panel.R"
         " --per-sample {input.per_sample}"
         " --vcf {input.vcf}"
         " --min-sv-size {params.min_sv_size}"
@@ -4522,7 +4522,7 @@ rule longread_contig_depth_summary:
         bam_q5_arg=lambda wc, input: "--bam-q5-depths " + ",".join(input.bam_q5_depths),
         min_surject_len=config.get("min_surject_len", 0),
     shell:
-        "Rscript scripts/contig-depth-summary.R"
+        "ulimit -s unlimited && Rscript scripts/contig-depth-summary.R"
         " {params.pack_arg}"
         " {params.bam_arg}"
         " {params.bam_q5_arg}"
@@ -4546,7 +4546,7 @@ rule longread_mapq_dist_plot:
         gam_arg=lambda wc, input: "--gam-mapq " + ",".join(input.gam_mapq),
         bam_arg=lambda wc, input: "--bam-mapq " + ",".join(input.bam_mapq),
     shell:
-        "Rscript scripts/mapq-dist-plot.R"
+        "ulimit -s unlimited && Rscript scripts/mapq-dist-plot.R"
         " {params.gam_arg}"
         " {params.bam_arg}"
         " --output {output}"
@@ -4996,7 +4996,7 @@ rule vcfeval_pg_compare_plot:
         mem_mb=32000,
         runtime=120,
     shell:
-        "Rscript scripts/vcf-compare-vcfeval.R"
+        "ulimit -s unlimited && Rscript scripts/vcf-compare-vcfeval.R"
         " {OUT_DIR}/merged.call-vs-pg.{wildcards.filt}"
         " --vcfeval-dirs {params.vcfeval_dirs}"
         " --samples {params.sample_names}"
@@ -5062,7 +5062,7 @@ rule vcfeval_pg_chromsplit_plot:
             f"--giab-beds {','.join(input.giab_beds)} --giab-names {','.join(GIAB_STRAT_DISPLAY)}"
             if giab_strat_configured() else ""),
     shell:
-        "Rscript scripts/vcf-chromsplit-plot.R {input.tsv}"
+        "ulimit -s unlimited && Rscript scripts/vcf-chromsplit-plot.R {input.tsv}"
         " {OUT_DIR}/merged.call-vs-pg.{wildcards.filt}"
         " --title '{REF} Call vs PanGenie Per-Contig'"
         " --strip-prefix '{params.strip_prefix}'"
@@ -5166,7 +5166,7 @@ rule vcfeval_dv_vs_pg_compare_plot:
         mem_mb=32000,
         runtime=120,
     shell:
-        "Rscript scripts/vcf-compare-vcfeval.R"
+        "ulimit -s unlimited && Rscript scripts/vcf-compare-vcfeval.R"
         " {OUT_DIR}/merged.dv-vs-pg.{wildcards.filt}"
         " --vcfeval-dirs {params.vcfeval_dirs}"
         " --samples {params.sample_names}"
@@ -5232,7 +5232,7 @@ rule vcfeval_dv_vs_pg_chromsplit_plot:
             f"--giab-beds {','.join(input.giab_beds)} --giab-names {','.join(GIAB_STRAT_DISPLAY)}"
             if giab_strat_configured() else ""),
     shell:
-        "Rscript scripts/vcf-chromsplit-plot.R {input.tsv}"
+        "ulimit -s unlimited && Rscript scripts/vcf-chromsplit-plot.R {input.tsv}"
         " {OUT_DIR}/merged.dv-vs-pg.{wildcards.filt}"
         " --title '{REF} DeepVariant vs PanGenie Per-Contig'"
         " --strip-prefix '{params.strip_prefix}'"
