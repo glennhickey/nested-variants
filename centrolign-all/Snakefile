@@ -23,14 +23,26 @@ SKIP_HAPL = set(config.get("skip_hapl", "").split(",")) - {""}
 # testing, override with --config mem_gb=16
 MEM_GB = int(config.get("mem_gb", 256))
 
-# Chromosomes: specify via --config chroms="chr6,chr12" or auto-discover from *.gbz
+# Auto-discover input graphs: either *.gbz or *.gfa (e.g. chrY.centrolign.HPRC_r2_QCv2.gfa).
+# Chromosome is the first dot-separated field. Build CHROM_INPUT map.
+CHROM_INPUT = {}
+for f in sorted(_glob.glob("*.gbz") + _glob.glob("*.gfa")):
+    if ".giraffe." in f:
+        continue
+    chrom = os.path.basename(f).split(".")[0]
+    if not chrom.startswith("chr"):
+        continue
+    # Prefer .gbz over .gfa if both exist for the same chrom
+    if chrom in CHROM_INPUT and CHROM_INPUT[chrom].endswith(".gbz"):
+        continue
+    CHROM_INPUT[chrom] = f
+
+# Chromosomes: specify via --config chroms="chr6,chr12" or auto-discover
 if "chroms" in config:
     CHROMS = config["chroms"].split(",")
 else:
     CHROMS = sorted(
-        [os.path.basename(f).replace(".gbz", "")
-         for f in _glob.glob("*.gbz")
-         if ".giraffe." not in f],
+        list(CHROM_INPUT.keys()),
         key=lambda c: (len(c), c),
     )
 
@@ -71,6 +83,10 @@ if HAS_READS and not HAS_COMMON_SAMPLES:
           f"panels (6, 8) will still be built.", file=sys.stderr)
 
 
+wildcard_constraints:
+    chrom="chr[0-9XYM]+",
+
+
 rule all:
     input:
         f"{OUT}/1.augref-summary.png",
@@ -88,17 +104,22 @@ rule all:
 
 # --- Per-chromosome graph construction ---
 
-rule gbz_to_vg:
-    """GBZ -> VG (set RS header so reference path type is preserved)"""
+rule graph_to_vg:
+    """GBZ or GFA -> VG (set RS header so reference path type is preserved)"""
     input:
-        "{chrom}.gbz",
+        lambda wc: CHROM_INPUT[wc.chrom],
     output:
         "{chrom}.vg",
     resources:
         mem_mb=32000,
         runtime=960,
+    params:
+        pipe_prefix=lambda wc: (
+            f"vg convert -f {CHROM_INPUT[wc.chrom]}" if CHROM_INPUT[wc.chrom].endswith(".gbz")
+            else f"cat {CHROM_INPUT[wc.chrom]}"
+        ),
     shell:
-        "vg convert -f {input}"
+        "{params.pipe_prefix}"
         " | python3 fix-path-names.py --ref {REF} --header-only"
         " | vg convert -g - > {output}"
 
