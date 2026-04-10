@@ -200,7 +200,7 @@ This requires `aws`, `parallel`, `bedtools`, `wget`, `dos2unix`, and `bigBedToBe
 
 ```bash
 ANNOT=data/hprc-v2-annotations
-GIAB=data/giab-reads
+GIAB=giab-reads
 snakemake --profile profiles/slurm all \
   --config \
     ref=CHM13 \
@@ -229,7 +229,7 @@ A simpler test case with CHM13 reference plus a single sample (HG002), using the
 
 ```bash
 ANNOT=data/hprc-v2-annotations
-GIAB=data/giab-reads
+GIAB=giab-reads
 snakemake --profile profiles/slurm all \
   --config \
     ref=CHM13 \
@@ -257,7 +257,7 @@ When `min_surject_len` is set (default: 0), the pipeline filters augmented refer
 
 ```bash
 ANNOT=data/hprc-v2-annotations
-GIAB=data/giab-reads
+GIAB=giab-reads
 snakemake --profile profiles/slurm all \
   --config \
     ref=GRCh38 \
