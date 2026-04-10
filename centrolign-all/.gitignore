@@ -5,6 +5,7 @@
 
 # Output directories
 output-all/
+../output/centrolign-all/
 
 # Misc
 .snakemake/

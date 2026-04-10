@@ -15,7 +15,7 @@ import glob as _glob
 SCRIPTS = "../scripts"
 REF = config.get("ref", "CHM13")
 AUGREF = f"augref_{REF}"
-OUT = config.get("out", "output-all")
+OUT = config.get("out", "../output/centrolign-all")
 MIN_AUGREF_LEN = config.get("min_augref_len", 50)
 READS_DIR = config.get("reads_dir", "reads")
 SKIP_HAPL = set(config.get("skip_hapl", "").split(",")) - {""}

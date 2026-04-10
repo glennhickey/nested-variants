@@ -55,7 +55,7 @@ snakemake --profile ../profiles/slurm \
   --config 'skip_hapl=chr6'
 ```
 
-Output goes to `output-all/`.
+Output goes to `../output/centrolign-all/`.
 
 ## Output figures
 
