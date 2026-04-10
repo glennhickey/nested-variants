@@ -1799,7 +1799,7 @@ rule freebayes:
     params:
         mem_gb=rule_mem_gb("freebayes", 1024),
         region_size=config.get("freebayes_region_size", 100000),
-        extra_args=lambda wc: config.get("freebayes_longread_args", "--max-coverage 100") if wc.sample in config.get("longread_samples", {}) else config.get("freebayes_extra_args", ""),
+        extra_args=lambda wc: (config.get("freebayes_longread_args") or "--max-coverage 100") if wc.sample in config.get("longread_samples", {}) else config.get("freebayes_extra_args", ""),
     shell:
         "scripts/freebayes.sh"
         " --bam {input.bam}"
