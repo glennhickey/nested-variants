@@ -22,6 +22,9 @@ SKIP_HAPL = set(config.get("skip_hapl", "").split(",")) - {""}
 # Memory cap passed to scripts (KMC, DV). On cluster, 256 GB; for local
 # testing, override with --config mem_gb=16
 MEM_GB = int(config.get("mem_gb", 256))
+# Skip DeepVariant panels (7, 8, 8b). BAMs from surject are still produced
+# if requested as targets. Set via --config skip_dv=True
+SKIP_DV = str(config.get("skip_dv", False)).lower() in ("true", "1", "yes")
 
 # Auto-discover input graphs: either *.gbz or *.gfa (e.g. chrY.centrolign.HPRC_r2_QCv2.gfa).
 # Chromosome is the first dot-separated field. Build CHROM_INPUT map.
@@ -123,13 +126,21 @@ rule all:
         f"{OUT}/2.deconstruct-summary.png",
         f"{OUT}/3.deconstruct-by-chrom.png",
         f"{OUT}/4.per-sample-by-chrom.png",
+        # Call panels (always produced if reads are present)
         *([f"{OUT}/5.call-summary.png",
            f"{OUT}/6.call-by-chrom.png",
            f"{OUT}/6b.call-per-sample-by-chrom.png",
-           f"{OUT}/7.deepvariant-summary.png",
+          ] if HAS_READS else []),
+        # DeepVariant panels (skipped when skip_dv=True)
+        *([f"{OUT}/7.deepvariant-summary.png",
            f"{OUT}/8.deepvariant-by-chrom.png",
            f"{OUT}/8b.dv-per-sample-by-chrom.png",
-          ] if HAS_READS else []),
+          ] if HAS_READS and not SKIP_DV else []),
+        # Per-sample BAMs from surject (kept as standalone targets when
+        # DV is skipped, since nothing downstream would otherwise pull them)
+        *([f"{OUT}/{c}.{s}.bam"
+           for c in CALL_CHROMS for s in sorted(CHROM_SAMPLES[c])]
+          if HAS_READS and SKIP_DV else []),
 
 
 # --- Per-chromosome graph construction ---
