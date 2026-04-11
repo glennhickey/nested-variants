@@ -47,14 +47,34 @@ else:
     )
 
 
-# Auto-discover read samples from reads/ directory
-# Naming: {chrom}.{sample}.{hap}.real.fastq.gz
+# Auto-discover read samples from the reads directory. Supports two layouts:
+#   1. Flat:     {reads_dir}/{chrom}.{sample}.{hap}.real.fastq[.gz]
+#   2. Per-chrom: {reads_dir}/{chrom}/{sample}.{hap}_{chrom}_asat.fastq[.gz]
 # Builds CHROM_SAMPLES = {chrom: {sample: [fastq1, fastq2]}}
+import re as _re
 CHROM_SAMPLES = {}
+
+# Layout 1: flat
 for fq in sorted(_glob.glob(f"{READS_DIR}/*.real.fastq*")):
     base = os.path.basename(fq).split(".")
     chrom, sample = base[0], base[1]
     if chrom in CHROMS:
+        CHROM_SAMPLES.setdefault(chrom, {}).setdefault(sample, []).append(
+            os.path.abspath(fq))
+
+# Layout 2: per-chrom subdirectories (e.g. extract_asat_reads/chrY/SAMPLE.HAP_chrY_asat.fastq.gz)
+_pattern = _re.compile(r"^([^.]+)\.(\d+)_([^_]+)_.*\.fastq(\.gz)?$")
+for chrom_dir in sorted(_glob.glob(f"{READS_DIR}/chr*")):
+    if not os.path.isdir(chrom_dir):
+        continue
+    chrom = os.path.basename(chrom_dir)
+    if chrom not in CHROMS:
+        continue
+    for fq in sorted(_glob.glob(f"{chrom_dir}/*.fastq*")):
+        m = _pattern.match(os.path.basename(fq))
+        if not m:
+            continue
+        sample = m.group(1)
         CHROM_SAMPLES.setdefault(chrom, {}).setdefault(sample, []).append(
             os.path.abspath(fq))
 
