@@ -50,20 +50,24 @@ else:
 # Auto-discover read samples from the reads directory. Supports two layouts:
 #   1. Flat:     {reads_dir}/{chrom}.{sample}.{hap}.real.fastq[.gz]
 #   2. Per-chrom: {reads_dir}/{chrom}/{sample}.{hap}_{chrom}_asat.fastq[.gz]
-# Builds CHROM_SAMPLES = {chrom: {sample: [fastq1, fastq2]}}
+# Builds CHROM_SAMPLE_HAPS[chrom][sample] = {hap: fastq_path} (intermediate),
+# then filters to diploid samples (both .1 and .2 present) and stores as
+# CHROM_SAMPLES[chrom][sample] = [hap1_fastq, hap2_fastq].
 import re as _re
-CHROM_SAMPLES = {}
+CHROM_SAMPLE_HAPS = {}
 
-# Layout 1: flat
+# Layout 1: flat — {chrom}.{sample}.{hap}.real.fastq[.gz]
+_flat_pat = _re.compile(r"^(chr[^.]+)\.([^.]+)\.(\d+)\.real\.fastq(\.gz)?$")
 for fq in sorted(_glob.glob(f"{READS_DIR}/*.real.fastq*")):
-    base = os.path.basename(fq).split(".")
-    chrom, sample = base[0], base[1]
+    m = _flat_pat.match(os.path.basename(fq))
+    if not m:
+        continue
+    chrom, sample, hap = m.group(1), m.group(2), m.group(3)
     if chrom in CHROMS:
-        CHROM_SAMPLES.setdefault(chrom, {}).setdefault(sample, []).append(
-            os.path.abspath(fq))
+        CHROM_SAMPLE_HAPS.setdefault(chrom, {}).setdefault(sample, {})[hap] = os.path.abspath(fq)
 
-# Layout 2: per-chrom subdirectories (e.g. extract_asat_reads/chrY/SAMPLE.HAP_chrY_asat.fastq.gz)
-_pattern = _re.compile(r"^([^.]+)\.(\d+)_([^_]+)_.*\.fastq(\.gz)?$")
+# Layout 2: per-chrom subdirs — {chrom}/{sample}.{hap}_{chrom}_asat.fastq[.gz]
+_nested_pat = _re.compile(r"^([^.]+)\.(\d+)_(chr[^_]+)_.*\.fastq(\.gz)?$")
 for chrom_dir in sorted(_glob.glob(f"{READS_DIR}/chr*")):
     if not os.path.isdir(chrom_dir):
         continue
@@ -71,12 +75,18 @@ for chrom_dir in sorted(_glob.glob(f"{READS_DIR}/chr*")):
     if chrom not in CHROMS:
         continue
     for fq in sorted(_glob.glob(f"{chrom_dir}/*.fastq*")):
-        m = _pattern.match(os.path.basename(fq))
+        m = _nested_pat.match(os.path.basename(fq))
         if not m:
             continue
-        sample = m.group(1)
-        CHROM_SAMPLES.setdefault(chrom, {}).setdefault(sample, []).append(
-            os.path.abspath(fq))
+        sample, hap = m.group(1), m.group(2)
+        CHROM_SAMPLE_HAPS.setdefault(chrom, {}).setdefault(sample, {})[hap] = os.path.abspath(fq)
+
+# Keep only diploid samples (both .1 and .2 present); order haplotypes as [1, 2]
+CHROM_SAMPLES = {}
+for chrom, samples in CHROM_SAMPLE_HAPS.items():
+    for sample, haps in samples.items():
+        if "1" in haps and "2" in haps:
+            CHROM_SAMPLES.setdefault(chrom, {})[sample] = [haps["1"], haps["2"]]
 
 # Chromosomes that have both a GBZ and reads
 CALL_CHROMS = sorted(
