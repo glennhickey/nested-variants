@@ -126,6 +126,7 @@ rule all:
         f"{OUT}/2.deconstruct-summary.png",
         f"{OUT}/3.deconstruct-by-chrom.png",
         f"{OUT}/4.per-sample-by-chrom.png",
+        f"{OUT}/4b.per-sample-by-chrom-combined.png",
         # Call panels (always produced if reads are present)
         *([f"{OUT}/5.call-summary.png",
            f"{OUT}/6.call-by-chrom.png",
@@ -468,6 +469,9 @@ rule deconstruct_by_chrom:
         ps_snp_onref=f"{OUT}/all.by-chrom.per-sample-snp-onref.png",
         ps_indel_onref=f"{OUT}/all.by-chrom.per-sample-indel-onref.png",
         ps_sv_onref=f"{OUT}/all.by-chrom.per-sample-sv-onref.png",
+        ps_snp_combined=f"{OUT}/all.by-chrom.per-sample-snp-combined.png",
+        ps_indel_combined=f"{OUT}/all.by-chrom.per-sample-indel-combined.png",
+        ps_sv_combined=f"{OUT}/all.by-chrom.per-sample-sv-combined.png",
     params:
         stats_labeled=lambda wc, input: " ".join(
             f"{os.path.basename(f).replace('.sites.vcf-stats.tsv', '')}:{f}"
@@ -539,6 +543,28 @@ rule summary_per_sample_by_chrom:
         " ' :{input.indel_onref}'"
         " ' :{input.sv}'"
         " ' :{input.sv_onref}'"
+
+
+rule summary_per_sample_by_chrom_combined:
+    """Compose compact per-sample by chromosome, off+on-ref overlaid (figure 4b)"""
+    resources:
+        mem_mb=32000,
+        runtime=960,
+    input:
+        snp=f"{OUT}/all.by-chrom.per-sample-snp-combined.png",
+        indel=f"{OUT}/all.by-chrom.per-sample-indel-combined.png",
+        sv=f"{OUT}/all.by-chrom.per-sample-sv-combined.png",
+    output:
+        f"{OUT}/4b.per-sample-by-chrom-combined.png",
+    shell:
+        "python3 {SCRIPTS}/compose-summary.py"
+        " --output {output}"
+        " --title 'Deconstruct Per-Sample Counts by Chromosome (off- + on-ref)'"
+        " --cols 1"
+        " --panels"
+        " ' :{input.snp}'"
+        " ' :{input.indel}'"
+        " ' :{input.sv}'"
 
 
 # =========================================================================

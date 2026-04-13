@@ -164,15 +164,52 @@ if (length(ps_pairs) > 0) {
         scale_y_continuous(labels = comma) +
         labs(title = paste(group_labels[grp],
                            paste0("(", ctx_label, ", n=", n_samples, " samples)")),
-             x = NULL, y = "Count per Sample",
-             fill = "Chromosome") +
+             x = NULL, y = "Count per Sample") +
+        guides(fill = "none") +
         theme_bw(base_size = 13) +
-        theme(plot.title = element_text(face = "bold"))
+        theme(plot.title = element_text(face = "bold"),
+              axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
 
       fname <- paste0(output_prefix, ".per-sample-", grp, rc$suffix, ".png")
       ggsave(fname, p, width = 8, height = 5, dpi = 300,
              device = grDevices::png, type = "cairo")
       cat("Saved:", fname, "\n")
     }
+  }
+
+  # Combined off+on-ref per-sample boxplots (dodged) — one panel per variant type
+  for (grp in names(type_groups)) {
+    types <- type_groups[[grp]]
+    ps_grp <- ps[variant_type %in% types]
+    ps_agg <- ps_grp[, .(count = sum(count)), by = .(sample, chrom, ref_context)]
+    ps_agg[, ref_context := factor(ref_context,
+                                   levels = c("Off-reference", "On-reference"))]
+
+    n_samples <- length(unique(ps_agg$sample))
+
+    p <- ggplot(ps_agg, aes(x = chrom, y = count, fill = ref_context)) +
+      geom_boxplot(alpha = 0.6, outlier.shape = NA,
+                   position = position_dodge(width = 0.8), width = 0.7) +
+      geom_point(aes(color = ref_context),
+                 position = position_jitterdodge(jitter.width = 0.15,
+                                                 dodge.width = 0.8),
+                 size = 0.5, alpha = 0.3, show.legend = FALSE) +
+      scale_y_continuous(labels = comma) +
+      scale_fill_manual(values = c("Off-reference" = "#E74C3C",
+                                   "On-reference" = "#3498DB")) +
+      scale_color_manual(values = c("Off-reference" = "#E74C3C",
+                                    "On-reference" = "#3498DB")) +
+      labs(title = paste(group_labels[grp],
+                         paste0("(n=", n_samples, " samples)")),
+           x = NULL, y = "Count per Sample", fill = NULL) +
+      theme_bw(base_size = 13) +
+      theme(plot.title = element_text(face = "bold"),
+            axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+            legend.position = "top")
+
+    fname <- paste0(output_prefix, ".per-sample-", grp, "-combined.png")
+    ggsave(fname, p, width = 8, height = 5, dpi = 300,
+           device = grDevices::png, type = "cairo")
+    cat("Saved:", fname, "\n")
   }
 }
