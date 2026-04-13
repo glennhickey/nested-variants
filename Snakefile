@@ -1799,7 +1799,8 @@ rule freebayes:
     params:
         mem_gb=rule_mem_gb("freebayes", 1024),
         region_size=config.get("freebayes_region_size", 100000),
-        extra_args=lambda wc: (config.get("freebayes_longread_args") or "--max-coverage 100") if wc.sample in config.get("longread_samples", {}) else config.get("freebayes_extra_args", ""),
+        extra_args=lambda wc: (config.get("freebayes_longread_args") or "--limit-coverage 100") if wc.sample in config.get("longread_samples", {}) else config.get("freebayes_extra_args", ""),
+        docker_img=config.get("freebayes_docker", "staphb/freebayes:1.3.7"),
     shell:
         "scripts/freebayes.sh"
         " --bam {input.bam}"
@@ -1809,6 +1810,7 @@ rule freebayes:
         " --out-name {wildcards.sample}.freebayes.vcf.gz"
         " --region-size {params.region_size}"
         " --extra-args '{params.extra_args}'"
+        " --docker {params.docker_img}"
         " --cpus {threads} --mem {params.mem_gb}gb"
         " --local"
 

@@ -4,13 +4,14 @@
 # freebayes.sh
 #
 # Description:
-#   Runs FreeBayes in parallel to call variants from a BAM file against a
-#   FASTA reference.  Uses GNU parallel to split by genomic regions.
+#   Runs FreeBayes (via Docker) in parallel to call variants from a BAM file
+#   against a FASTA reference.  Uses GNU parallel to split by genomic regions;
+#   each region runs in its own Docker container.
 #
 # Usage:
 #   freebayes.sh --bam <file.bam> --ref <file.fa.gz> --sample <name> \
 #                --out-dir <dir> --out-name <name> \
-#                [--region-size N] \
+#                [--region-size N] [--docker IMAGE] \
 #                [--cpus N] [--mem size] [--time HH:MM:SS] [--partition name] [--local]
 #
 ################################################################################
@@ -25,6 +26,7 @@ OUTPUT_DIR="."
 OUTPUT_NAME=""
 REGION_SIZE=100000
 EXTRA_ARGS=""
+DOCKER_IMAGE="staphb/freebayes:1.3.7"
 
 # SLURM resource defaults
 CPUS="16"
@@ -65,6 +67,10 @@ while [[ $# -gt 0 ]]; do
             EXTRA_ARGS="$2"
             shift 2
             ;;
+        --docker)
+            DOCKER_IMAGE="$2"
+            shift 2
+            ;;
         --cpus)
             CPUS="$2"
             shift 2
@@ -97,6 +103,7 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "FreeBayes Options:"
             echo "  --region-size <N>     Region chunk size for parallelization (default: 100000)"
+            echo "  --docker <image>      Docker image (default: staphb/freebayes:1.3.7)"
             echo ""
             echo "Execution Options:"
             echo "  --local               Run commands locally instead of via SLURM"
@@ -183,12 +190,27 @@ rm -f "$BAM_CONTIGS"
 
 echo "Generated $(wc -l < "$REGIONS_FILE") regions (${REGION_SIZE}bp chunks)"
 
-# Run freebayes in parallel over regions, keep first header only,
-# set FILTER=PASS on all records (FreeBayes outputs "." by default),
-# then bgzip and index.
+# Absolute paths for Docker bind mounts; dedup parent dirs so we don't
+# pass redundant -v flags when REF/BAM live in the same directory.
+REF_ABS="$(realpath "$REF")"
+BAM_ABS="$(realpath "$BAM")"
+declare -A MOUNT_SET
+MOUNT_SET["$(dirname "$REF_ABS")"]=1
+MOUNT_SET["$(dirname "$BAM_ABS")"]=1
+MOUNT_FLAGS=""
+for d in "${!MOUNT_SET[@]}"; do
+    MOUNT_FLAGS="$MOUNT_FLAGS -v $d:$d"
+done
+
+echo "Running FreeBayes via Docker: $DOCKER_IMAGE"
+
+# Run freebayes in parallel over regions (one docker container per region),
+# keep first header only, set FILTER=PASS on all records (FreeBayes outputs
+# "." by default), then bgzip and index. Docker startup overhead (~0.2s) is
+# negligible against per-region freebayes runtime.
 /usr/bin/time -v cat "$REGIONS_FILE" \
   | parallel -k -j "$CPUS" \
-      freebayes -f "$REF" "$BAM" --region {} $EXTRA_ARGS \
+      "docker run --rm --user $(id -u):$(id -g) $MOUNT_FLAGS $DOCKER_IMAGE freebayes -f '$REF_ABS' '$BAM_ABS' --region {} $EXTRA_ARGS" \
   | awk 'BEGIN{OFS="\t"; p=1} /^#/{if(p)print; if(/^#CHROM/)p=0; next} {if($7==".") $7="PASS"; print}' \
   | bcftools annotate -x FORMAT/DPR \
   | bcftools reheader -s <(echo "$SAMPLE") \

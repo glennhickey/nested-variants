@@ -53,10 +53,13 @@ dv_version: "1.9.0"
 freebayes_min_qual: 20
 
 # FreeBayes extra args for long-read samples (cap coverage to avoid blowups on HiFi)
-freebayes_longread_args: "--max-coverage 100"
+freebayes_longread_args: "--limit-coverage 100"
 
 # FreeBayes extra args for short-read samples (empty = defaults)
 freebayes_extra_args: ""
+
+# FreeBayes Docker image
+freebayes_docker: "staphb/freebayes:1.3.7"
 
 # Set to false to skip FreeBayes for long-read samples (default: true)
 # enable_freebayes_longread: true
