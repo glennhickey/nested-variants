@@ -553,9 +553,9 @@ if HAS_READS:
             f"{OUT}/{{chrom}}.augref.gbz",
         output:
             f"{OUT}/{{chrom}}.hapl",
-        threads: 8
+        threads: 4
         resources:
-            mem_mb=256000,
+            mem_mb=64000,
             runtime=960,
         shell:
             "{SCRIPTS}/haplotypes.sh"
@@ -614,9 +614,9 @@ if HAS_READS:
             unpack(giraffe_input),
         output:
             f"{OUT}/{{chrom}}.{{sample}}.gam",
-        threads: 8
+        threads: 4
         resources:
-            mem_mb=256000,
+            mem_mb=64000,
             runtime=960,
         run:
             if wildcards.chrom in SKIP_HAPL:
@@ -648,9 +648,9 @@ if HAS_READS:
         output:
             vcf=f"{OUT}/{{chrom}}.{{sample}}.call.vcf.gz",
             pack=f"{OUT}/{{chrom}}.{{sample}}.call.pack",
-        threads: 8
+        threads: 4
         resources:
-            mem_mb=256000,
+            mem_mb=64000,
             runtime=960,
         shell:
             "{SCRIPTS}/call.sh"
@@ -671,9 +671,9 @@ if HAS_READS:
             gam=f"{OUT}/{{chrom}}.{{sample}}.gam",
         output:
             f"{OUT}/{{chrom}}.{{sample}}.bam",
-        threads: 8
+        threads: 4
         resources:
-            mem_mb=256000,
+            mem_mb=64000,
             runtime=960,
         shell:
             "{SCRIPTS}/surject.sh"
@@ -695,9 +695,9 @@ if HAS_READS:
             ref=f"{OUT}/{{chrom}}.fa.gz",
         output:
             f"{OUT}/{{chrom}}.{{sample}}.deepvariant.vcf.gz",
-        threads: 8
+        threads: 4
         resources:
-            mem_mb=256000,
+            mem_mb=64000,
             runtime=960,
         shell:
             "DV_TMP=$(mktemp -d $PWD/{OUT}/dv_tmp_{wildcards.chrom}_{wildcards.sample}.XXXXXX)"
