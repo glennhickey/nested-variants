@@ -1,0 +1,29 @@
+vg paths -v chrY.vg -p chrY.5.paths -r | vg clip -d 1 -P CHM - | vg convert -fW - > chrY.5.gfa
+vg paths -x chrY.5.gfa -u -Q CHM13 -N augref_CHM13 --augref-segs chrY.5.aug.tsv  | vg convert -fW - >  chrY.5.aug.gfa
+
+
+# vg find -x chrY.vg -n 3650 | vg view - | grep ^W
+
+
+# ---------------------------------------------------------------------------
+# subset-cartoon.sh packages the two-step pipeline above (plus vg mod -u
+# to merge nodes).  It always includes CHM13 and takes sample haplotypes
+# by name (e.g. HG00097.1).
+#
+# Usage:
+#   ./subset-cartoon.sh <chrom.vg> <out_prefix> <sample.hap> [<sample.hap>...]
+#
+# path-similarity.py computes pairwise Jaccard similarity of GFA paths from
+# node sets.  Used to pick non-CHM13-cenhap haplotypes for chrY (no TSV
+# available for chrY).
+#
+# ---------------------------------------------------------------------------
+# chrY.trio.aug.gfa (for Bandage) was made with:
+#
+#   python3 path-similarity.py chrY.gfa CHM13
+#     # -> NA18944.1 + NA18967.1 cluster 0.89 Jaccard with each other,
+#     #    ~0.07 Jaccard to CHM13.  HG002 added (essentially == CHM13).
+#
+#   ./subset-cartoon.sh chrY.vg chrY.trio NA18944.1 NA18967.1 HG002.1
+#
+# Result: 114 nodes, 4 sample paths + 6 augref segments.
