@@ -1817,6 +1817,37 @@ rule freebayes:
         " --cpus {threads} --mem {params.mem_gb}gb"
         " --local"
 
+rule bcftools:
+    """BAM + FASTA → VCF via bcftools mpileup + call (parallel by region)"""
+    input:
+        bam=f"{OUT_DIR}/{{sample}}.bam",
+        ref=f"{OUT_DIR}/{OUT_NAME}.fa.gz",
+    output:
+        f"{OUT_DIR}/{{sample}}.bcftools.vcf.gz",
+    threads: rule_cpus("bcftools", 96)
+    resources:
+        mem_mb=rule_mem_gb("bcftools", 256) * 1024,
+        runtime=rule_runtime("bcftools"),
+    params:
+        mem_gb=rule_mem_gb("bcftools", 256),
+        region_size=config.get("bcftools_region_size", 1000000),
+        extra_args=lambda wc: config.get("bcftools_longread_args", "") if wc.sample in config.get("longread_samples", {}) else config.get("bcftools_extra_args", ""),
+        long_read_flag=lambda wc: "--long-read" if wc.sample in config.get("longread_samples", {}) else "",
+        docker_img=config.get("bcftools_docker", "staphb/bcftools:1.21"),
+    shell:
+        "scripts/bcftools-call.sh"
+        " --bam {input.bam}"
+        " --ref {input.ref}"
+        " --sample {wildcards.sample}"
+        " --out-dir {OUT_DIR}"
+        " --out-name {wildcards.sample}.bcftools.vcf.gz"
+        " --region-size {params.region_size}"
+        " {params.long_read_flag}"
+        " --extra-args '{params.extra_args}'"
+        " --docker {params.docker_img}"
+        " --cpus {threads} --mem {params.mem_gb}gb"
+        " --local"
+
 rule pangenie_prepare_panel:
     """Prepare panel VCF for PanGenie: remove haploid samples, convert to diploid
     phased, filter missing, add IDs, split to biallelic, merge overlapping variants."""
