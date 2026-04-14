@@ -136,11 +136,19 @@ if (length(per_sample_pairs) > 0) {
   ps_agg <- ps[, .(count = sum(count)), by = .(sample, variant_type, ref_context)]
   ps_agg[, variant_type := factor(variant_type, levels = type_order)]
 
-  # Match centrolign-12 style: box plots of per-sample counts by variant type
-  p_ps <- ggplot(ps_agg[ref_context == "Off-reference"],
-                 aes(x = variant_type, y = count)) +
-    geom_boxplot(fill = "#E74C3C", alpha = 0.3, outlier.size = 1) +
+  # Box + jittered per-sample points, split SNP from the rest since SNP
+  # counts are ~20x larger and compress the other categories flat.
+  ps_off <- ps_agg[ref_context == "Off-reference"]
+  ps_off[, facet_group := ifelse(variant_type == "SNP",
+                                 "SNP", "Indel / MNP / SV")]
+  ps_off[, facet_group := factor(facet_group,
+                                 levels = c("SNP", "Indel / MNP / SV"))]
+
+  p_ps <- ggplot(ps_off, aes(x = variant_type, y = count)) +
+    geom_boxplot(fill = "#E74C3C", alpha = 0.3, outlier.shape = NA) +
+    geom_jitter(width = 0.2, size = 0.6, alpha = 0.35, colour = "#7B241C") +
     scale_y_continuous(labels = comma) +
+    facet_wrap(~ facet_group, scales = "free") +
     labs(title = "Per-Sample Variant Counts (all chromosomes)",
          subtitle = paste0("Off-ref, ", length(unique(ps_agg$sample)), " samples"),
          x = "Variant Type", y = "Count") +
