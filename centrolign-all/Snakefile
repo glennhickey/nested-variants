@@ -602,7 +602,7 @@ if HAS_READS:
             " --ref {REF}"
             " --out-dir {OUT}"
             " --out-name {wildcards.chrom}.hapl"
-            " --haplotypes-opts '--haploid-scoring --absent-score 0.05'"
+            " --haplotypes-opts '--absent-score 0.05'"
             f" --cpus {{threads}} --mem {MEM_GB}gb"
             " --local"
 
