@@ -86,15 +86,20 @@ if (length(stats_pairs) > 0) {
       labs(title = paste(group_labels[grp], "Counts by Chromosome"),
            x = NULL, y = "Count", fill = NULL) +
       theme_bw(base_size = 13) +
-      theme(plot.title = element_text(face = "bold"))
+      theme(plot.title = element_text(face = "bold"),
+            axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
 
-    # Add Ts/Tv labels above each SNP bar (like 2A)
+    # Add Ts/Tv labels above each SNP bar.  Off-reference gets the full
+    # "Ts/Tv=VALUE" string; on-reference gets just VALUE (narrow bars).
     if (grp == "snp") {
       tstv <- grp_data[!is.na(tstv_ratio)]
       if (nrow(tstv) > 0) {
+        tstv[, label := ifelse(ref_context == "Off-reference",
+                               paste0("Ts/Tv=", tstv_ratio),
+                               as.character(tstv_ratio))]
         p <- p + geom_text(data = tstv,
                            aes(x = chrom, y = count, fill = ref_context,
-                               label = paste0("Ts/Tv=", tstv_ratio)),
+                               label = label),
                            position = position_dodge(0.9),
                            vjust = -0.3, show.legend = FALSE, size = 3)
       }
