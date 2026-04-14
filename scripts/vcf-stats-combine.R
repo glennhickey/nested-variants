@@ -19,6 +19,23 @@ suppressPackageStartupMessages({
   library(scales)
 })
 
+# When EMIT_SVG=1, every ggsave(...png) also produces a sibling .svg
+local({
+  if (!nzchar(Sys.getenv("EMIT_SVG"))) return(invisible(NULL))
+  .ggsave <- ggplot2::ggsave
+  svg_dev <- if (requireNamespace("svglite", quietly = TRUE)) "svg" else grDevices::svg
+  assign("ggsave", function(filename, plot = ggplot2::last_plot(), ...) {
+    .ggsave(filename, plot = plot, ...)
+    if (grepl("\\.png$", filename)) {
+      svg_file <- sub("\\.png$", ".svg", filename)
+      args <- list(...); args$device <- svg_dev; args$type <- NULL; args$dpi <- NULL
+      tryCatch(do.call(.ggsave, c(list(svg_file, plot), args)),
+               error = function(e) cat("SVG emit failed for ", svg_file, ": ",
+                                       conditionMessage(e), "\n", sep = ""))
+    }
+  }, envir = .GlobalEnv)
+})
+
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 2) {
   cat("Usage: Rscript vcf-stats-combine.R <output_prefix> [--per-sample chrom:file ...] <chrom:file> ...\n")

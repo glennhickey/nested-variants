@@ -26,6 +26,11 @@ MEM_GB = int(config.get("mem_gb", 256))
 # if requested as targets. Set via --config skip_dv=True
 SKIP_DV = str(config.get("skip_dv", False)).lower() in ("true", "1", "yes")
 
+# Also emit .svg versions of every plot (next to the .png).
+# Set via --config emit_svg=True.  Propagated to R scripts via EMIT_SVG env.
+if str(config.get("emit_svg", False)).lower() in ("true", "1", "yes"):
+    os.environ["EMIT_SVG"] = "1"
+
 # Auto-discover input graphs: either *.gbz or *.gfa (e.g. chrY.centrolign.HPRC_r2_QCv2.gfa).
 # Chromosome is the first dot-separated field. Build CHROM_INPUT map.
 CHROM_INPUT = {}

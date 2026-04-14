@@ -66,6 +66,16 @@ snakemake --profile ../profiles/slurm \
   --config max_samples_per_chrom=10
 ```
 
+Emit `.svg` alongside every `.png` (for Illustrator/Inkscape retouching
+of individual panels — composite summary figures stay PNG since they're
+stitched bitmap):
+
+```bash
+snakemake --profile ../profiles/slurm \
+  --default-resources slurm_partition=long \
+  --config emit_svg=true
+```
+
 Output goes to `../output/centrolign-all/`.
 
 ## Output figures

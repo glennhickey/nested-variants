@@ -229,3 +229,15 @@ tryCatch({
 })
 
 cat("Histogram saved to", output, "\n")
+
+# Emit SVG alongside PNG when EMIT_SVG=1
+if (nzchar(Sys.getenv("EMIT_SVG")) && grepl("\\.png$", output)) {
+  svg_output <- sub("\\.png$", ".svg", output)
+  svg_dev <- if (requireNamespace("svglite", quietly = TRUE)) "svg" else grDevices::svg
+  tryCatch({
+    ggsave(svg_output, plot = p, width = 8, height = 6, device = svg_dev)
+    cat("SVG saved to", svg_output, "\n")
+  }, error = function(e) {
+    cat("SVG emit failed for ", svg_output, ": ", conditionMessage(e), "\n", sep = "")
+  })
+}
