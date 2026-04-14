@@ -74,6 +74,9 @@ bcftools_extra_args: ""
 # bcftools mpileup extra args for long-read (HiFi) samples (pacbio-ccs preset applied automatically)
 bcftools_longread_args: ""
 
+# bcftools minimum QUAL for vcfeval comparisons (applied during pre-filtering, not to raw VCF)
+bcftools_min_qual: 20
+
 # vcfeval Docker image for haplotype-aware VCF comparison
 # Leave empty to use rtg directly (must be on PATH); set to use Docker instead
 vcfeval_docker: ""

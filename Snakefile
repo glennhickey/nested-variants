@@ -83,6 +83,16 @@ def freebayes_longread_enabled():
     val = config.get("enable_freebayes_longread", "false")
     return str(val).lower() not in ("false", "0", "no", "")
 
+def bcftools_enabled():
+    """True when bcftools variant caller is enabled (default true)."""
+    val = config.get("enable_bcftools", "true")
+    return str(val).lower() not in ("false", "0", "no", "")
+
+def bcftools_longread_enabled():
+    """True when bcftools on long reads is enabled (default true)."""
+    val = config.get("enable_bcftools_longread", "true")
+    return str(val).lower() not in ("false", "0", "no", "")
+
 def surject_filtering():
     """True when min_surject_len > 0 (filter contigs for surject/call)."""
     val = config.get("min_surject_len", 0)
@@ -570,6 +580,46 @@ def vcfeval_lr_dv_vs_fb_compare_outputs():
             outputs.append(f"{OUT_DIR}/merged.lr.dv-vs-fb.{filt}.chromsplit-giab.png")
     return outputs
 
+def vcfeval_bc_compare_outputs():
+    """Return vcfeval-based call-vs-bcftools comparison outputs when samples are configured."""
+    if not SAMPLES or not bcftools_enabled():
+        return []
+    outputs = []
+    for filt in ["all", "pass"]:
+        outputs.append(f"{OUT_DIR}/merged.call-vs-bc.{filt}.vcfeval-compare.png")
+        outputs.append(f"{OUT_DIR}/merged.call-vs-bc.{filt}.vcfeval-compare.tsv")
+    return outputs
+
+def vcfeval_lr_bc_compare_outputs():
+    """Return vcfeval-based call-vs-bcftools comparison outputs for long-read samples."""
+    if not LR_SAMPLES or not bcftools_enabled() or not bcftools_longread_enabled():
+        return []
+    outputs = []
+    for filt in ["all", "pass"]:
+        outputs.append(f"{OUT_DIR}/merged.lr.call-vs-bc.{filt}.vcfeval-compare.png")
+        outputs.append(f"{OUT_DIR}/merged.lr.call-vs-bc.{filt}.vcfeval-compare.tsv")
+    return outputs
+
+def vcfeval_dv_vs_bc_compare_outputs():
+    """Return vcfeval-based DV-vs-bcftools comparison outputs when samples are configured."""
+    if not SAMPLES or not bcftools_enabled():
+        return []
+    outputs = []
+    for filt in ["all", "pass"]:
+        outputs.append(f"{OUT_DIR}/merged.dv-vs-bc.{filt}.vcfeval-compare.png")
+        outputs.append(f"{OUT_DIR}/merged.dv-vs-bc.{filt}.vcfeval-compare.tsv")
+    return outputs
+
+def vcfeval_lr_dv_vs_bc_compare_outputs():
+    """Return vcfeval-based DV-vs-bcftools comparison outputs for long-read samples."""
+    if not LR_SAMPLES or not bcftools_enabled() or not bcftools_longread_enabled():
+        return []
+    outputs = []
+    for filt in ["all", "pass"]:
+        outputs.append(f"{OUT_DIR}/merged.lr.dv-vs-bc.{filt}.vcfeval-compare.png")
+        outputs.append(f"{OUT_DIR}/merged.lr.dv-vs-bc.{filt}.vcfeval-compare.tsv")
+    return outputs
+
 def compare_call_pg_outputs():
     """Return call-vs-PG comparison outputs when samples are configured."""
     if not SAMPLES or not pangenie_enabled():
@@ -780,6 +830,10 @@ rule all:
         *([f"{OUT_DIR}/merged.lr.call-vs-fb.relaxed.vcfeval-compare.png"] if LR_SAMPLES and freebayes_longread_enabled() else []),
         *vcfeval_dv_vs_fb_compare_outputs(),
         *vcfeval_lr_dv_vs_fb_compare_outputs(),
+        *vcfeval_bc_compare_outputs(),
+        *vcfeval_lr_bc_compare_outputs(),
+        *vcfeval_dv_vs_bc_compare_outputs(),
+        *vcfeval_lr_dv_vs_bc_compare_outputs(),
         *compare_call_pg_outputs(),
         *vcfeval_pg_compare_outputs(),
         *vcfeval_lr_pg_compare_outputs(),
@@ -4062,6 +4116,277 @@ rule vcfeval_dv_vs_fb_lr_chromsplit_plot:
         " --strip-prefix '{params.strip_prefix}'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg}"
+
+############################################################################
+# bcftools comparison rules (mirror of FB rules, using .bcftools.vcf.gz)
+############################################################################
+
+rule vcfeval_bc_per_sample:
+    """Run VCF comparison per sample: call VCF (truth) vs bcftools VCF (calls).
+
+    Mirrors vcfeval_fb_per_sample. vg call emits plain locus names as CHROM
+    while bcftools uses the full augref path; the rename step restores the
+    prefix on the call VCF so all inputs share the same namespace (idempotent).
+    """
+    input:
+        call_vcf=f"{OUT_DIR}/{{sample}}.filtered.vcf.gz" if surject_filtering() else f"{OUT_DIR}/{{sample}}.vcf.gz",
+        bc_vcf=f"{OUT_DIR}/{{sample}}.bcftools.vcf.gz",
+        ref=f"{OUT_DIR}/{OUT_NAME}.fa.gz",
+        paths=f"{OUT_DIR}/{OUT_NAME}.filtered-paths.txt" if surject_filtering() else [],
+    output:
+        tp_baseline=f"{OUT_DIR}/vcfeval-bc/{{filt}}/{{sample}}/tp-baseline.vcf.gz",
+        fp=f"{OUT_DIR}/vcfeval-bc/{{filt}}/{{sample}}/fp.vcf.gz",
+        fn=f"{OUT_DIR}/vcfeval-bc/{{filt}}/{{sample}}/fn.vcf.gz",
+    threads: rule_cpus("vcfeval", 64)
+    resources:
+        mem_mb=rule_mem_gb("vcfeval", 128) * 1024,
+        runtime=rule_runtime("vcfeval"),
+    params:
+        out_dir=f"{OUT_DIR}/vcfeval-bc/{{filt}}/{{sample}}",
+        eval_tool=config.get("eval_tool", "aardvark"),
+        docker_arg=lambda wc: f"--docker {config['vcfeval_docker']}" if config.get("vcfeval_docker") else "",
+        no_docker="" if config.get("vcfeval_docker") else "--no-docker",
+        augref_prefix=f"{AUGREF}#0#",
+        min_vcfeval_len=config.get("min_vcfeval_len", 0),
+        bc_min_qual=config.get("bcftools_min_qual", 20),
+    shell:
+        "export RTG_MEM=$(({resources.mem_mb} / 1024))g"
+        " && mkdir -p {params.out_dir}"
+        " && bcftools query -f '%CHROM\\n' {input.call_vcf} | sort -u"
+        "    | sed -n '/^{params.augref_prefix}/!s/^\\(.*\\)/\\1\\t{params.augref_prefix}\\1/p'"
+        "    > {params.out_dir}/rename-chrs.txt"
+        " && if [ -s {params.out_dir}/rename-chrs.txt ]; then"
+        "      bcftools annotate --rename-chrs {params.out_dir}/rename-chrs.txt"
+        "        {input.call_vcf}"
+        "        | awk '/^##contig=/{{id=$0; sub(/.*ID=/, \"\", id); sub(/[,>].*/, \"\", id);"
+        "                if(seen[id]++) next}} {{print}}';"
+        "    else"
+        "      bcftools view {input.call_vcf};"
+        "    fi"
+        "    | if [ '{wildcards.filt}' = 'pass' ]; then"
+        "        bcftools view -f PASS 2>/dev/null;"
+        "      else cat; fi"
+        "    | bgzip > {params.out_dir}/call.renamed.vcf.gz"
+        " && tabix -fp vcf {params.out_dir}/call.renamed.vcf.gz"
+        " && if [ '{wildcards.filt}' = 'pass' ]; then"
+        "      bcftools filter -e 'QUAL<{params.bc_min_qual}' -s LowQual {input.bc_vcf} 2>/dev/null"
+        "        | bcftools view -f PASS 2>/dev/null"
+        "        | bgzip > {params.out_dir}/bc.pass.vcf.gz"
+        "      && tabix -fp vcf {params.out_dir}/bc.pass.vcf.gz;"
+        "    fi"
+        " && WORK_TMPDIR=$(mktemp -d \"${{TMPDIR:-{params.out_dir}}}/vcfeval.XXXXXX\")"
+        " && trap 'rm -rf \"$WORK_TMPDIR\"' EXIT"
+        " && echo \"Staging inputs to $WORK_TMPDIR\""
+        " && cp {params.out_dir}/call.renamed.vcf.gz"
+        "       {params.out_dir}/call.renamed.vcf.gz.tbi"
+        "       {input.ref} {input.ref}.fai"
+        "       \"$WORK_TMPDIR/\""
+        " && if [ '{wildcards.filt}' = 'pass' ]; then"
+        "      cp {params.out_dir}/bc.pass.vcf.gz"
+        "         {params.out_dir}/bc.pass.vcf.gz.tbi"
+        "         \"$WORK_TMPDIR/\";"
+        "      BC_VCF=$WORK_TMPDIR/bc.pass.vcf.gz;"
+        "    else"
+        "      cp {input.bc_vcf} {input.bc_vcf}.tbi \"$WORK_TMPDIR/\";"
+        "      BC_VCF=$WORK_TMPDIR/$(basename {input.bc_vcf});"
+        "    fi"
+        " && {{ [ -f {input.ref}.gzi ]"
+        "       && cp {input.ref}.gzi \"$WORK_TMPDIR/\" || true; }}"
+        " && python3 scripts/vcfcomp.py {params.eval_tool}"
+        "    --truth $WORK_TMPDIR/call.renamed.vcf.gz"
+        "    --calls $BC_VCF"
+        "    --ref $WORK_TMPDIR/$(basename {input.ref})"
+        "    --out-dir $WORK_TMPDIR"
+        "    --threads {threads}"
+        "    --min-contig-len {params.min_vcfeval_len}"
+        "    {params.docker_arg} {params.no_docker}"
+        " && for f in tp-baseline.vcf.gz tp-baseline.vcf.gz.tbi"
+        "          fp.vcf.gz fp.vcf.gz.tbi fn.vcf.gz fn.vcf.gz.tbi"
+        "          summary.txt snp_roc.tsv.gz non_snp_roc.tsv.gz weighted_roc.tsv.gz"
+        "          phasing.txt vcfeval.log progress"
+        "          query.vcf.gz query.vcf.gz.tbi truth.vcf.gz truth.vcf.gz.tbi; do"
+        "    [ -f \"$WORK_TMPDIR/$f\" ] && cp \"$WORK_TMPDIR/$f\" {params.out_dir}/;"
+        "  done"
+        " && rm -f {params.out_dir}/call.renamed.vcf.gz"
+        "    {params.out_dir}/call.renamed.vcf.gz.tbi"
+        "    {params.out_dir}/rename-chrs.txt"
+        "    {params.out_dir}/bc.pass.vcf.gz"
+        "    {params.out_dir}/bc.pass.vcf.gz.tbi"
+
+rule vcfeval_bc_compare_plot:
+    """Aggregate per-sample vcfeval results (bcftools) into comparison plot"""
+    input:
+        tp_baseline=expand(f"{OUT_DIR}/vcfeval-bc/{{filt}}/{{sample}}/tp-baseline.vcf.gz", sample=SAMPLES, allow_missing=True),
+        fp=expand(f"{OUT_DIR}/vcfeval-bc/{{filt}}/{{sample}}/fp.vcf.gz", sample=SAMPLES, allow_missing=True),
+        fn=expand(f"{OUT_DIR}/vcfeval-bc/{{filt}}/{{sample}}/fn.vcf.gz", sample=SAMPLES, allow_missing=True),
+    output:
+        f"{OUT_DIR}/merged.call-vs-bc.{{filt}}.vcfeval-compare.png",
+        f"{OUT_DIR}/merged.call-vs-bc.{{filt}}.vcfeval-compare.tsv",
+    params:
+        vcfeval_dirs=lambda wc, input: ",".join(
+            [f"{OUT_DIR}/vcfeval-bc/{wc.filt}/{s}" for s in SAMPLES]),
+        sample_names=",".join(SAMPLES),
+    resources:
+        mem_mb=32000,
+        runtime=120,
+    shell:
+        "ulimit -s unlimited && Rscript scripts/vcf-compare-vcfeval.R"
+        " {OUT_DIR}/merged.call-vs-bc.{wildcards.filt}"
+        " --vcfeval-dirs {params.vcfeval_dirs}"
+        " --samples {params.sample_names}"
+        " --label-a Call --label-b bcftools"
+        " --title '{REF} Call vs bcftools (vcfeval)'"
+        " --no-sv"
+
+rule vcfeval_bc_lr_compare_plot:
+    """Aggregate long-read per-sample vcfeval results (bcftools) into comparison plot"""
+    input:
+        tp_baseline=expand(f"{OUT_DIR}/vcfeval-bc/{{filt}}/{{sample}}/tp-baseline.vcf.gz", sample=LR_SAMPLES, allow_missing=True),
+        fp=expand(f"{OUT_DIR}/vcfeval-bc/{{filt}}/{{sample}}/fp.vcf.gz", sample=LR_SAMPLES, allow_missing=True),
+        fn=expand(f"{OUT_DIR}/vcfeval-bc/{{filt}}/{{sample}}/fn.vcf.gz", sample=LR_SAMPLES, allow_missing=True),
+    output:
+        f"{OUT_DIR}/merged.lr.call-vs-bc.{{filt}}.vcfeval-compare.png",
+        f"{OUT_DIR}/merged.lr.call-vs-bc.{{filt}}.vcfeval-compare.tsv",
+    params:
+        vcfeval_dirs=lambda wc, input: ",".join(
+            [f"{OUT_DIR}/vcfeval-bc/{wc.filt}/{s}" for s in LR_SAMPLES]),
+        sample_names=",".join(LR_SAMPLES),
+    resources:
+        mem_mb=32000,
+        runtime=120,
+    shell:
+        "ulimit -s unlimited && Rscript scripts/vcf-compare-vcfeval.R"
+        " {OUT_DIR}/merged.lr.call-vs-bc.{wildcards.filt}"
+        " --vcfeval-dirs {params.vcfeval_dirs}"
+        " --samples {params.sample_names}"
+        " --label-a Call --label-b bcftools"
+        " --title '{REF} Long-Read Call vs bcftools (vcfeval)'"
+        " --no-sv"
+
+rule vcfeval_dv_vs_bc_per_sample:
+    """Run VCF comparison per sample: DeepVariant (truth) vs bcftools (calls)"""
+    input:
+        dv_vcf=f"{OUT_DIR}/{{sample}}.deepvariant.vcf.gz",
+        bc_vcf=f"{OUT_DIR}/{{sample}}.bcftools.vcf.gz",
+        ref=f"{OUT_DIR}/{OUT_NAME}.fa.gz",
+        paths=f"{OUT_DIR}/{OUT_NAME}.filtered-paths.txt" if surject_filtering() else [],
+    output:
+        tp_baseline=f"{OUT_DIR}/vcfeval-dv-vs-bc/{{filt}}/{{sample}}/tp-baseline.vcf.gz",
+        fp=f"{OUT_DIR}/vcfeval-dv-vs-bc/{{filt}}/{{sample}}/fp.vcf.gz",
+        fn=f"{OUT_DIR}/vcfeval-dv-vs-bc/{{filt}}/{{sample}}/fn.vcf.gz",
+    threads: rule_cpus("vcfeval", 64)
+    resources:
+        mem_mb=rule_mem_gb("vcfeval", 128) * 1024,
+        runtime=rule_runtime("vcfeval"),
+    params:
+        out_dir=f"{OUT_DIR}/vcfeval-dv-vs-bc/{{filt}}/{{sample}}",
+        eval_tool=config.get("eval_tool", "aardvark"),
+        docker_arg=lambda wc: f"--docker {config['vcfeval_docker']}" if config.get("vcfeval_docker") else "",
+        no_docker="" if config.get("vcfeval_docker") else "--no-docker",
+        augref_prefix=f"{AUGREF}#0#",
+        min_vcfeval_len=config.get("min_vcfeval_len", 0),
+        bc_min_qual=config.get("bcftools_min_qual", 20),
+    shell:
+        "export RTG_MEM=$(({resources.mem_mb} / 1024))g"
+        " && mkdir -p {params.out_dir}"
+        " && if [ '{wildcards.filt}' = 'pass' ]; then"
+        "      bcftools view -f PASS {input.dv_vcf} 2>/dev/null"
+        "        | bgzip > {params.out_dir}/dv.pass.vcf.gz"
+        "      && tabix -fp vcf {params.out_dir}/dv.pass.vcf.gz;"
+        "      bcftools filter -e 'QUAL<{params.bc_min_qual}' -s LowQual {input.bc_vcf} 2>/dev/null"
+        "        | bcftools view -f PASS 2>/dev/null"
+        "        | bgzip > {params.out_dir}/bc.pass.vcf.gz"
+        "      && tabix -fp vcf {params.out_dir}/bc.pass.vcf.gz;"
+        "    fi"
+        " && WORK_TMPDIR=$(mktemp -d \"${{TMPDIR:-{params.out_dir}}}/vcfeval.XXXXXX\")"
+        " && trap 'rm -rf \"$WORK_TMPDIR\"' EXIT"
+        " && cp {input.ref} {input.ref}.fai \"$WORK_TMPDIR/\""
+        " && {{ [ -f {input.ref}.gzi ]"
+        "       && cp {input.ref}.gzi \"$WORK_TMPDIR/\" || true; }}"
+        " && if [ '{wildcards.filt}' = 'pass' ]; then"
+        "      cp {params.out_dir}/dv.pass.vcf.gz"
+        "         {params.out_dir}/dv.pass.vcf.gz.tbi"
+        "         {params.out_dir}/bc.pass.vcf.gz"
+        "         {params.out_dir}/bc.pass.vcf.gz.tbi"
+        "         \"$WORK_TMPDIR/\";"
+        "      TRUTH_VCF=$WORK_TMPDIR/dv.pass.vcf.gz;"
+        "      CALLS_VCF=$WORK_TMPDIR/bc.pass.vcf.gz;"
+        "    else"
+        "      cp {input.dv_vcf} {input.dv_vcf}.tbi"
+        "         {input.bc_vcf} {input.bc_vcf}.tbi"
+        "         \"$WORK_TMPDIR/\";"
+        "      TRUTH_VCF=$WORK_TMPDIR/$(basename {input.dv_vcf});"
+        "      CALLS_VCF=$WORK_TMPDIR/$(basename {input.bc_vcf});"
+        "    fi"
+        " && python3 scripts/vcfcomp.py {params.eval_tool}"
+        "      --truth \"$TRUTH_VCF\""
+        "      --calls \"$CALLS_VCF\""
+        "      --ref $WORK_TMPDIR/$(basename {input.ref})"
+        "      --out-dir $WORK_TMPDIR/eval_out"
+        "      --threads {threads}"
+        "      --min-contig-len {params.min_vcfeval_len}"
+        "      {params.docker_arg} {params.no_docker}"
+        " && for f in tp.vcf.gz tp.vcf.gz.tbi tp-baseline.vcf.gz tp-baseline.vcf.gz.tbi"
+        "          fp.vcf.gz fp.vcf.gz.tbi fn.vcf.gz fn.vcf.gz.tbi"
+        "          summary.txt non_snp_roc.tsv.gz snp_roc.tsv.gz weighted_roc.tsv.gz"
+        "          phasing.txt vcfeval.log progress"
+        "          query.vcf.gz query.vcf.gz.tbi truth.vcf.gz truth.vcf.gz.tbi; do"
+        "    [ -f \"$WORK_TMPDIR/eval_out/$f\" ] && cp \"$WORK_TMPDIR/eval_out/$f\" {params.out_dir}/;"
+        "  done"
+        " && rm -f {params.out_dir}/dv.pass.vcf.gz"
+        "    {params.out_dir}/dv.pass.vcf.gz.tbi"
+        "    {params.out_dir}/bc.pass.vcf.gz"
+        "    {params.out_dir}/bc.pass.vcf.gz.tbi"
+
+rule vcfeval_dv_vs_bc_compare_plot:
+    """Aggregate per-sample DV-vs-bcftools vcfeval results into comparison plot"""
+    input:
+        tp_baseline=expand(f"{OUT_DIR}/vcfeval-dv-vs-bc/{{filt}}/{{sample}}/tp-baseline.vcf.gz", sample=SAMPLES, allow_missing=True),
+        fp=expand(f"{OUT_DIR}/vcfeval-dv-vs-bc/{{filt}}/{{sample}}/fp.vcf.gz", sample=SAMPLES, allow_missing=True),
+        fn=expand(f"{OUT_DIR}/vcfeval-dv-vs-bc/{{filt}}/{{sample}}/fn.vcf.gz", sample=SAMPLES, allow_missing=True),
+    output:
+        f"{OUT_DIR}/merged.dv-vs-bc.{{filt}}.vcfeval-compare.png",
+        f"{OUT_DIR}/merged.dv-vs-bc.{{filt}}.vcfeval-compare.tsv",
+    params:
+        vcfeval_dirs=lambda wc, input: ",".join(
+            [f"{OUT_DIR}/vcfeval-dv-vs-bc/{wc.filt}/{s}" for s in SAMPLES]),
+        sample_names=",".join(SAMPLES),
+    resources:
+        mem_mb=32000,
+        runtime=120,
+    shell:
+        "ulimit -s unlimited && Rscript scripts/vcf-compare-vcfeval.R"
+        " {OUT_DIR}/merged.dv-vs-bc.{wildcards.filt}"
+        " --vcfeval-dirs {params.vcfeval_dirs}"
+        " --samples {params.sample_names}"
+        " --label-a DeepVariant --label-b bcftools"
+        " --title '{REF} DeepVariant vs bcftools (vcfeval)'"
+        " --no-sv"
+
+rule vcfeval_dv_vs_bc_lr_compare_plot:
+    """Aggregate long-read per-sample DV-vs-bcftools vcfeval results"""
+    input:
+        tp_baseline=expand(f"{OUT_DIR}/vcfeval-dv-vs-bc/{{filt}}/{{sample}}/tp-baseline.vcf.gz", sample=LR_SAMPLES, allow_missing=True),
+        fp=expand(f"{OUT_DIR}/vcfeval-dv-vs-bc/{{filt}}/{{sample}}/fp.vcf.gz", sample=LR_SAMPLES, allow_missing=True),
+        fn=expand(f"{OUT_DIR}/vcfeval-dv-vs-bc/{{filt}}/{{sample}}/fn.vcf.gz", sample=LR_SAMPLES, allow_missing=True),
+    output:
+        f"{OUT_DIR}/merged.lr.dv-vs-bc.{{filt}}.vcfeval-compare.png",
+        f"{OUT_DIR}/merged.lr.dv-vs-bc.{{filt}}.vcfeval-compare.tsv",
+    params:
+        vcfeval_dirs=lambda wc, input: ",".join(
+            [f"{OUT_DIR}/vcfeval-dv-vs-bc/{wc.filt}/{s}" for s in LR_SAMPLES]),
+        sample_names=",".join(LR_SAMPLES),
+    resources:
+        mem_mb=32000,
+        runtime=120,
+    shell:
+        "ulimit -s unlimited && Rscript scripts/vcf-compare-vcfeval.R"
+        " {OUT_DIR}/merged.lr.dv-vs-bc.{wildcards.filt}"
+        " --vcfeval-dirs {params.vcfeval_dirs}"
+        " --samples {params.sample_names}"
+        " --label-a DeepVariant --label-b bcftools"
+        " --title '{REF} Long-Read DeepVariant vs bcftools (vcfeval)'"
+        " --no-sv"
 
 ############################################################################
 # On-reference GIAB stratification for vcfeval comparisons
