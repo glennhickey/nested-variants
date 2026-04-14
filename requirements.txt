@@ -1,0 +1,17 @@
+# Python packages for the nested-variants Snakemake pipeline.
+# Install with: pip install -r requirements.txt
+#
+# Non-Python prerequisites (vg, samtools, bcftools, bedtools, docker, ...)
+# are listed in README.md and must be installed separately.
+
+snakemake>=8
+snakemake-executor-plugin-slurm
+
+# Used by scripts/compose-summary.py (summary panel figures)
+Pillow
+
+# Used by scripts/pangenie/merge_vcfs.py
+pyfaidx
+
+# Used by scripts/vcfcomp.py (vcfeval/aardvark preprocessing and breakdown)
+pysam

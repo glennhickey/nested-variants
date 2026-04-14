@@ -11,10 +11,22 @@ Discover and analyze off-reference (nested) variants in pangenome graphs built w
 | **docker** | `deepvariant` | [Docker install](https://docs.docker.com/get-docker/) |
 | **bcftools** | `split_vcf`, `merge_call_vcfs`, `merge_dv_vcfs` | `apt install bcftools` / `conda install bcftools` |
 | **bgzip / tabix** (htslib) | VCF compression & indexing | `apt install tabix` / `conda install htslib` |
-| **snakemake** (>= 8) | Pipeline orchestration | `pip install snakemake` / `conda install snakemake` |
+| **snakemake** (>= 8) | Pipeline orchestration | `pip install -r requirements.txt` (see below) |
 | Rscript | `plots` (optional) | `apt install r-base` |
 | kmc | `genotype` (optional) | [kmc releases](https://github.com/refresh-bio/KMC) |
 | shellcheck | testing | `apt install shellcheck` |
+
+### Python packages
+
+All required Python packages are pinned in [`requirements.txt`](requirements.txt):
+
+```bash
+python3 -m venv venv-nested-variants
+source venv-nested-variants/bin/activate
+pip install -r requirements.txt
+```
+
+This installs snakemake + SLURM executor plugin + Pillow, pyfaidx, and pysam (used by helper scripts).
 
 ## Quick Start
 
@@ -353,10 +365,7 @@ snakemake --executor slurm \
 snakemake --profile profiles/slurm graph_only
 ```
 
-For SLURM execution, install the executor plugin:
-```bash
-pip install snakemake-executor-plugin-slurm
-```
+The SLURM executor plugin is installed via `requirements.txt` (see [Python packages](#python-packages)).
 
 ### Node-local scratch
 
