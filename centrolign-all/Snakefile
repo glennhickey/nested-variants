@@ -91,6 +91,19 @@ for chrom, samples in CHROM_SAMPLE_HAPS.items():
         if "1" in haps and "2" in haps:
             CHROM_SAMPLES.setdefault(chrom, {})[sample] = [haps["1"], haps["2"]]
 
+# Optional cap: keep at most N samples per chromosome, preferring samples that
+# appear in the most chromosomes (so the common-samples intersection stays
+# large for aggregate plots).  Tie-break alphabetically for determinism.
+MAX_SAMPLES = int(config.get("max_samples_per_chrom", 0))
+if MAX_SAMPLES > 0:
+    from collections import Counter
+    freq = Counter(s for chrom_samples in CHROM_SAMPLES.values()
+                     for s in chrom_samples)
+    for chrom in list(CHROM_SAMPLES):
+        samples = CHROM_SAMPLES[chrom]
+        keep = sorted(samples.keys(), key=lambda s: (-freq[s], s))[:MAX_SAMPLES]
+        CHROM_SAMPLES[chrom] = {s: samples[s] for s in keep}
+
 # Chromosomes that have both a GBZ and reads
 CALL_CHROMS = sorted(
     [c for c in CHROMS if c in CHROM_SAMPLES],

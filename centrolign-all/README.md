@@ -55,6 +55,17 @@ snakemake --profile ../profiles/slurm \
   --config 'skip_hapl=chr6'
 ```
 
+Cap samples per chromosome (useful for a quick end-to-end run that hits
+every panel before committing to the full cohort). Samples that appear
+in the most chromosomes are preferred, so the cross-chromosome
+intersection used for aggregate panels stays large:
+
+```bash
+snakemake --profile ../profiles/slurm \
+  --default-resources slurm_partition=long \
+  --config max_samples_per_chrom=10
+```
+
 Output goes to `../output/centrolign-all/`.
 
 ## Output figures
