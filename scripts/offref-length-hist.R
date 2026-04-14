@@ -98,23 +98,31 @@ if (!is.null(min_threshold)) {
   cat("Remaining values:", nrow(df), "\n")
 }
 
-# Generate colors for all datasets
+# For many chromosomes we drop per-dataset rainbow colors and prefer
+# a muted-lines + summary scheme (cumulative) or a box-per-chrom plot
+# (histogram).  Below 10 datasets we keep the original coloured style.
+many <- length(all_labels) >= 10
+
+# Derive clean chrom labels by stripping the ".augref-segs" suffix when
+# present, then natural-sort (chr1, chr2, ..., chr22, chrX, chrY).
+chrom_labels <- sub("\\.augref-segs$", "", all_labels)
+nat_levels <- function(v) { u <- unique(v); u[order(nchar(u), u)] }
+df$chrom <- factor(sub("\\.augref-segs$", "", df$dataset),
+                   levels = nat_levels(chrom_labels))
+
+# Colours (only used in the <10-dataset path)
 n_datasets <- length(all_labels)
 if (n_datasets <= 2) {
   colors <- c("#0072B2", "#D55E00")[1:n_datasets]
 } else if (n_datasets <= 8) {
-  # Use ColorBrewer Set2 palette for up to 8 datasets
   colors <- RColorBrewer::brewer.pal(max(3, n_datasets), "Set2")[1:n_datasets]
 } else {
-  # For more than 8, use rainbow colors
   colors <- rainbow(n_datasets)
 }
 color_map <- setNames(colors, all_labels)
 
 # Create plot based on cumulative flag
 if (cumulative) {
-  # Create cumulative count plot (number of items >= value)
-  # Calculate cumulative counts for each dataset
   df_sorted <- df[order(df$value, decreasing = TRUE), ]
   df_cumulative <- do.call(rbind, lapply(unique(df$dataset), function(ds) {
     subset_data <- df_sorted[df_sorted$dataset == ds, ]
@@ -125,39 +133,74 @@ if (cumulative) {
     )
   }))
 
-  p <- ggplot(df_cumulative, aes(x = value, y = count, color = dataset)) +
-    geom_line(linewidth = 0.8, alpha = 0.8) +
-    geom_point(size = 1.5, alpha = 0.6) +
-    scale_x_log10(labels = scales::comma,
-                  breaks = scales::breaks_log(n = 10)) +
-    scale_y_log10(labels = scales::comma) +
-    scale_color_manual(values = color_map) +
-    labs(title = "Off-Reference Segment Lengths (Cumulative Count)",
-         x = "Length (log scale)",
-         y = "Count >= Length (log scale)",
-         color = "Dataset") +
-    theme_minimal()
-} else {
-  # Create log-spaced bins starting from actual minimum
-  min_val <- min(df$value)
-  max_val <- max(df$value)
-  log_breaks <- 10^seq(log10(min_val), log10(max_val), length.out = 21)
+  if (many) {
+    # Combined cumulative across ALL chromosomes (one bold line)
+    all_sorted <- sort(df$value, decreasing = TRUE)
+    df_combined <- data.frame(value = all_sorted, count = seq_along(all_sorted))
 
-  # Create overlaid histogram with log scale
-  p <- ggplot(df, aes(x = value, fill = dataset, color = dataset)) +
-    geom_histogram(alpha = 0.5, position = "identity",
-                   breaks = log_breaks) +
-    scale_x_log10(labels = scales::comma,
-                  breaks = scales::breaks_log(n = 10)) +
-    scale_y_continuous(trans = "log1p", labels = scales::comma) +
-    scale_fill_manual(values = color_map) +
-    scale_color_manual(values = color_map) +
-    labs(title = "Off-Reference Interval Lengths (Log Scale)",
-         x = "Value (log scale)",
-         y = "Frequency (log scale)",
-         fill = "Dataset") +
-    theme_minimal() +
-    guides(color = "none")
+    p <- ggplot() +
+      geom_line(data = df_cumulative,
+                aes(x = value, y = count, group = dataset),
+                colour = "grey60", linewidth = 0.4, alpha = 0.5) +
+      geom_line(data = df_combined,
+                aes(x = value, y = count),
+                colour = "black", linewidth = 1.2) +
+      scale_x_log10(labels = scales::comma,
+                    breaks = scales::breaks_log(n = 10)) +
+      scale_y_log10(labels = scales::comma) +
+      labs(title = "Off-Reference Segment Lengths (Cumulative Count)",
+           subtitle = sprintf("Grey: each of %d chromosomes.  Black: all chromosomes combined.",
+                              n_datasets),
+           x = "Length (log scale)",
+           y = "Count >= Length (log scale)") +
+      theme_minimal()
+  } else {
+    p <- ggplot(df_cumulative, aes(x = value, y = count, color = dataset)) +
+      geom_line(linewidth = 0.8, alpha = 0.8) +
+      geom_point(size = 1.5, alpha = 0.6) +
+      scale_x_log10(labels = scales::comma,
+                    breaks = scales::breaks_log(n = 10)) +
+      scale_y_log10(labels = scales::comma) +
+      scale_color_manual(values = color_map) +
+      labs(title = "Off-Reference Segment Lengths (Cumulative Count)",
+           x = "Length (log scale)",
+           y = "Count >= Length (log scale)",
+           color = "Dataset") +
+      theme_minimal()
+  }
+} else {
+  if (many) {
+    # One boxplot per chromosome on a log y-axis, vertical x-labels.
+    p <- ggplot(df, aes(x = chrom, y = value)) +
+      geom_boxplot(fill = "#6baed6", colour = "#08519c",
+                   outlier.size = 0.4, outlier.alpha = 0.3,
+                   linewidth = 0.4) +
+      scale_y_log10(labels = scales::comma,
+                    breaks = scales::breaks_log(n = 10)) +
+      labs(title = "Off-Reference Interval Lengths by Chromosome",
+           x = NULL, y = "Length (log scale)") +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+  } else {
+    min_val <- min(df$value)
+    max_val <- max(df$value)
+    log_breaks <- 10^seq(log10(min_val), log10(max_val), length.out = 21)
+
+    p <- ggplot(df, aes(x = value, fill = dataset, color = dataset)) +
+      geom_histogram(alpha = 0.5, position = "identity",
+                     breaks = log_breaks) +
+      scale_x_log10(labels = scales::comma,
+                    breaks = scales::breaks_log(n = 10)) +
+      scale_y_continuous(trans = "log1p", labels = scales::comma) +
+      scale_fill_manual(values = color_map) +
+      scale_color_manual(values = color_map) +
+      labs(title = "Off-Reference Interval Lengths (Log Scale)",
+           x = "Value (log scale)",
+           y = "Frequency (log scale)",
+           fill = "Dataset") +
+      theme_minimal() +
+      guides(color = "none")
+  }
 }
 
 # Save the plot - use ragg if available, otherwise fall back to cairo
