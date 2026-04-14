@@ -1,0 +1,11 @@
+# Generated data — only scripts + README are versioned
+*.vg
+*.gfa
+*.gbz
+*.aug.tsv
+*.paths
+*.paths.gfa
+*.snarls
+*.colours.csv
+*.pb
+chunk_*

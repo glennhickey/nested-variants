@@ -78,3 +78,43 @@ Output goes to `../output/centrolign-all/`.
 | `7.deepvariant-summary.png` | Aggregate DeepVariant variant types, size dist, AF, per-sample |
 | `8.deepvariant-by-chrom.png` | DeepVariant SNP/MNP-Indel/SV counts + AF by chromosome |
 | `8b.dv-per-sample-by-chrom.png` | DeepVariant per-sample counts by chromosome (off-ref + on-ref) |
+
+## Bandage cartoons (cartoons/)
+
+Scripts for building small CHM13 + few-sample graphs suitable for loading
+into BandageNG with per-augref colouring.
+
+| Script | Purpose |
+|--------|---------|
+| `cartoons/subset-cartoon.sh` | Subset a `.vg` to CHM13 + chosen haps, optionally clip to a CHM13 range via snarls + `vg chunk`, emit augref-unified GFA |
+| `cartoons/path-similarity.py` | Jaccard similarity of paths (by node set), used to pick haplotype pairs when no cenhap TSV is available |
+| `cartoons/augref-colors.py` | Generate a BandageNG CSV (`Name,Colour`) colouring the CHM13 backbone + top-N longest `_alt` contigs with distinct rainbow colours |
+
+### Example: chr12 trio cartoon (HG00099.1 + HG01891.1)
+
+HG00099.1 and HG01891.1 were chosen via `path-similarity.py` for being
+mutually similar (Jaccard ≈ 0.95) while ~44 % similar to CHM13 — enough
+nested variation to be interesting but still anchored to the reference.
+
+```bash
+cd cartoons
+
+# 1. Extract path-only GFA from chr12.vg for similarity ranking
+vg convert -fW ../chr12.vg | awk '$1=="P"' > chr12.paths.gfa
+
+# 2. Rank pairs with moderate CHM13 similarity and high mutual similarity
+python3 path-similarity.py chr12.paths.gfa CHM13
+
+# 3. Subset to CHM13 + HG00099.1 + HG01891.1, clip to CHM13:1-1300000
+./subset-cartoon.sh ../chr12.vg chr12.trio5.win \
+    --range CHM13#0#CHM13.0:1-1300000 \
+    HG00099.1 HG01891.1
+
+# 4. Generate BandageNG colour CSV (CHM13 backbone black, top-20 alts rainbow)
+python3 augref-colors.py chr12.trio5.win.aug.gfa chr12.trio5.win.colours.csv \
+    --ref-color '#000000' --rest-color '#FAD7D7'
+```
+
+Load `chr12.trio5.win.aug.gfa` in BandageNG, then *File → Load CSV data*
+on `chr12.trio5.win.colours.csv` and switch the *Colour* dropdown to
+**Custom colours**.
