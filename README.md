@@ -199,7 +199,7 @@ This requires `aws`, `parallel`, `bedtools`, `wget`, `dos2unix`, and `bigBedToBe
 Note: can mount sshfs with
 
 ```
-sshfs ghickey@emerald:/private/home/ghickey/dev/nested-variants /home/hickey/dev/nested-variants/cluster_nested_variants -o ro
+sshfs ghickey@emerald:/private/home/ghickey/dev/nested-variants /mnt/cluster_nested_variants -o ro
 ```
 
 ### 2. Run CHM13 pipeline
