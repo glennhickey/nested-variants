@@ -85,7 +85,8 @@ Output goes to `../output/centrolign-all/`.
 |--------|-------------|
 | `5.call-summary.png` | Aggregate vg call variant types, size dist, AF, per-sample |
 | `6.call-by-chrom.png` | vg call SNP/MNP-Indel/SV counts + AF by chromosome |
-| `6b.call-per-sample-by-chrom.png` | vg call per-sample counts by chromosome (off-ref + on-ref) |
+| `6b.call-per-sample-by-chrom.png` | vg call per-sample counts by chromosome (off-ref + on-ref, 3×2 grid) |
+| `6c.call-per-sample-by-chrom-combined.png` | vg call per-sample counts by chromosome, off/on-ref overlaid in 3-panel stack (same layout as 4b) |
 | `7.deepvariant-summary.png` | Aggregate DeepVariant variant types, size dist, AF, per-sample |
 | `8.deepvariant-by-chrom.png` | DeepVariant SNP/MNP-Indel/SV counts + AF by chromosome |
 | `8b.dv-per-sample-by-chrom.png` | DeepVariant per-sample counts by chromosome (off-ref + on-ref) |

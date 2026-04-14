@@ -144,6 +144,7 @@ rule all:
         *([f"{OUT}/5.call-summary.png",
            f"{OUT}/6.call-by-chrom.png",
            f"{OUT}/6b.call-per-sample-by-chrom.png",
+           f"{OUT}/6c.call-per-sample-by-chrom-combined.png",
           ] if HAS_READS else []),
         # DeepVariant panels (skipped when skip_dv=True)
         *([f"{OUT}/7.deepvariant-summary.png",
@@ -1026,6 +1027,9 @@ if HAS_READS:
             ps_snp_onref=f"{OUT}/all.call.by-chrom.per-sample-snp-onref.png",
             ps_indel_onref=f"{OUT}/all.call.by-chrom.per-sample-indel-onref.png",
             ps_sv_onref=f"{OUT}/all.call.by-chrom.per-sample-sv-onref.png",
+            ps_snp_combined=f"{OUT}/all.call.by-chrom.per-sample-snp-combined.png",
+            ps_indel_combined=f"{OUT}/all.call.by-chrom.per-sample-indel-combined.png",
+            ps_sv_combined=f"{OUT}/all.call.by-chrom.per-sample-sv-combined.png",
         params:
             stats_labeled=lambda wc, input: " ".join(
                 f"{os.path.basename(f).replace('.call.sites.pass.vcf-stats.tsv', '')}:{f}"
@@ -1206,6 +1210,28 @@ if HAS_READS:
             " ' :{input.indel_onref}'"
             " ' :{input.sv}'"
             " ' :{input.sv_onref}'"
+
+
+    rule summary_call_per_sample_by_chrom_combined:
+        """Compose compact call per-sample by chromosome, off+on-ref overlaid (figure 6c)"""
+        resources:
+            mem_mb=32000,
+            runtime=960,
+        input:
+            snp=f"{OUT}/all.call.by-chrom.per-sample-snp-combined.png",
+            indel=f"{OUT}/all.call.by-chrom.per-sample-indel-combined.png",
+            sv=f"{OUT}/all.call.by-chrom.per-sample-sv-combined.png",
+        output:
+            f"{OUT}/6c.call-per-sample-by-chrom-combined.png",
+        shell:
+            "python3 {SCRIPTS}/compose-summary.py"
+            " --output {output}"
+            " --title 'vg call Per-Sample by Chromosome (off- + on-ref)'"
+            " --cols 1"
+            " --panels"
+            " ' :{input.snp}'"
+            " ' :{input.indel}'"
+            " ' :{input.sv}'"
 
 
     rule summary_dv_per_sample_by_chrom:
