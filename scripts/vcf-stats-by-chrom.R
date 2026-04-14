@@ -53,10 +53,17 @@ read_pairs <- function(pairs) {
   }))
 }
 
-# Natural sort for chromosome factor levels
+# Natural sort for chromosome factor levels: numeric chroms in numeric
+# order first (chr1..chr22), then chrX, chrY, chrM, then anything else.
 nat_sort <- function(v) {
   u <- unique(v)
-  u[order(nchar(u), u)]
+  suffix <- sub("^chr", "", u)
+  key <- suppressWarnings(as.numeric(suffix))
+  key[suffix == "X"] <- 100
+  key[suffix == "Y"] <- 101
+  key[suffix == "M"] <- 102
+  key[is.na(key)] <- 1000
+  u[order(key, u)]
 }
 
 # Variant type groups

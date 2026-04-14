@@ -106,7 +106,16 @@ many <- length(all_labels) >= 10
 # Derive clean chrom labels by stripping the ".augref-segs" suffix when
 # present, then natural-sort (chr1, chr2, ..., chr22, chrX, chrY).
 chrom_labels <- sub("\\.augref-segs$", "", all_labels)
-nat_levels <- function(v) { u <- unique(v); u[order(nchar(u), u)] }
+nat_levels <- function(v) {
+  u <- unique(v)
+  suffix <- sub("^chr", "", u)
+  key <- suppressWarnings(as.numeric(suffix))
+  key[suffix == "X"] <- 100
+  key[suffix == "Y"] <- 101
+  key[suffix == "M"] <- 102
+  key[is.na(key)] <- 1000
+  u[order(key, u)]
+}
 df$chrom <- factor(sub("\\.augref-segs$", "", df$dataset),
                    levels = nat_levels(chrom_labels))
 

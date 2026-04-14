@@ -67,9 +67,15 @@ type_order <- c("SNP", "MNP", "Insertion", "Deletion", "SV Insertion", "SV Delet
 
 if (!is.null(all_stats)) {
 
-# Natural sort chromosomes
+# Natural sort chromosomes: numeric first (chr1..chr22), then X, Y, M, other
 chrom_order <- unique(all_stats$chrom)
-chrom_order <- chrom_order[order(nchar(chrom_order), chrom_order)]
+.sfx <- sub("^chr", "", chrom_order)
+.key <- suppressWarnings(as.numeric(.sfx))
+.key[.sfx == "X"] <- 100
+.key[.sfx == "Y"] <- 101
+.key[.sfx == "M"] <- 102
+.key[is.na(.key)] <- 1000
+chrom_order <- chrom_order[order(.key, chrom_order)]
 all_stats[, chrom := factor(chrom, levels = chrom_order)]
 
 # --- Aggregate variant types ---
