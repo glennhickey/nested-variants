@@ -61,8 +61,9 @@ freebayes_extra_args: ""
 # FreeBayes Docker image
 freebayes_docker: "staphb/freebayes:1.3.7"
 
-# Set to false to skip FreeBayes for long-read samples (default: true)
-# enable_freebayes_longread: true
+# Set to true to run FreeBayes on long-read samples (default: false;
+# FreeBayes is slow and unreliable on HiFi in complex regions).
+# enable_freebayes_longread: false
 
 # vcfeval Docker image for haplotype-aware VCF comparison
 # Leave empty to use rtg directly (must be on PATH); set to use Docker instead

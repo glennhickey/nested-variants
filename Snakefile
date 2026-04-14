@@ -76,8 +76,11 @@ def pangenie_enabled():
     return str(val).lower() not in ("false", "0", "no", "")
 
 def freebayes_longread_enabled():
-    """True when FreeBayes on long reads is enabled (default true)."""
-    val = config.get("enable_freebayes_longread", "true")
+    """True when FreeBayes on long reads is enabled (default false).
+    FreeBayes is slow and unreliable on HiFi in complex regions (centromeres),
+    so long-read samples are skipped by default. Set enable_freebayes_longread=true
+    to opt in."""
+    val = config.get("enable_freebayes_longread", "false")
     return str(val).lower() not in ("false", "0", "no", "")
 
 def surject_filtering():
