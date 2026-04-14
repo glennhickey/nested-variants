@@ -123,19 +123,46 @@ if (length(rec_pairs) > 0) {
   recs[af_bin > 1, af_bin := 1]
 
   af_counts <- recs[, .(sites = .N), by = .(chrom, ref_context, af_bin)]
+  n_chroms <- length(unique(af_counts$chrom))
 
-  p_c <- ggplot(af_counts, aes(x = af_bin, y = sites,
-                                color = chrom, linetype = ref_context)) +
-    geom_line(linewidth = 0.8) +
-    geom_point(size = 1.5) +
-    scale_y_log10(labels = comma) +
-    scale_linetype_manual(values = c("Off-reference" = "solid",
-                                     "On-reference" = "dashed")) +
-    labs(title = "SNP Allele Frequency Spectrum by Chromosome",
-         x = "Non-Reference Frequency", y = "Sites (log scale)",
-         color = "Chromosome", linetype = NULL) +
-    theme_bw(base_size = 13) +
-    theme(plot.title = element_text(face = "bold"))
+  if (n_chroms >= 10) {
+    # Many chromosomes: grey per-chrom lines + one bold combined line
+    # per ref_context (distinguished by line type).
+    combined <- recs[, .(sites = .N), by = .(ref_context, af_bin)]
+
+    p_c <- ggplot() +
+      geom_line(data = af_counts,
+                aes(x = af_bin, y = sites,
+                    group = interaction(chrom, ref_context),
+                    linetype = ref_context),
+                colour = "grey70", linewidth = 0.3, alpha = 0.5) +
+      geom_line(data = combined,
+                aes(x = af_bin, y = sites, linetype = ref_context),
+                colour = "black", linewidth = 1.1) +
+      scale_y_log10(labels = comma) +
+      scale_linetype_manual(values = c("Off-reference" = "solid",
+                                       "On-reference" = "dashed")) +
+      labs(title = "SNP Allele Frequency Spectrum by Chromosome",
+           subtitle = sprintf("Grey: each of %d chromosomes.  Black: all chromosomes combined.",
+                              n_chroms),
+           x = "Non-Reference Frequency", y = "Sites (log scale)",
+           linetype = NULL) +
+      theme_bw(base_size = 13) +
+      theme(plot.title = element_text(face = "bold"))
+  } else {
+    p_c <- ggplot(af_counts, aes(x = af_bin, y = sites,
+                                  color = chrom, linetype = ref_context)) +
+      geom_line(linewidth = 0.8) +
+      geom_point(size = 1.5) +
+      scale_y_log10(labels = comma) +
+      scale_linetype_manual(values = c("Off-reference" = "solid",
+                                       "On-reference" = "dashed")) +
+      labs(title = "SNP Allele Frequency Spectrum by Chromosome",
+           x = "Non-Reference Frequency", y = "Sites (log scale)",
+           color = "Chromosome", linetype = NULL) +
+      theme_bw(base_size = 13) +
+      theme(plot.title = element_text(face = "bold"))
+  }
 
   ggsave(paste0(output_prefix, ".af-spectrum.png"), p_c,
          width = 8, height = 5, dpi = 300,
