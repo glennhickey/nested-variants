@@ -30,7 +30,8 @@ REF=""
 SAMPLE=""
 OUTPUT_DIR="."
 OUTPUT_NAME=""
-REGION_SIZE=1000000    # bcftools is less region-sensitive than freebayes; bigger chunks OK
+REGION_SIZE=10000000   # 10 Mb: bcftools mpileup is fast (~0.5s startup dominates on 1 Mb),
+                       # so coarser chunks amortize startup. Adjust for load balance.
 LONG_READ=false
 EXTRA_ARGS=""
 
@@ -99,7 +100,7 @@ while [[ $# -gt 0 ]]; do
             echo "Caller Options:"
             echo "  --long-read           Use pacbio-ccs preset (default: illumina)"
             echo "  --extra-args <str>    Extra args appended to bcftools mpileup"
-            echo "  --region-size <N>     Region chunk size for parallelization (default: 1000000)"
+            echo "  --region-size <N>     Region chunk size for parallelization (default: 10000000)"
             echo ""
             echo "Resource Options:"
             echo "  --cpus <N>            CPUs per task (default: 16)"

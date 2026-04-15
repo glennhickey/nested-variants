@@ -1885,7 +1885,7 @@ rule bcftools:
         runtime=rule_runtime("bcftools"),
     params:
         mem_gb=rule_mem_gb("bcftools", 256),
-        region_size=config.get("bcftools_region_size", 1000000),
+        region_size=config.get("bcftools_region_size", 10000000),
         extra_args=lambda wc: config.get("bcftools_longread_args", "") if wc.sample in config.get("longread_samples", {}) else config.get("bcftools_extra_args", ""),
         long_read_flag=lambda wc: "--long-read" if wc.sample in config.get("longread_samples", {}) else "",
     shell:
