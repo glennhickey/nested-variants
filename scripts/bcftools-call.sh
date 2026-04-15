@@ -4,19 +4,20 @@
 # bcftools-call.sh
 #
 # Description:
-#   Runs bcftools mpileup + call (via Docker) in parallel to produce a per-sample
-#   VCF from a BAM file against a FASTA reference. Uses GNU parallel to split by
-#   genomic regions; each region runs in its own Docker container.
+#   Runs bcftools mpileup + call in parallel to produce a per-sample VCF from
+#   a BAM file against a FASTA reference. Uses GNU parallel to split by
+#   genomic regions. Uses the bcftools binary from PATH (no Docker) — bcftools
+#   is assumed to be installed on all execution hosts.
 #
 #   Short vs long read presets: by default bcftools mpileup uses the --config
 #   illumina preset for short reads; pass --long-read to switch to pacbio-ccs
-#   (HiFi). The preset affects quality/indel handling parameters only.
+#   (HiFi). Requires bcftools >= 1.20 for the pacbio-ccs preset.
 #
 # Usage:
 #   bcftools-call.sh --bam <file.bam> --ref <file.fa.gz> --sample <name> \
 #                    --out-dir <dir> --out-name <name> \
 #                    [--long-read] [--extra-args STR] \
-#                    [--region-size N] [--docker IMAGE] \
+#                    [--region-size N] \
 #                    [--cpus N] [--mem size] [--local]
 #
 ################################################################################
@@ -32,7 +33,6 @@ OUTPUT_NAME=""
 REGION_SIZE=1000000    # bcftools is less region-sensitive than freebayes; bigger chunks OK
 LONG_READ=false
 EXTRA_ARGS=""
-DOCKER_IMAGE="staphb/bcftools:1.21"
 
 # Resource defaults
 CPUS="16"
@@ -74,10 +74,6 @@ while [[ $# -gt 0 ]]; do
             EXTRA_ARGS="$2"
             shift 2
             ;;
-        --docker)
-            DOCKER_IMAGE="$2"
-            shift 2
-            ;;
         --cpus)
             CPUS="$2"
             shift 2
@@ -104,7 +100,6 @@ while [[ $# -gt 0 ]]; do
             echo "  --long-read           Use pacbio-ccs preset (default: illumina)"
             echo "  --extra-args <str>    Extra args appended to bcftools mpileup"
             echo "  --region-size <N>     Region chunk size for parallelization (default: 1000000)"
-            echo "  --docker <image>      Docker image (default: staphb/bcftools:1.21)"
             echo ""
             echo "Resource Options:"
             echo "  --cpus <N>            CPUs per task (default: 16)"
@@ -195,26 +190,13 @@ else
     FORMAT_ANNOTS="FORMAT/AD,FORMAT/DP,FORMAT/SP"
 fi
 
-# Absolute paths for Docker bind mounts; dedup parent dirs so we don't
-# pass redundant -v flags when REF/BAM live in the same directory.
-REF_ABS="$(realpath "$REF")"
-BAM_ABS="$(realpath "$BAM")"
-declare -A MOUNT_SET
-MOUNT_SET["$(dirname "$REF_ABS")"]=1
-MOUNT_SET["$(dirname "$BAM_ABS")"]=1
-MOUNT_FLAGS=""
-for d in "${!MOUNT_SET[@]}"; do
-    MOUNT_FLAGS="$MOUNT_FLAGS -v $d:$d"
-done
+echo "Running bcftools mpileup|call (preset: $CONFIG_PRESET, $(bcftools --version | head -1))"
 
-echo "Running bcftools mpileup|call via Docker: $DOCKER_IMAGE (preset: $CONFIG_PRESET)"
-
-# Run bcftools mpileup | call in parallel over regions (one docker container per
-# region). Each region emits a full VCF (with header); awk keeps first header
-# only and sets FILTER=PASS on all records (bcftools call emits "." by default).
+# Each region emits a full VCF (with header); awk keeps first header only and
+# sets FILTER=PASS on all records (bcftools call emits "." by default).
 /usr/bin/time -v cat "$REGIONS_FILE" \
   | parallel -k -j "$CPUS" \
-      "docker run --rm --user $(id -u):$(id -g) $MOUNT_FLAGS $DOCKER_IMAGE bash -c \"bcftools mpileup -Ou --config $CONFIG_PRESET -a $FORMAT_ANNOTS -f '$REF_ABS' -r {} '$BAM_ABS' $EXTRA_ARGS | bcftools call -mv\"" \
+      "bcftools mpileup -Ou --config $CONFIG_PRESET -a $FORMAT_ANNOTS -f '$REF' -r {} '$BAM' $EXTRA_ARGS | bcftools call -mv" \
   | awk 'BEGIN{OFS="\t"; p=1} /^#/{if(p)print; if(/^#CHROM/)p=0; next} {if($7==".") $7="PASS"; print}' \
   | bcftools reheader -s <(echo "$SAMPLE") \
   | bgzip > "$VCF"

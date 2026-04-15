@@ -1872,7 +1872,8 @@ rule freebayes:
         " --local"
 
 rule bcftools:
-    """BAM + FASTA → VCF via bcftools mpileup + call (parallel by region)"""
+    """BAM + FASTA → VCF via bcftools mpileup + call (parallel by region).
+    Uses the bcftools binary from PATH (must be >= 1.20 for pacbio-ccs preset)."""
     input:
         bam=f"{OUT_DIR}/{{sample}}.bam",
         ref=f"{OUT_DIR}/{OUT_NAME}.fa.gz",
@@ -1887,7 +1888,6 @@ rule bcftools:
         region_size=config.get("bcftools_region_size", 1000000),
         extra_args=lambda wc: config.get("bcftools_longread_args", "") if wc.sample in config.get("longread_samples", {}) else config.get("bcftools_extra_args", ""),
         long_read_flag=lambda wc: "--long-read" if wc.sample in config.get("longread_samples", {}) else "",
-        docker_img=config.get("bcftools_docker", "staphb/bcftools:1.21"),
     shell:
         "scripts/bcftools-call.sh"
         " --bam {input.bam}"
@@ -1898,7 +1898,6 @@ rule bcftools:
         " --region-size {params.region_size}"
         " {params.long_read_flag}"
         " --extra-args '{params.extra_args}'"
-        " --docker {params.docker_img}"
         " --cpus {threads} --mem {params.mem_gb}gb"
         " --local"
 
