@@ -57,7 +57,7 @@ def main():
                 samples = fields[9:]
                 continue
 
-            fields = line.split("\t", 10)
+            fields = line.rstrip("\n").split("\t")
             chrom = fields[0]
             ref = fields[3]
             alt_str = fields[4]
@@ -70,12 +70,7 @@ def main():
             vtype = classify(ref_len, alt_lens)
             ref_context = "Off-reference" if "_alt" in chrom else "On-reference"
 
-            # GT is the first subfield of each sample column
-            gt_and_rest = fields[9].rstrip("\n").split("\t") if len(fields) > 9 else []
-            # fields[9] may contain all sample columns joined if we split with limit
-            # Re-split the tail properly
-            tail = fields[9].rstrip("\n") if len(fields) > 9 else ""
-            sample_fields = tail.split("\t")
+            sample_fields = fields[9:]
 
             for i, sf in enumerate(sample_fields):
                 if i >= len(samples):
