@@ -4586,12 +4586,18 @@ rule pantree_density:
     resources:
         mem_mb=32000,
         runtime=120,
+    params:
+        annot_args=" ".join(
+            [f"--censat '{config['annot_censat']}'" if config.get("annot_censat", "") else "",
+             f"--segdups '{config['annot_segdups']}'" if config.get("annot_segdups", "") else "",
+             f"--genes '{config['annot_genes']}'" if config.get("annot_genes", "") else ""]),
     shell:
         "ulimit -s unlimited && Rscript scripts/pantree-density.R"
         " {input} {output}"
         " 'Pantree Off-Reference Variant Density'"
         " --ref {REF}"
         " --bed '{config[refgaps_bed]}'"
+        " {params.annot_args}"
 
 ############################################################################
 # Summary figures — numbered multi-panel composites for quick overview

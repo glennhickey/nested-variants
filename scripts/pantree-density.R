@@ -31,8 +31,20 @@ if (length(bed_idx) > 0) {
   args <- args[-c(bed_idx, bed_idx + 1)]
 }
 
+# Extract annotation track flags (--censat, --segdups, --genes) — same as chrom-density-tsv.R
+track_display_names <- c(censat = "CenSat", segdups = "SegDups", genes = "Genes")
+annot_track_files <- list()
+for (flag in c("--censat", "--segdups", "--genes")) {
+  idx <- which(args == flag)
+  if (length(idx) > 0) {
+    key <- sub("^--", "", flag)
+    annot_track_files[[track_display_names[key]]] <- args[idx + 1]
+    args <- args[-c(idx, idx + 1)]
+  }
+}
+
 if (length(args) < 2) {
-  cat("Usage: Rscript pantree-density.R <records.tsv> <output.png> [title] [--ref REF] [--bed BED]\n")
+  cat("Usage: Rscript pantree-density.R <records.tsv> <output.png> [title] [--ref REF] [--bed BED] [--censat F] [--segdups F] [--genes F]\n")
   quit(status = 1)
 }
 
@@ -77,9 +89,11 @@ chrom_lengths$chromosome <- factor(chrom_lengths$chromosome, levels = chrom_leve
 # Density bins
 density_data <- compute_density_bins(dt, chrom_lengths, chrom_levels)
 
-# BED overlay (gap regions)
+# BED overlay (gap regions) and annotation tracks
 bed_data <- read_bed_overlay(bed_file, chrom_levels)
+annot_tracks <- lapply(annot_track_files, read_bed_overlay, chrom_levels = chrom_levels)
 
 # Plot
-p <- plot_ideogram(density_data, chrom_lengths, bed_data, plot_title)
+p <- plot_ideogram(density_data, chrom_lengths, bed_data, plot_title,
+                   annot_tracks = annot_tracks)
 save_and_summarize(p, output_file, as.data.frame(dt))
