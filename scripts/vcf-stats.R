@@ -934,13 +934,17 @@ if (per_sample) {
       fwrite(ps_counts, paste0(prefix, ".per-sample-types.tsv"), sep = "\t")
       cat("Wrote per-sample stats:", paste0(prefix, ".per-sample-types.tsv"), "\n")
 
-      # 6. Violin plot — facet SNP vs Non-SNP so SNPs (high count) get own y-axis
+      # 6. Violin plot — facet SNP / Indel-MNP / SV so each gets its own y-axis
       ps_counts <- ps_counts[variant_type != "Other"]
       ps_counts[, variant_type := factor(variant_type,
         levels = intersect(setdiff(type_levels, "Other"), unique(variant_type)))]
-      ps_counts[, snp_class := fifelse(variant_type == "SNP", "SNP", "Non-SNP")]
-      ps_counts[, snp_class := factor(snp_class, levels = c("SNP", "Non-SNP"))]
       sv_type_names <- c("SV Insertion", "SV Deletion")
+      ps_counts[, type_class := fcase(
+        variant_type == "SNP",                     "SNP",
+        variant_type %in% sv_type_names,           "SV",
+        default =                                  "Indel/MNP")]
+      ps_counts[, type_class := factor(type_class, levels = c("SNP", "Indel/MNP", "SV"))]
+      # Keep size_class / ps_summary around for the SV-only sub-plot below
       ps_counts[, size_class := fifelse(variant_type %in% sv_type_names,
                                          "Structural Variants", "Small Variants")]
       ps_counts[, size_class := factor(size_class, levels = c("Small Variants", "Structural Variants"))]
@@ -961,7 +965,7 @@ if (per_sample) {
         scale_color_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
                            name = NULL) +
         scale_y_continuous(labels = scales::comma) +
-        facet_grid(ref_context ~ snp_class, scales = "free") +
+        facet_grid(ref_context ~ type_class, scales = "free") +
         labs(title = title,
              subtitle = paste0("Per-Sample Variant Counts ", mode_label, filter_label,
                                " (N=", n_samples, " samples)"),
@@ -1167,8 +1171,12 @@ if (per_sample) {
           region_colors_ps <- c("Easy" = "forestgreen", "Segdup" = "firebrick",
                                  "Other Difficult" = "darkorange")
 
-          ps_giab_counts_plot[, snp_class := fifelse(variant_type == "SNP", "SNP", "Non-SNP")]
-          ps_giab_counts_plot[, snp_class := factor(snp_class, levels = c("SNP", "Non-SNP"))]
+          sv_type_names <- c("SV Insertion", "SV Deletion")
+          ps_giab_counts_plot[, type_class := fcase(
+            variant_type == "SNP",                     "SNP",
+            variant_type %in% sv_type_names,           "SV",
+            default =                                  "Indel/MNP")]
+          ps_giab_counts_plot[, type_class := factor(type_class, levels = c("SNP", "Indel/MNP", "SV"))]
 
           p_ps_giab <- ggplot(ps_giab_counts_plot,
                               aes(x = variant_type, y = count, fill = ps_giab_region)) +
@@ -1180,7 +1188,7 @@ if (per_sample) {
             scale_fill_manual(values = region_colors_ps, name = "GIAB Region") +
             scale_color_manual(values = region_colors_ps, name = "GIAB Region") +
             scale_y_continuous(labels = scales::comma) +
-            facet_grid(ref_context ~ snp_class, scales = "free") +
+            facet_grid(ref_context ~ type_class, scales = "free") +
             labs(title = title,
                  subtitle = paste0("Per-Sample GIAB Stratification ", mode_label, filter_label,
                                    " (N=", n_samples, " samples)"),

@@ -4916,7 +4916,6 @@ rule longread_mapq_dist_plot:
 rule summary_longread_call:
     """Compose long-read call summary figure"""
     input:
-        per_sample=f"{OUT_DIR}/merged.longread.call.sites.pass.per-sample-types.png",
         call_panel=f"{OUT_DIR}/merged.longread.call.sites.pass.call-summary-panel.png",
         giab_per_sample=[f"{OUT_DIR}/merged.longread.call.sites.pass.per-sample-giab-strat.png"] if giab_strat_configured() else [],
     output:
@@ -4926,8 +4925,7 @@ rule summary_longread_call:
         runtime=30,
     params:
         panels=lambda wc, input: " ".join(
-            [f"'Per-Sample Types (PASS):{input.per_sample}'",
-             f"'Call Summary:{input.call_panel}'"]
+            [f"'Call Summary:{input.call_panel}'"]
             + ([f"'Per-Sample GIAB:{input.giab_per_sample[0]}'"] if input.giab_per_sample else [])
         ),
     shell:
