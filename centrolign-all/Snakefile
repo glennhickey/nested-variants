@@ -146,12 +146,16 @@ rule all:
         f"{OUT}/4.per-sample-by-chrom.png",
         f"{OUT}/4b.per-sample-by-chrom-combined.png",
         f"{OUT}/4b.per-sample-by-chrom.tsv",
+        f"{OUT}/4c.per-haplotype-by-chrom-combined.png",
+        f"{OUT}/4c.per-haplotype-by-chrom.tsv",
         # Call panels (always produced if reads are present)
         *([f"{OUT}/5.call-summary.png",
            f"{OUT}/6.call-by-chrom.png",
            f"{OUT}/6b.call-per-sample-by-chrom.png",
            f"{OUT}/6c.call-per-sample-by-chrom-combined.png",
            f"{OUT}/6c.per-sample-by-chrom.tsv",
+           f"{OUT}/6d.call-per-haplotype-by-chrom-combined.png",
+           f"{OUT}/6d.per-haplotype-by-chrom.tsv",
           ] if HAS_READS else []),
         # DeepVariant panels (skipped when skip_dv=True)
         *([f"{OUT}/7.deepvariant-summary.png",
@@ -598,6 +602,88 @@ rule summary_per_sample_by_chrom_combined:
         "python3 {SCRIPTS}/compose-summary.py"
         " --output {output}"
         " --title 'Deconstruct Per-Sample Counts by Chromosome (off- + on-ref)'"
+        " --cols 1"
+        " --panels"
+        " ' :{input.snp}'"
+        " ' :{input.indel}'"
+        " ' :{input.sv}'"
+
+
+# --- Per-haplotype variants (deconstruct) ---
+
+rule per_haplotype_per_chrom:
+    """Per-chromosome VCF -> per-haplotype variant counts"""
+    input:
+        f"{OUT}/{{chrom}}.tr.vcf.gz",
+    output:
+        f"{OUT}/{{chrom}}.sites.per-haplotype-types.tsv",
+    resources:
+        mem_mb=32000,
+        runtime=960,
+    shell:
+        "python3 {SCRIPTS}/vcf-per-haplotype-stats.py {input} > {output}"
+
+
+rule deconstruct_by_chrom_haplotype:
+    """Per-chromosome haplotype breakdown plots"""
+    resources:
+        mem_mb=64000,
+        runtime=960,
+    input:
+        per_hap=expand(f"{OUT}/{{c}}.sites.per-haplotype-types.tsv", c=CHROMS),
+    output:
+        ps_snp=f"{OUT}/all.by-chrom.per-haplotype-snp.png",
+        ps_indel=f"{OUT}/all.by-chrom.per-haplotype-indel.png",
+        ps_sv=f"{OUT}/all.by-chrom.per-haplotype-sv.png",
+        ps_snp_onref=f"{OUT}/all.by-chrom.per-haplotype-snp-onref.png",
+        ps_indel_onref=f"{OUT}/all.by-chrom.per-haplotype-indel-onref.png",
+        ps_sv_onref=f"{OUT}/all.by-chrom.per-haplotype-sv-onref.png",
+        ps_snp_combined=f"{OUT}/all.by-chrom.per-haplotype-snp-combined.png",
+        ps_indel_combined=f"{OUT}/all.by-chrom.per-haplotype-indel-combined.png",
+        ps_sv_combined=f"{OUT}/all.by-chrom.per-haplotype-sv-combined.png",
+    params:
+        ps_labeled=lambda wc, input: " ".join(
+            f"{os.path.basename(f).replace('.sites.per-haplotype-types.tsv', '')}:{f}"
+            for f in input.per_hap
+        ),
+    shell:
+        "Rscript {SCRIPTS}/vcf-stats-by-chrom.R"
+        " {OUT}/all.by-chrom.per-haplotype"
+        " --per-sample {params.ps_labeled}"
+
+
+rule concat_per_haplotype_by_chrom:
+    """Concatenate per-chrom per-haplotype TSVs with chrom column (4c source data)"""
+    input:
+        expand(f"{OUT}/{{c}}.sites.per-haplotype-types.tsv", c=CHROMS),
+    output:
+        f"{OUT}/4c.per-haplotype-by-chrom.tsv",
+    run:
+        with open(output[0], "w") as out:
+            out.write("chrom\tsample\tvariant_type\tref_context\tcount\n")
+            for f in input:
+                chrom = os.path.basename(f).replace(".sites.per-haplotype-types.tsv", "")
+                with open(f) as inp:
+                    next(inp)
+                    for line in inp:
+                        out.write(f"{chrom}\t{line}")
+
+
+rule summary_per_haplotype_by_chrom_combined:
+    """Compose per-haplotype by chromosome, off+on-ref overlaid (figure 4c)"""
+    resources:
+        mem_mb=32000,
+        runtime=960,
+    input:
+        snp=f"{OUT}/all.by-chrom.per-haplotype-snp-combined.png",
+        indel=f"{OUT}/all.by-chrom.per-haplotype-indel-combined.png",
+        sv=f"{OUT}/all.by-chrom.per-haplotype-sv-combined.png",
+    output:
+        f"{OUT}/4c.per-haplotype-by-chrom-combined.png",
+    shell:
+        "python3 {SCRIPTS}/compose-summary.py"
+        " --output {output}"
+        " --title 'Deconstruct Per-Haplotype Counts by Chromosome (off- + on-ref)'"
         " --cols 1"
         " --panels"
         " ' :{input.snp}'"
@@ -1268,6 +1354,87 @@ if HAS_READS:
             "python3 {SCRIPTS}/compose-summary.py"
             " --output {output}"
             " --title 'vg call Per-Sample by Chromosome (off- + on-ref)'"
+            " --cols 1"
+            " --panels"
+            " ' :{input.snp}'"
+            " ' :{input.indel}'"
+            " ' :{input.sv}'"
+
+
+    # --- Per-haplotype variants (vg call) ---
+
+    rule call_per_haplotype_per_chrom:
+        """Per-chromosome merged call VCF -> per-haplotype variant counts"""
+        input:
+            f"{OUT}/{{chrom}}.merged.call.vcf.gz",
+        output:
+            f"{OUT}/{{chrom}}.call.sites.pass.per-haplotype-types.tsv",
+        resources:
+            mem_mb=32000,
+            runtime=960,
+        shell:
+            "python3 {SCRIPTS}/vcf-per-haplotype-stats.py {input} > {output}"
+
+
+    rule call_by_chrom_haplotype:
+        """Per-chromosome call haplotype breakdown plots"""
+        resources:
+            mem_mb=64000,
+            runtime=960,
+        input:
+            per_hap=expand(f"{OUT}/{{c}}.call.sites.pass.per-haplotype-types.tsv", c=CALL_CHROMS),
+        output:
+            ps_snp=f"{OUT}/all.call.by-chrom.per-haplotype-snp.png",
+            ps_indel=f"{OUT}/all.call.by-chrom.per-haplotype-indel.png",
+            ps_sv=f"{OUT}/all.call.by-chrom.per-haplotype-sv.png",
+            ps_snp_onref=f"{OUT}/all.call.by-chrom.per-haplotype-snp-onref.png",
+            ps_indel_onref=f"{OUT}/all.call.by-chrom.per-haplotype-indel-onref.png",
+            ps_sv_onref=f"{OUT}/all.call.by-chrom.per-haplotype-sv-onref.png",
+            ps_snp_combined=f"{OUT}/all.call.by-chrom.per-haplotype-snp-combined.png",
+            ps_indel_combined=f"{OUT}/all.call.by-chrom.per-haplotype-indel-combined.png",
+            ps_sv_combined=f"{OUT}/all.call.by-chrom.per-haplotype-sv-combined.png",
+        params:
+            ps_labeled=lambda wc, input: " ".join(
+                f"{os.path.basename(f).replace('.call.sites.pass.per-haplotype-types.tsv', '')}:{f}"
+                for f in input.per_hap),
+        shell:
+            "Rscript {SCRIPTS}/vcf-stats-by-chrom.R"
+            " {OUT}/all.call.by-chrom.per-haplotype"
+            " --per-sample {params.ps_labeled}"
+
+
+    rule concat_call_per_haplotype_by_chrom:
+        """Concatenate per-chrom call per-haplotype TSVs with chrom column (6d source data)"""
+        input:
+            expand(f"{OUT}/{{c}}.call.sites.pass.per-haplotype-types.tsv", c=CALL_CHROMS),
+        output:
+            f"{OUT}/6d.per-haplotype-by-chrom.tsv",
+        run:
+            with open(output[0], "w") as out:
+                out.write("chrom\tsample\tvariant_type\tref_context\tcount\n")
+                for f in input:
+                    chrom = os.path.basename(f).replace(".call.sites.pass.per-haplotype-types.tsv", "")
+                    with open(f) as inp:
+                        next(inp)
+                        for line in inp:
+                            out.write(f"{chrom}\t{line}")
+
+
+    rule summary_call_per_haplotype_by_chrom_combined:
+        """Compose call per-haplotype by chromosome, off+on-ref overlaid (figure 6d)"""
+        resources:
+            mem_mb=32000,
+            runtime=960,
+        input:
+            snp=f"{OUT}/all.call.by-chrom.per-haplotype-snp-combined.png",
+            indel=f"{OUT}/all.call.by-chrom.per-haplotype-indel-combined.png",
+            sv=f"{OUT}/all.call.by-chrom.per-haplotype-sv-combined.png",
+        output:
+            f"{OUT}/6d.call-per-haplotype-by-chrom-combined.png",
+        shell:
+            "python3 {SCRIPTS}/compose-summary.py"
+            " --output {output}"
+            " --title 'vg call Per-Haplotype by Chromosome (off- + on-ref)'"
             " --cols 1"
             " --panels"
             " ' :{input.snp}'"
