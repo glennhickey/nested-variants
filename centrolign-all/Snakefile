@@ -632,15 +632,15 @@ rule deconstruct_by_chrom_haplotype:
     input:
         per_hap=expand(f"{OUT}/{{c}}.sites.per-haplotype-types.tsv", c=CHROMS),
     output:
-        ps_snp=f"{OUT}/all.by-chrom.per-haplotype-snp.png",
-        ps_indel=f"{OUT}/all.by-chrom.per-haplotype-indel.png",
-        ps_sv=f"{OUT}/all.by-chrom.per-haplotype-sv.png",
-        ps_snp_onref=f"{OUT}/all.by-chrom.per-haplotype-snp-onref.png",
-        ps_indel_onref=f"{OUT}/all.by-chrom.per-haplotype-indel-onref.png",
-        ps_sv_onref=f"{OUT}/all.by-chrom.per-haplotype-sv-onref.png",
-        ps_snp_combined=f"{OUT}/all.by-chrom.per-haplotype-snp-combined.png",
-        ps_indel_combined=f"{OUT}/all.by-chrom.per-haplotype-indel-combined.png",
-        ps_sv_combined=f"{OUT}/all.by-chrom.per-haplotype-sv-combined.png",
+        ps_snp=f"{OUT}/all.hap.per-sample-snp.png",
+        ps_indel=f"{OUT}/all.hap.per-sample-indel.png",
+        ps_sv=f"{OUT}/all.hap.per-sample-sv.png",
+        ps_snp_onref=f"{OUT}/all.hap.per-sample-snp-onref.png",
+        ps_indel_onref=f"{OUT}/all.hap.per-sample-indel-onref.png",
+        ps_sv_onref=f"{OUT}/all.hap.per-sample-sv-onref.png",
+        ps_snp_combined=f"{OUT}/all.hap.per-sample-snp-combined.png",
+        ps_indel_combined=f"{OUT}/all.hap.per-sample-indel-combined.png",
+        ps_sv_combined=f"{OUT}/all.hap.per-sample-sv-combined.png",
     params:
         ps_labeled=lambda wc, input: " ".join(
             f"{os.path.basename(f).replace('.sites.per-haplotype-types.tsv', '')}:{f}"
@@ -648,7 +648,7 @@ rule deconstruct_by_chrom_haplotype:
         ),
     shell:
         "Rscript {SCRIPTS}/vcf-stats-by-chrom.R"
-        " {OUT}/all.by-chrom.per-haplotype"
+        " {OUT}/all.hap"
         " --per-sample {params.ps_labeled}"
 
 
@@ -675,9 +675,9 @@ rule summary_per_haplotype_by_chrom_combined:
         mem_mb=32000,
         runtime=960,
     input:
-        snp=f"{OUT}/all.by-chrom.per-haplotype-snp-combined.png",
-        indel=f"{OUT}/all.by-chrom.per-haplotype-indel-combined.png",
-        sv=f"{OUT}/all.by-chrom.per-haplotype-sv-combined.png",
+        snp=f"{OUT}/all.hap.per-sample-snp-combined.png",
+        indel=f"{OUT}/all.hap.per-sample-indel-combined.png",
+        sv=f"{OUT}/all.hap.per-sample-sv-combined.png",
     output:
         f"{OUT}/4c.per-haplotype-by-chrom-combined.png",
     shell:
@@ -1384,22 +1384,22 @@ if HAS_READS:
         input:
             per_hap=expand(f"{OUT}/{{c}}.call.sites.pass.per-haplotype-types.tsv", c=CALL_CHROMS),
         output:
-            ps_snp=f"{OUT}/all.call.by-chrom.per-haplotype-snp.png",
-            ps_indel=f"{OUT}/all.call.by-chrom.per-haplotype-indel.png",
-            ps_sv=f"{OUT}/all.call.by-chrom.per-haplotype-sv.png",
-            ps_snp_onref=f"{OUT}/all.call.by-chrom.per-haplotype-snp-onref.png",
-            ps_indel_onref=f"{OUT}/all.call.by-chrom.per-haplotype-indel-onref.png",
-            ps_sv_onref=f"{OUT}/all.call.by-chrom.per-haplotype-sv-onref.png",
-            ps_snp_combined=f"{OUT}/all.call.by-chrom.per-haplotype-snp-combined.png",
-            ps_indel_combined=f"{OUT}/all.call.by-chrom.per-haplotype-indel-combined.png",
-            ps_sv_combined=f"{OUT}/all.call.by-chrom.per-haplotype-sv-combined.png",
+            ps_snp=f"{OUT}/all.call.hap.per-sample-snp.png",
+            ps_indel=f"{OUT}/all.call.hap.per-sample-indel.png",
+            ps_sv=f"{OUT}/all.call.hap.per-sample-sv.png",
+            ps_snp_onref=f"{OUT}/all.call.hap.per-sample-snp-onref.png",
+            ps_indel_onref=f"{OUT}/all.call.hap.per-sample-indel-onref.png",
+            ps_sv_onref=f"{OUT}/all.call.hap.per-sample-sv-onref.png",
+            ps_snp_combined=f"{OUT}/all.call.hap.per-sample-snp-combined.png",
+            ps_indel_combined=f"{OUT}/all.call.hap.per-sample-indel-combined.png",
+            ps_sv_combined=f"{OUT}/all.call.hap.per-sample-sv-combined.png",
         params:
             ps_labeled=lambda wc, input: " ".join(
                 f"{os.path.basename(f).replace('.call.sites.pass.per-haplotype-types.tsv', '')}:{f}"
                 for f in input.per_hap),
         shell:
             "Rscript {SCRIPTS}/vcf-stats-by-chrom.R"
-            " {OUT}/all.call.by-chrom.per-haplotype"
+            " {OUT}/all.call.hap"
             " --per-sample {params.ps_labeled}"
 
 
@@ -1426,9 +1426,9 @@ if HAS_READS:
             mem_mb=32000,
             runtime=960,
         input:
-            snp=f"{OUT}/all.call.by-chrom.per-haplotype-snp-combined.png",
-            indel=f"{OUT}/all.call.by-chrom.per-haplotype-indel-combined.png",
-            sv=f"{OUT}/all.call.by-chrom.per-haplotype-sv-combined.png",
+            snp=f"{OUT}/all.call.hap.per-sample-snp-combined.png",
+            indel=f"{OUT}/all.call.hap.per-sample-indel-combined.png",
+            sv=f"{OUT}/all.call.hap.per-sample-sv-combined.png",
         output:
             f"{OUT}/6d.call-per-haplotype-by-chrom-combined.png",
         shell:
