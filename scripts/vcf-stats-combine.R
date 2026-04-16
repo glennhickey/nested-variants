@@ -23,15 +23,21 @@ suppressPackageStartupMessages({
 local({
   if (!nzchar(Sys.getenv("EMIT_SVG"))) return(invisible(NULL))
   .ggsave <- ggplot2::ggsave
-  svg_dev <- if (requireNamespace("svglite", quietly = TRUE)) "svg" else grDevices::svg
+  svg_dev <- if (requireNamespace("svglite", quietly = TRUE)) "svg"
+             else if (requireNamespace("Cairo", quietly = TRUE)) Cairo::CairoSVG
+             else grDevices::svg
   assign("ggsave", function(filename, plot = ggplot2::last_plot(), ...) {
     .ggsave(filename, plot = plot, ...)
     if (grepl("\\.png$", filename)) {
       svg_file <- sub("\\.png$", ".svg", filename)
       args <- list(...); args$device <- svg_dev; args$type <- NULL; args$dpi <- NULL
       tryCatch(do.call(.ggsave, c(list(svg_file, plot), args)),
-               error = function(e) cat("SVG emit failed for ", svg_file, ": ",
-                                       conditionMessage(e), "\n", sep = ""))
+               error = function(e) {
+                 cat("SVG emit failed for ", svg_file, ": ",
+                     conditionMessage(e), "\n", sep = "")
+                 if (file.exists(svg_file) && file.info(svg_file)$size == 0)
+                   file.remove(svg_file)
+               })
     }
   }, envir = .GlobalEnv)
 })

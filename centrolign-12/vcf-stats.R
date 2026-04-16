@@ -403,12 +403,15 @@ save_png <- function(plot, file, width = 8, height = 6) {
   # Emit SVG alongside PNG when EMIT_SVG=1
   if (nzchar(Sys.getenv("EMIT_SVG")) && grepl("\\.png$", file)) {
     svg_file <- sub("\\.png$", ".svg", file)
-    svg_dev <- if (requireNamespace("svglite", quietly = TRUE)) "svg" else grDevices::svg
+    svg_dev <- if (requireNamespace("svglite", quietly = TRUE)) "svg"
+               else if (requireNamespace("Cairo", quietly = TRUE)) Cairo::CairoSVG
+               else grDevices::svg
     tryCatch({
       ggsave(svg_file, plot = plot, width = width, height = height, device = svg_dev)
       cat("Saved:", svg_file, "\n")
     }, error = function(e) {
       cat("SVG emit failed for ", svg_file, ": ", conditionMessage(e), "\n", sep = "")
+      if (file.exists(svg_file) && file.info(svg_file)$size == 0) file.remove(svg_file)
     })
   }
 }
