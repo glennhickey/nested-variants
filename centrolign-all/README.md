@@ -35,8 +35,7 @@ snakemake --cores 8
 ### Cluster (SLURM)
 
 ```bash
-snakemake --profile ../profiles/slurm \
-  --default-resources slurm_partition=long
+snakemake --profile ../profiles/slurm --default-resources slurm_partition=high_priority --config out=../output/centrolign-all emit_svg=true reads_dir=./extract_asat_reads skip_dv=true --rerun-incomplete
 ```
 
 Subset:

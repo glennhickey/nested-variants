@@ -28,6 +28,11 @@ pip install -r requirements.txt
 
 This installs snakemake + SLURM executor plugin + Pillow, pyfaidx, and pysam (used by helper scripts).
 
+Note: you should also
+```
+conda install bioconda bcftools
+```
+
 ## Quick Start
 
 ```bash
