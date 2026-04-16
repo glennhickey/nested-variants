@@ -145,11 +145,13 @@ rule all:
         f"{OUT}/3.deconstruct-by-chrom.png",
         f"{OUT}/4.per-sample-by-chrom.png",
         f"{OUT}/4b.per-sample-by-chrom-combined.png",
+        f"{OUT}/4b.per-sample-by-chrom.tsv",
         # Call panels (always produced if reads are present)
         *([f"{OUT}/5.call-summary.png",
            f"{OUT}/6.call-by-chrom.png",
            f"{OUT}/6b.call-per-sample-by-chrom.png",
            f"{OUT}/6c.call-per-sample-by-chrom-combined.png",
+           f"{OUT}/6c.per-sample-by-chrom.tsv",
           ] if HAS_READS else []),
         # DeepVariant panels (skipped when skip_dv=True)
         *([f"{OUT}/7.deepvariant-summary.png",
@@ -562,6 +564,23 @@ rule summary_per_sample_by_chrom:
         " ' :{input.indel_onref}'"
         " ' :{input.sv}'"
         " ' :{input.sv_onref}'"
+
+
+rule concat_per_sample_by_chrom:
+    """Concatenate per-chrom per-sample TSVs with chrom column (4b source data)"""
+    input:
+        expand(f"{OUT}/{{c}}.sites.per-sample-types.tsv", c=CHROMS),
+    output:
+        f"{OUT}/4b.per-sample-by-chrom.tsv",
+    run:
+        with open(output[0], "w") as out:
+            out.write("chrom\tsample\tvariant_type\tref_context\tcount\n")
+            for f in input:
+                chrom = os.path.basename(f).replace(".sites.per-sample-types.tsv", "")
+                with open(f) as inp:
+                    next(inp)
+                    for line in inp:
+                        out.write(f"{chrom}\t{line}")
 
 
 rule summary_per_sample_by_chrom_combined:
@@ -1215,6 +1234,23 @@ if HAS_READS:
             " ' :{input.indel_onref}'"
             " ' :{input.sv}'"
             " ' :{input.sv_onref}'"
+
+
+    rule concat_call_per_sample_by_chrom:
+        """Concatenate per-chrom call per-sample TSVs with chrom column (6c source data)"""
+        input:
+            expand(f"{OUT}/{{c}}.call.sites.pass.per-sample-types.tsv", c=CALL_CHROMS),
+        output:
+            f"{OUT}/6c.per-sample-by-chrom.tsv",
+        run:
+            with open(output[0], "w") as out:
+                out.write("chrom\tsample\tvariant_type\tref_context\tcount\n")
+                for f in input:
+                    chrom = os.path.basename(f).replace(".call.sites.pass.per-sample-types.tsv", "")
+                    with open(f) as inp:
+                        next(inp)
+                        for line in inp:
+                            out.write(f"{chrom}\t{line}")
 
 
     rule summary_call_per_sample_by_chrom_combined:
