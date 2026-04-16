@@ -1208,16 +1208,17 @@ rule filtered_paths:
         " > {output}"
 
 rule length_hist:
-    """Augref segments → length histogram"""
+    """Augref segments → length histogram + log-log CCDF"""
     input:
         f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
     output:
-        f"{OUT_DIR}/{OUT_NAME}.augref-length-hist.png",
+        hist=f"{OUT_DIR}/{OUT_NAME}.augref-length-hist.png",
+        loglog=f"{OUT_DIR}/{OUT_NAME}.augref-length-hist-loglog.png",
     resources:
         mem_mb=256000,
         runtime=2880,
     shell:
-        "ulimit -s unlimited && Rscript scripts/offref-length-hist.R {output} {input} TRUE"
+        "ulimit -s unlimited && Rscript scripts/offref-length-hist.R {output.hist} {input}"
 
 rule segment_density:
     """Augref segments → off-reference segment density ideogram"""
@@ -4600,6 +4601,7 @@ rule summary_augref:
     """Compose augref segment summary figure"""
     input:
         length_hist=f"{OUT_DIR}/{OUT_NAME}.augref-length-hist.png",
+        length_loglog=f"{OUT_DIR}/{OUT_NAME}.augref-length-hist-loglog.png",
         ideogram=f"{OUT_DIR}/{OUT_NAME}.offref-segs.png",
         annot_summary=[f"{OUT_DIR}/{OUT_NAME}.annot-summary.png"] if annotation_inputs() else [],
         annot_repeats=[f"{OUT_DIR}/{OUT_NAME}.annot-repeats.png"] if config.get("annot_repeats", "") else [],
@@ -4611,6 +4613,7 @@ rule summary_augref:
     params:
         panels=lambda wc, input: " ".join(
             [f"'Segment Lengths:{input.length_hist}'",
+             f"'Segment Lengths (log-log):{input.length_loglog}'",
              f"'Density Ideogram:{input.ideogram}'"]
             + ([f"'Annotation Overlap:{input.annot_summary[0]}'"] if input.annot_summary else [])
             + ([f"'Repeat Classes:{input.annot_repeats[0]}'"] if input.annot_repeats else [])
@@ -4678,10 +4681,8 @@ rule call_summary_panel:
 rule summary_call:
     """Compose vg call genotyping summary figure"""
     input:
-        variant_types=f"{OUT_DIR}/merged.call.sites.pass.variant-types.png",
         per_sample=f"{OUT_DIR}/merged.call.sites.pass.per-sample-types.png",
         call_panel=[f"{OUT_DIR}/merged.call.sites.pass.call-summary-panel.png"] if SAMPLES else [],
-        giab_strat=[f"{OUT_DIR}/merged.call.sites.pass.giab-strat.png"] if giab_strat_configured() else [],
         giab_per_sample=[f"{OUT_DIR}/merged.call.sites.pass.per-sample-giab-strat.png"] if giab_strat_configured() else [],
         annot_snp=[f"{OUT_DIR}/merged.call.annot-snp-tstv.pass.png"] if annotation_inputs() else [],
     output:
@@ -4691,10 +4692,8 @@ rule summary_call:
         runtime=30,
     params:
         panels=lambda wc, input: " ".join(
-            [f"'Variant Types (PASS):{input.variant_types}'",
-             f"'Per-Sample Types (PASS):{input.per_sample}'"]
+            [f"'Per-Sample Types (PASS):{input.per_sample}'"]
             + ([f"'Call Summary:{input.call_panel[0]}'"] if input.call_panel else [])
-            + ([f"'GIAB Stratification:{input.giab_strat[0]}'"] if input.giab_strat else [])
             + ([f"'Per-Sample GIAB:{input.giab_per_sample[0]}'"] if input.giab_per_sample else [])
             + ([f"'SNP Ts/Tv by Annotation:{input.annot_snp[0]}'"] if input.annot_snp else [])
         ),
@@ -4915,10 +4914,8 @@ rule longread_mapq_dist_plot:
 rule summary_longread_call:
     """Compose long-read call summary figure"""
     input:
-        variant_types=f"{OUT_DIR}/merged.longread.call.sites.pass.variant-types.png",
         per_sample=f"{OUT_DIR}/merged.longread.call.sites.pass.per-sample-types.png",
         call_panel=f"{OUT_DIR}/merged.longread.call.sites.pass.call-summary-panel.png",
-        giab_strat=[f"{OUT_DIR}/merged.longread.call.sites.pass.giab-strat.png"] if giab_strat_configured() else [],
         giab_per_sample=[f"{OUT_DIR}/merged.longread.call.sites.pass.per-sample-giab-strat.png"] if giab_strat_configured() else [],
     output:
         f"{OUT_DIR}/7.call-summary-longread.png",
@@ -4927,10 +4924,8 @@ rule summary_longread_call:
         runtime=30,
     params:
         panels=lambda wc, input: " ".join(
-            [f"'Variant Types (PASS):{input.variant_types}'",
-             f"'Per-Sample Types (PASS):{input.per_sample}'",
+            [f"'Per-Sample Types (PASS):{input.per_sample}'",
              f"'Call Summary:{input.call_panel}'"]
-            + ([f"'GIAB Stratification:{input.giab_strat[0]}'"] if input.giab_strat else [])
             + ([f"'Per-Sample GIAB:{input.giab_per_sample[0]}'"] if input.giab_per_sample else [])
         ),
     shell:

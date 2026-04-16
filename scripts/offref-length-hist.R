@@ -212,21 +212,45 @@ if (cumulative) {
   }
 }
 
-# Save the plot - use ragg if available, otherwise fall back to cairo
-tryCatch({
-  if (requireNamespace("ragg", quietly = TRUE)) {
-    ragg::agg_png(output, width = 8, height = 6, units = "in", res = 300)
-    print(p)
+save_plot <- function(plot, path, w = 8, h = 6) {
+  tryCatch({
+    if (requireNamespace("ragg", quietly = TRUE)) {
+      ragg::agg_png(path, width = w, height = h, units = "in", res = 300)
+      print(plot)
+      dev.off()
+    } else {
+      ggsave(path, plot = plot, width = w, height = h, dpi = 300,
+             device = grDevices::png, type = "cairo")
+    }
+  }, error = function(e) {
+    grDevices::png(path, width = w*300, height = h*300, res = 300, type = "cairo")
+    print(plot)
     dev.off()
-  } else {
-    ggsave(output, plot = p, width = 8, height = 6, dpi = 300, device = grDevices::png, type = "cairo")
-  }
-}, error = function(e) {
-  # Fall back to basic cairo device
-  grDevices::png(output, width = 8*300, height = 6*300, res = 300, type = "cairo")
-  print(p)
-  dev.off()
+  })
+}
+
+save_plot(p, output)
+
+# Log-log cumulative CCDF: for each dataset, plot the number of segments
+# with length >= x on both log-scaled axes. Reveals the tail distribution.
+loglog_output <- sub("\\.png$", "-loglog.png", output)
+ccdf_list <- lapply(data_files, function(f) {
+  d <- read.delim(f, header = FALSE)
+  vals <- sort(d[[3]] - d[[2]], decreasing = TRUE)
+  data.frame(length = vals, rank = seq_along(vals),
+             dataset = tools::file_path_sans_ext(basename(f)))
 })
+ccdf_df <- do.call(rbind, ccdf_list)
+p_loglog <- ggplot(ccdf_df, aes(x = length, y = rank, color = dataset)) +
+  geom_step(linewidth = 0.6) +
+  scale_x_log10(labels = scales::comma, breaks = scales::breaks_log(n = 10)) +
+  scale_y_log10(labels = scales::comma) +
+  scale_color_manual(values = color_map) +
+  labs(title = "Off-Reference Segment Lengths (Cumulative Count)",
+       x = "Length (log scale)", y = "Count >= Length (log scale)",
+       color = "Dataset") +
+  theme_minimal()
+save_plot(p_loglog, loglog_output)
 
 cat("Histogram saved to", output, "\n")
 

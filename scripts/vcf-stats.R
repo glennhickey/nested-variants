@@ -934,72 +934,45 @@ if (per_sample) {
       fwrite(ps_counts, paste0(prefix, ".per-sample-types.tsv"), sep = "\t")
       cat("Wrote per-sample stats:", paste0(prefix, ".per-sample-types.tsv"), "\n")
 
-      # 6. Plot — facet small variants vs SVs so SVs get their own y-axis
+      # 6. Violin plot — facet SNP vs Non-SNP so SNPs (high count) get own y-axis
       ps_counts <- ps_counts[variant_type != "Other"]
       ps_counts[, variant_type := factor(variant_type,
         levels = intersect(setdiff(type_levels, "Other"), unique(variant_type)))]
+      ps_counts[, snp_class := fifelse(variant_type == "SNP", "SNP", "Non-SNP")]
+      ps_counts[, snp_class := factor(snp_class, levels = c("SNP", "Non-SNP"))]
       sv_type_names <- c("SV Insertion", "SV Deletion")
       ps_counts[, size_class := fifelse(variant_type %in% sv_type_names,
                                          "Structural Variants", "Small Variants")]
       ps_counts[, size_class := factor(size_class, levels = c("Small Variants", "Structural Variants"))]
-
       ps_summary <- ps_counts[, .(mean_count = mean(count),
                                    min_count = min(count),
-                                   max_count = max(count),
-                                   sd_count = sd(count)),
+                                   max_count = max(count)),
                                by = .(variant_type, ref_context, size_class)]
 
-      if (n_samples <= 20) {
-        # Bar at mean + jittered dots + min/max error bars
-        p_ps <- ggplot() +
-          geom_col(data = ps_summary,
-                   aes(x = variant_type, y = mean_count, fill = ref_context),
-                   width = 0.7, alpha = 0.6) +
-          geom_errorbar(data = ps_summary,
-                        aes(x = variant_type, ymin = min_count, ymax = max_count),
-                        width = 0.3) +
-          geom_point(data = ps_counts,
-                     aes(x = variant_type, y = count, color = ref_context),
-                     position = position_jitter(width = 0.15),
-                     size = 1.5, alpha = 0.8) +
-          scale_fill_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
-                            name = NULL) +
-          scale_color_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
-                             name = NULL) +
-          scale_y_continuous(labels = scales::comma) +
-          facet_grid(ref_context ~ size_class, scales = "free") +
-          labs(title = title,
-               subtitle = paste0("Per-Sample Variant Counts ", mode_label, filter_label,
-                                 " (N=", n_samples, " samples, bars=mean)"),
-               x = "Variant Type", y = "Count") +
-          theme_minimal() +
-          theme(
-            plot.title = element_text(hjust = 0.5, face = "bold"),
-            plot.subtitle = element_text(hjust = 0.5),
-            panel.background = element_rect(fill = "white", color = NA),
-            plot.background  = element_rect(fill = "white", color = NA)
-          )
-      } else {
-        # Boxplot for large sample counts
-        p_ps <- ggplot(ps_counts,
-                       aes(x = variant_type, y = count, fill = ref_context)) +
-          geom_boxplot(width = 0.6, outlier.size = 1) +
-          scale_fill_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
-                            name = NULL) +
-          scale_y_continuous(labels = scales::comma) +
-          facet_grid(ref_context ~ size_class, scales = "free") +
-          labs(title = title,
-               subtitle = paste0("Per-Sample Variant Counts ", mode_label, filter_label,
-                                 " (N=", n_samples, " samples)"),
-               x = "Variant Type", y = "Count") +
-          theme_minimal() +
-          theme(
-            plot.title = element_text(hjust = 0.5, face = "bold"),
-            plot.subtitle = element_text(hjust = 0.5),
-            panel.background = element_rect(fill = "white", color = NA),
-            plot.background  = element_rect(fill = "white", color = NA)
-          )
-      }
+      p_ps <- ggplot(ps_counts,
+                     aes(x = variant_type, y = count, fill = ref_context)) +
+        geom_violin(width = 0.7, alpha = 0.6, scale = "width",
+                    position = position_dodge(width = 0.7)) +
+        geom_jitter(aes(color = ref_context),
+                    position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.7),
+                    size = 1.2, alpha = 0.7) +
+        scale_fill_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
+                          name = NULL) +
+        scale_color_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
+                           name = NULL) +
+        scale_y_continuous(labels = scales::comma) +
+        facet_grid(ref_context ~ snp_class, scales = "free") +
+        labs(title = title,
+             subtitle = paste0("Per-Sample Variant Counts ", mode_label, filter_label,
+                               " (N=", n_samples, " samples)"),
+             x = "Variant Type", y = "Count") +
+        theme_minimal() +
+        theme(
+          plot.title = element_text(hjust = 0.5, face = "bold"),
+          plot.subtitle = element_text(hjust = 0.5),
+          panel.background = element_rect(fill = "white", color = NA),
+          plot.background  = element_rect(fill = "white", color = NA)
+        )
 
       save_png(p_ps, paste0(prefix, ".per-sample-types.png"), width = 12)
 
@@ -1194,54 +1167,31 @@ if (per_sample) {
           region_colors_ps <- c("Easy" = "forestgreen", "Segdup" = "firebrick",
                                  "Other Difficult" = "darkorange")
 
-          if (n_samples <= 20) {
-            p_ps_giab <- ggplot() +
-              geom_col(data = ps_giab_summary_plot,
-                       aes(x = variant_type, y = mean_count, fill = ps_giab_region),
-                       position = position_dodge(width = 0.7), width = 0.7, alpha = 0.6) +
-              geom_errorbar(data = ps_giab_summary_plot,
-                            aes(x = variant_type, ymin = min_count, ymax = max_count,
-                                group = ps_giab_region),
-                            position = position_dodge(width = 0.7), width = 0.3) +
-              geom_point(data = ps_giab_counts_plot,
-                         aes(x = variant_type, y = count, color = ps_giab_region),
-                         position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.7),
-                         size = 1.5, alpha = 0.8) +
-              scale_fill_manual(values = region_colors_ps, name = "GIAB Region") +
-              scale_color_manual(values = region_colors_ps, name = "GIAB Region") +
-              scale_y_continuous(labels = scales::comma) +
-              facet_wrap(~ ref_context, scales = "free_y") +
-              labs(title = title,
-                   subtitle = paste0("Per-Sample GIAB Stratification ", mode_label, filter_label,
-                                     " (N=", n_samples, " samples, bars=mean)"),
-                   x = "Variant Type", y = "Count") +
-              theme_minimal() +
-              theme(
-                plot.title = element_text(hjust = 0.5, face = "bold"),
-                plot.subtitle = element_text(hjust = 0.5),
-                panel.background = element_rect(fill = "white", color = NA),
-                plot.background  = element_rect(fill = "white", color = NA)
-              )
-          } else {
-            p_ps_giab <- ggplot(ps_giab_counts_plot,
-                                aes(x = variant_type, y = count, fill = ps_giab_region)) +
-              geom_boxplot(position = position_dodge(width = 0.7), width = 0.6,
-                           outlier.size = 1) +
-              scale_fill_manual(values = region_colors_ps, name = "GIAB Region") +
-              scale_y_continuous(labels = scales::comma) +
-              facet_wrap(~ ref_context, scales = "free_y") +
-              labs(title = title,
-                   subtitle = paste0("Per-Sample GIAB Stratification ", mode_label, filter_label,
-                                     " (N=", n_samples, " samples)"),
-                   x = "Variant Type", y = "Count") +
-              theme_minimal() +
-              theme(
-                plot.title = element_text(hjust = 0.5, face = "bold"),
-                plot.subtitle = element_text(hjust = 0.5),
-                panel.background = element_rect(fill = "white", color = NA),
-                plot.background  = element_rect(fill = "white", color = NA)
-              )
-          }
+          ps_giab_counts_plot[, snp_class := fifelse(variant_type == "SNP", "SNP", "Non-SNP")]
+          ps_giab_counts_plot[, snp_class := factor(snp_class, levels = c("SNP", "Non-SNP"))]
+
+          p_ps_giab <- ggplot(ps_giab_counts_plot,
+                              aes(x = variant_type, y = count, fill = ps_giab_region)) +
+            geom_violin(width = 0.7, alpha = 0.6, scale = "width",
+                        position = position_dodge(width = 0.7)) +
+            geom_jitter(aes(color = ps_giab_region),
+                        position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.7),
+                        size = 1.2, alpha = 0.7) +
+            scale_fill_manual(values = region_colors_ps, name = "GIAB Region") +
+            scale_color_manual(values = region_colors_ps, name = "GIAB Region") +
+            scale_y_continuous(labels = scales::comma) +
+            facet_grid(ref_context ~ snp_class, scales = "free") +
+            labs(title = title,
+                 subtitle = paste0("Per-Sample GIAB Stratification ", mode_label, filter_label,
+                                   " (N=", n_samples, " samples)"),
+                 x = "Variant Type", y = "Count") +
+            theme_minimal() +
+            theme(
+              plot.title = element_text(hjust = 0.5, face = "bold"),
+              plot.subtitle = element_text(hjust = 0.5),
+              panel.background = element_rect(fill = "white", color = NA),
+              plot.background  = element_rect(fill = "white", color = NA)
+            )
 
           save_png(p_ps_giab, paste0(prefix, ".per-sample-giab-strat.png"), width = 12)
         }
