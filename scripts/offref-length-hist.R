@@ -232,15 +232,12 @@ cat("Histogram saved to", output, "\n")
 
 # Emit SVG alongside PNG when EMIT_SVG=1
 if (nzchar(Sys.getenv("EMIT_SVG")) && grepl("\\.png$", output)) {
-  svg_output <- sub("\\.png$", ".svg", output)
-  svg_dev <- if (requireNamespace("svglite", quietly = TRUE)) "svg"
-             else if (requireNamespace("Cairo", quietly = TRUE)) Cairo::CairoSVG
-             else grDevices::svg
+  pdf_output <- sub("\\.png$", ".pdf", output)
   tryCatch({
-    ggsave(svg_output, plot = p, width = 8, height = 6, device = svg_dev)
-    cat("SVG saved to", svg_output, "\n")
+    ggsave(pdf_output, plot = p, width = 8, height = 6, device = grDevices::cairo_pdf)
+    cat("PDF saved to", pdf_output, "\n")
   }, error = function(e) {
-    cat("SVG emit failed for ", svg_output, ": ", conditionMessage(e), "\n", sep = "")
-    if (file.exists(svg_output) && file.info(svg_output)$size == 0) file.remove(svg_output)
+    cat("PDF emit failed for ", pdf_output, ": ", conditionMessage(e), "\n", sep = "")
+    if (file.exists(pdf_output) && file.info(pdf_output)$size == 0) file.remove(pdf_output)
   })
 }

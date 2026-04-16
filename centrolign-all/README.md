@@ -66,8 +66,9 @@ snakemake --profile ../profiles/slurm \
   --config max_samples_per_chrom=10
 ```
 
-Emit `.svg` alongside every `.png` (for Illustrator/Inkscape retouching
-of individual panels — composite summary figures stay PNG since they're
+Emit vector `.pdf` alongside every `.png` (for Illustrator/Inkscape
+retouching of individual panels — uses `cairo_pdf` which works on
+headless SLURM nodes; composite summary figures stay PNG since they're
 stitched bitmap):
 
 ```bash

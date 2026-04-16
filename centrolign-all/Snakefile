@@ -26,9 +26,9 @@ MEM_GB = int(config.get("mem_gb", 256))
 # if requested as targets. Set via --config skip_dv=True
 SKIP_DV = str(config.get("skip_dv", False)).lower() in ("true", "1", "yes")
 
-# Also emit .svg versions of every plot (next to the .png).
-# Set via --config emit_svg=True.  Prefixed onto every Rscript shell command
-# so the env var reaches SLURM worker nodes (os.environ alone doesn't).
+# Also emit vector PDF versions of every plot (next to the .png).
+# Set via --config emit_svg=True.  Uses cairo_pdf which works on headless
+# SLURM nodes (grDevices::svg does not).
 _EMIT_SVG = str(config.get("emit_svg", False)).lower() in ("true", "1", "yes")
 RSCRIPT = "EMIT_SVG=1 Rscript" if _EMIT_SVG else "Rscript"
 
