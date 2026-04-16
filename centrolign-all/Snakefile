@@ -27,9 +27,10 @@ MEM_GB = int(config.get("mem_gb", 256))
 SKIP_DV = str(config.get("skip_dv", False)).lower() in ("true", "1", "yes")
 
 # Also emit .svg versions of every plot (next to the .png).
-# Set via --config emit_svg=True.  Propagated to R scripts via EMIT_SVG env.
-if str(config.get("emit_svg", False)).lower() in ("true", "1", "yes"):
-    os.environ["EMIT_SVG"] = "1"
+# Set via --config emit_svg=True.  Prefixed onto every Rscript shell command
+# so the env var reaches SLURM worker nodes (os.environ alone doesn't).
+_EMIT_SVG = str(config.get("emit_svg", False)).lower() in ("true", "1", "yes")
+RSCRIPT = "EMIT_SVG=1 Rscript" if _EMIT_SVG else "Rscript"
 
 # Auto-discover input graphs: either *.gbz or *.gfa (e.g. chrY.centrolign.HPRC_r2_QCv2.gfa).
 # Chromosome is the first dot-separated field. Build CHROM_INPUT map.
@@ -236,7 +237,7 @@ rule length_hist:
     output:
         f"{OUT}/all.augref-length-hist.png",
     shell:
-        "Rscript {SCRIPTS}/offref-length-hist.R {output} {input} TRUE"
+        "{RSCRIPT} {SCRIPTS}/offref-length-hist.R {output} {input} TRUE"
 
 
 rule length_hist_log:
@@ -249,7 +250,7 @@ rule length_hist_log:
     output:
         f"{OUT}/all.augref-length-hist-log.png",
     shell:
-        "Rscript {SCRIPTS}/offref-length-hist.R {output} {input} FALSE"
+        "{RSCRIPT} {SCRIPTS}/offref-length-hist.R {output} {input} FALSE"
 
 
 rule concat_segs:
@@ -283,7 +284,7 @@ rule segment_density:
     output:
         f"{OUT}/all.offref-segs.png",
     shell:
-        "Rscript {SCRIPTS}/chrom-density-tsv.R"
+        "{RSCRIPT} {SCRIPTS}/chrom-density-tsv.R"
         " {input} {output}"
         " '{REF} Off-Reference Segment Density'"
         " {MIN_AUGREF_LEN} '' log1p"
@@ -380,7 +381,7 @@ rule vcf_stats_per_chrom:
         mem_mb=128000,
         runtime=960,
     shell:
-        "Rscript vcf-stats.R"
+        "{RSCRIPT} vcf-stats.R"
         " {input.records} {OUT}/{wildcards.chrom}.sites"
         " --tsv --mode sites --af-step 0.05"
         " --title '{REF} {wildcards.chrom} Deconstruct'"
@@ -418,7 +419,7 @@ rule vcf_stats_aggregate:
         size_dist=f"{OUT}/all.sites.size-dist.png",
         size_dist_log=f"{OUT}/all.sites.size-dist-log.png",
     shell:
-        "Rscript vcf-stats.R"
+        "{RSCRIPT} vcf-stats.R"
         " {input.records} {OUT}/all.sites"
         " --tsv --mode sites --af-step 0.05"
         " --title '{REF} Deconstruct (All Chromosomes)'"
@@ -441,7 +442,7 @@ rule per_sample_aggregate:
             for f in input
         ),
     shell:
-        "Rscript {SCRIPTS}/vcf-stats-combine.R"
+        "{RSCRIPT} {SCRIPTS}/vcf-stats-combine.R"
         " {OUT}/all.per-sample-tmp"
         " --per-sample {params.labeled}"
         " && mv {OUT}/all.per-sample-tmp.per-sample-types.png {output}"
@@ -511,7 +512,7 @@ rule deconstruct_by_chrom:
             for f in input.records
         ),
     shell:
-        "Rscript {SCRIPTS}/vcf-stats-by-chrom.R"
+        "{RSCRIPT} {SCRIPTS}/vcf-stats-by-chrom.R"
         " {OUT}/all.by-chrom"
         " --stats {params.stats_labeled}"
         " --per-sample {params.ps_labeled}"
@@ -647,7 +648,7 @@ rule deconstruct_by_chrom_haplotype:
             for f in input.per_hap
         ),
     shell:
-        "Rscript {SCRIPTS}/vcf-stats-by-chrom.R"
+        "{RSCRIPT} {SCRIPTS}/vcf-stats-by-chrom.R"
         " {OUT}/all.hap"
         " --per-sample {params.ps_labeled}"
 
@@ -936,7 +937,7 @@ if HAS_READS:
             mem_mb=32000,
             runtime=960,
         shell:
-            "Rscript vcf-stats.R"
+            "{RSCRIPT} vcf-stats.R"
             " {input.vcf} {OUT}/{wildcards.chrom}.call.sites.pass"
             " --mode sites --af-step 0.05"
             " --title '{REF} {wildcards.chrom} Call'"
@@ -961,7 +962,7 @@ if HAS_READS:
             mem_mb=32000,
             runtime=960,
         shell:
-            "Rscript vcf-stats.R"
+            "{RSCRIPT} vcf-stats.R"
             " {input.vcf} {OUT}/{wildcards.chrom}.dv.sites.pass"
             " --mode sites --af-step 0.05"
             " --title '{REF} {wildcards.chrom} DeepVariant'"
@@ -1000,7 +1001,7 @@ if HAS_READS:
             mem_mb=64000,
             runtime=960,
         shell:
-            "Rscript vcf-stats.R"
+            "{RSCRIPT} vcf-stats.R"
             " {input.records} {OUT}/all.call.sites.pass"
             " --tsv --mode sites --af-step 0.05"
             " --title '{REF} Call (All Chromosomes)'"
@@ -1023,7 +1024,7 @@ if HAS_READS:
                 for f in input
             ),
         shell:
-            "Rscript {SCRIPTS}/vcf-stats-combine.R"
+            "{RSCRIPT} {SCRIPTS}/vcf-stats-combine.R"
             " {OUT}/all.call.per-sample-tmp"
             " --per-sample {params.labeled}"
             " && mv {OUT}/all.call.per-sample-tmp.per-sample-types.png {output}"
@@ -1059,7 +1060,7 @@ if HAS_READS:
             mem_mb=64000,
             runtime=960,
         shell:
-            "Rscript vcf-stats.R"
+            "{RSCRIPT} vcf-stats.R"
             " {input.records} {OUT}/all.dv.sites.pass"
             " --tsv --mode sites --af-step 0.05"
             " --title '{REF} DeepVariant (All Chromosomes)'"
@@ -1082,7 +1083,7 @@ if HAS_READS:
                 for f in input
             ),
         shell:
-            "Rscript {SCRIPTS}/vcf-stats-combine.R"
+            "{RSCRIPT} {SCRIPTS}/vcf-stats-combine.R"
             " {OUT}/all.dv.per-sample-tmp"
             " --per-sample {params.labeled}"
             " && mv {OUT}/all.dv.per-sample-tmp.per-sample-types.png {output}"
@@ -1151,7 +1152,7 @@ if HAS_READS:
                 f"{os.path.basename(f).replace('.call.sites.pass.records.tsv', '')}:{f}"
                 for f in input.records),
         shell:
-            "Rscript {SCRIPTS}/vcf-stats-by-chrom.R"
+            "{RSCRIPT} {SCRIPTS}/vcf-stats-by-chrom.R"
             " {OUT}/all.call.by-chrom"
             " --stats {params.stats_labeled}"
             " --per-sample {params.ps_labeled}"
@@ -1189,7 +1190,7 @@ if HAS_READS:
                 f"{os.path.basename(f).replace('.dv.sites.pass.records.tsv', '')}:{f}"
                 for f in input.records),
         shell:
-            "Rscript {SCRIPTS}/vcf-stats-by-chrom.R"
+            "{RSCRIPT} {SCRIPTS}/vcf-stats-by-chrom.R"
             " {OUT}/all.dv.by-chrom"
             " --stats {params.stats_labeled}"
             " --per-sample {params.ps_labeled}"
@@ -1398,7 +1399,7 @@ if HAS_READS:
                 f"{os.path.basename(f).replace('.call.sites.pass.per-haplotype-types.tsv', '')}:{f}"
                 for f in input.per_hap),
         shell:
-            "Rscript {SCRIPTS}/vcf-stats-by-chrom.R"
+            "{RSCRIPT} {SCRIPTS}/vcf-stats-by-chrom.R"
             " {OUT}/all.call.hap"
             " --per-sample {params.ps_labeled}"
 
