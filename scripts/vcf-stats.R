@@ -55,6 +55,8 @@ dump_records <- FALSE
 records_only <- FALSE
 segs_file    <- NULL
 segs_strip_prefix <- NULL
+cache_file   <- NULL
+cache_only   <- FALSE
 
 i <- 3
 while (i <= length(args)) {
@@ -109,6 +111,12 @@ while (i <= length(args)) {
   } else if (args[i] == "--segs-strip-prefix" && i + 1 <= length(args)) {
     segs_strip_prefix <- args[i + 1]
     i <- i + 2
+  } else if (args[i] == "--cache" && i + 1 <= length(args)) {
+    cache_file <- args[i + 1]
+    i <- i + 2
+  } else if (args[i] == "--cache-only") {
+    cache_only <- TRUE
+    i <- i + 1
   } else {
     i <- i + 1
   }
@@ -127,9 +135,38 @@ mode_label <- if (mode == "sites") "(per site)" else "(per variant)"
 filter_label <- if (filter == "pass") ", PASS only" else ""
 
 # ---------------------------------------------------------------------------
+# Cache path: if --cache is given and the file exists, load parsed dt (and
+# gt_dt when --per-sample) from RDS and skip VCF reads. Two slow bcftools
+# query passes (main fields + per-sample GTs) on huge VCFs get completely
+# skipped, turning multi-hour reruns into a couple minutes. On cache miss,
+# normal VCF reading runs; at the end we saveRDS() so the next run hits.
+# --cache-only parses + saves + exits (for a dedicated cache-build rule).
+# ---------------------------------------------------------------------------
+cache_loaded <- FALSE
+if (!is.null(cache_file) && file.exists(cache_file)) {
+  cat("Loading cached parsed data from:", cache_file, "\n")
+  t0 <- Sys.time()
+  cached <- readRDS(cache_file)
+  dt <- cached$dt
+  has_af <- cached$has_af
+  has_tr <- cached$has_tr
+  if ("gt_dt" %in% names(cached)) {
+    gt_dt <- cached$gt_dt
+    all_sample_names <- cached$all_sample_names
+    n_all_samples <- cached$n_all_samples
+  }
+  cache_loaded <- TRUE
+  cat("  Loaded", nrow(dt), "records in",
+      round(as.numeric(difftime(Sys.time(), t0, units = "secs")), 1), "s\n")
+  if (exists("gt_dt")) {
+    cat("  Loaded gt_dt:", nrow(gt_dt), "records ×", n_all_samples, "samples\n")
+  }
+}
+
+# ---------------------------------------------------------------------------
 # Read VCF (or pre-extracted TSV)
 # ---------------------------------------------------------------------------
-if (tsv_input) {
+if (!cache_loaded && tsv_input) {
   cat("Reading pre-extracted TSV:", vcf, "\n")
   dt <- fread(vcf)
   has_af <- "nonref_af" %in% names(dt) && !all(is.na(dt$nonref_af))
@@ -149,7 +186,7 @@ if (tsv_input) {
   cat("AF available:", has_af, "\n")
   if (has_tr) cat("TR annotation detected:", sum(dt$is_repeat), "tandem repeat indels\n")
   if (nrow(dt) == 0) { cat("No variants found. Exiting.\n"); quit(status = 0) }
-} else {
+} else if (!cache_loaded) {
 cat("Reading VCF:", vcf, " (mode:", mode, ", filter:", filter, ")\n")
 
 # Build pipeline prefix: variants mode pipes through bcftools norm -m- first
@@ -868,10 +905,12 @@ if (!is.null(giab_strat_beds_arg)) {
 if (per_sample) {
   cat("Per-sample mode enabled\n")
 
-  # 1. Read sample names
-  sample_cmd <- sprintf("bcftools query -l '%s' 2>/dev/null", vcf)
-  all_sample_names <- system(sample_cmd, intern = TRUE)
-  n_all_samples <- length(all_sample_names)
+  # 1. Read sample names (skip if cache already populated these)
+  if (!cache_loaded) {
+    sample_cmd <- sprintf("bcftools query -l '%s' 2>/dev/null", vcf)
+    all_sample_names <- system(sample_cmd, intern = TRUE)
+    n_all_samples <- length(all_sample_names)
+  }
   # Exclude reference sample from per-sample analysis (it always has 0 variants)
   if (!is.null(ref_sample) && ref_sample %in% all_sample_names) {
     sample_names <- setdiff(all_sample_names, ref_sample)
@@ -898,15 +937,18 @@ if (per_sample) {
   } else {
     # 2. Read per-sample GTs through same pipeline as site-level
     #    (bcftools outputs all samples; we filter to non-ref samples after melting)
-    gt_cmd <- sprintf(
-      "%s | bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT[\\t%%GT]\\n' 2>/dev/null",
-      pipe_prefix
-    )
-    gt_cols <- c("CHROM", "POS", "REF", "ALT", paste0("GT_", seq_len(n_all_samples)))
-    gt_dt <- fread(cmd = gt_cmd, col.names = gt_cols)
-    cat("Read", nrow(gt_dt), "variant records with GTs\n")
+    if (!cache_loaded) {
+      gt_cmd <- sprintf(
+        "%s | bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT[\\t%%GT]\\n' 2>/dev/null",
+        pipe_prefix
+      )
+      gt_cols <- c("CHROM", "POS", "REF", "ALT", paste0("GT_", seq_len(n_all_samples)))
+      gt_dt <- fread(cmd = gt_cmd, col.names = gt_cols)
+      cat("Read", nrow(gt_dt), "variant records with GTs\n")
+    }
 
     if (nrow(gt_dt) > 0) {
+     if (!cache_loaded) {
       # 3. Classify variants (same logic as site-level)
       gt_dt[, ref_len := nchar(REF)]
       is_multi_gt <- grepl(",", gt_dt$ALT, fixed = TRUE)
@@ -945,6 +987,26 @@ if (per_sample) {
       if (no_sv) {
         gt_dt <- gt_dt[!variant_type %in% c("SV Insertion", "SV Deletion")]
       }
+
+      # Save the cache now that both dt and gt_dt are parsed+classified. Annot
+      # and GIAB intersect columns, if they were added to dt upstream, are
+      # preserved automatically because they live inside dt.
+      if (!is.null(cache_file)) {
+        cat("Saving cache to:", cache_file, "\n")
+        t0 <- Sys.time()
+        saveRDS(list(dt = dt, gt_dt = gt_dt,
+                     has_af = has_af, has_tr = has_tr,
+                     all_sample_names = all_sample_names,
+                     n_all_samples = n_all_samples),
+                cache_file, compress = TRUE)
+        cat("  Cache saved in",
+            round(as.numeric(difftime(Sys.time(), t0, units = "secs")), 1), "s\n")
+        if (cache_only) {
+          cat("--cache-only: exiting after cache write.\n")
+          quit(status = 0)
+        }
+      }
+     }  # end if (!cache_loaded) for classification
 
       # 4. Count carriers per sample without melting (avoids exceeding R's 2^31
       #    vector limit when n_variants × n_samples is very large).

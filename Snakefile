@@ -2431,10 +2431,68 @@ rule merged_pg_plots:
 # VCF statistics rules
 ############################################################################
 
+rule deconstruct_sites_cache:
+    """Parse deconstruct VCF once and cache dt + gt_dt as RDS.
+    Subsequent deconstruct_sites_stats runs read the cache and skip the
+    two bcftools queries on the 30 GB VCF (the dominant cost for HPRC).
+    Delete the .cache.rds to force a fresh reparse."""
+    input:
+        vcf=f"{OUT_DIR}/{OUT_NAME}.tr.vcf.gz",
+        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
+        annot_beds=augref_annot_beds(),
+        giab_beds=augref_giab_strat_beds(),
+    output:
+        f"{OUT_DIR}/{OUT_NAME}.sites.cache.rds",
+    resources:
+        mem_mb=int(rule_mem_gb("deconstruct_stats", 512)) * 1024,
+        runtime=2880,
+    params:
+        annot_arg=lambda wc, input: (
+            f"--annot-beds {','.join(input.annot_beds)} --annot-names {','.join(annotation_names())}"
+            if annotation_inputs() else ""),
+        giab_arg=lambda wc, input: (
+            f"--giab-strat-beds {','.join(input.giab_beds)}"
+            f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
+            if giab_strat_configured() else ""),
+    shell:
+        "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{OUT_NAME}.sites"
+        " --mode sites --af-step 0.05 --title '{REF} Deconstruct'"
+        " --segs {input.segs}"
+        " {params.annot_arg} {params.giab_arg} --per-sample --hap-breakdown --ref-sample {REF}"
+        " --cache {output} --cache-only"
+
+rule deconstruct_variants_cache:
+    """Parse normed deconstruct VCF once and cache as RDS (see deconstruct_sites_cache)."""
+    input:
+        vcf=f"{OUT_DIR}/{OUT_NAME}.tr.normed.vcf.gz",
+        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
+        annot_beds=augref_annot_beds(),
+        giab_beds=augref_giab_strat_beds(),
+    output:
+        f"{OUT_DIR}/{OUT_NAME}.variants.cache.rds",
+    resources:
+        mem_mb=int(rule_mem_gb("deconstruct_stats", 512)) * 1024,
+        runtime=2880,
+    params:
+        annot_arg=lambda wc, input: (
+            f"--annot-beds {','.join(input.annot_beds)} --annot-names {','.join(annotation_names())}"
+            if annotation_inputs() else ""),
+        giab_arg=lambda wc, input: (
+            f"--giab-strat-beds {','.join(input.giab_beds)}"
+            f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
+            if giab_strat_configured() else ""),
+    shell:
+        "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{OUT_NAME}.variants"
+        " --mode variants --af-step 0.05 --title '{REF} Deconstruct'"
+        " --segs {input.segs}"
+        " {params.annot_arg} {params.giab_arg} --per-sample --ref-sample {REF}"
+        " --cache {output} --cache-only"
+
 rule deconstruct_sites_stats:
     """Deconstruct VCF → site-level stats + plots (includes AF spectrum)"""
     input:
         vcf=f"{OUT_DIR}/{OUT_NAME}.tr.vcf.gz",
+        cache=f"{OUT_DIR}/{OUT_NAME}.sites.cache.rds",
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
         annot_beds=augref_annot_beds(),
         giab_beds=augref_giab_strat_beds(),
@@ -2474,11 +2532,13 @@ rule deconstruct_sites_stats:
         " --mode sites --af-step 0.05 --title '{REF} Deconstruct'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample --hap-breakdown --ref-sample {REF}"
+        " --cache {input.cache}"
 
 rule deconstruct_variants_stats:
     """Deconstruct VCF → variant-level stats + plots (uses pre-normed VCF)"""
     input:
         vcf=f"{OUT_DIR}/{OUT_NAME}.tr.normed.vcf.gz",
+        cache=f"{OUT_DIR}/{OUT_NAME}.variants.cache.rds",
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
         annot_beds=augref_annot_beds(),
         giab_beds=augref_giab_strat_beds(),
@@ -2516,6 +2576,7 @@ rule deconstruct_variants_stats:
         " --mode variants --af-step 0.05 --title '{REF} Deconstruct'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample --ref-sample {REF}"
+        " --cache {input.cache}"
 
 rule call_stats:
     """Per-sample call VCF → variant stats + plots (one mode/filter combo)"""
