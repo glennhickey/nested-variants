@@ -97,6 +97,19 @@ for chrom, samples in CHROM_SAMPLE_HAPS.items():
         if "1" in haps and "2" in haps:
             CHROM_SAMPLES.setdefault(chrom, {})[sample] = [haps["1"], haps["2"]]
 
+# Exclude specific (chrom, sample) pairs — e.g. a sample whose reads trigger
+# a mapper crash on one chromosome.  Format: --config skip=chr4:HG03139,chr9:HG01234
+_skip_raw = config.get("skip", "")
+if _skip_raw:
+    for entry in str(_skip_raw).split(","):
+        entry = entry.strip()
+        if not entry or ":" not in entry:
+            continue
+        c, s = entry.split(":", 1)
+        if c in CHROM_SAMPLES and s in CHROM_SAMPLES[c]:
+            del CHROM_SAMPLES[c][s]
+            print(f"skip: excluded {s} from {c}", file=sys.stderr)
+
 # Optional cap: keep at most N samples per chromosome, preferring samples that
 # appear in the most chromosomes (so the common-samples intersection stays
 # large for aggregate plots).  Tie-break alphabetically for determinism.
