@@ -769,6 +769,8 @@ def summary_figure_outputs():
         outputs.append(f"{OUT_DIR}/4b.freebayes-summary.png")
         if pangenie_enabled():
             outputs.append(f"{OUT_DIR}/4c.pangenie-summary.png")
+        if bcftools_enabled():
+            outputs.append(f"{OUT_DIR}/4d.bcftools-summary.png")
         outputs.append(f"{OUT_DIR}/5.concordance-summary.png")
         outputs.append(f"{OUT_DIR}/5b.concordance-onref-summary.png")
         outputs.append(f"{OUT_DIR}/5c.coverage-summary.png")
@@ -783,6 +785,8 @@ def summary_figure_outputs():
         outputs.append(f"{OUT_DIR}/8.deepvariant-summary-longread.png")
         if freebayes_longread_enabled():
             outputs.append(f"{OUT_DIR}/8b.freebayes-summary-longread.png")
+        if bcftools_enabled() and bcftools_longread_enabled():
+            outputs.append(f"{OUT_DIR}/8d.bcftools-summary-longread.png")
         outputs.append(f"{OUT_DIR}/9.concordance-summary-longread.png")
         outputs.append(f"{OUT_DIR}/9b.concordance-onref-summary-longread.png")
         outputs.append(f"{OUT_DIR}/9c.coverage-summary-longread.png")
@@ -2016,6 +2020,23 @@ rule fb_plots:
         " 0 '{config[refgaps_bed]}' {config[scale_type]}"
         " --ref {REF} --offref"
 
+rule bc_plots:
+    """Per-sample bcftools VCF → density ideogram"""
+    input:
+        vcf=f"{OUT_DIR}/{{sample}}.bcftools.vcf.gz",
+        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
+    output:
+        f"{OUT_DIR}/{{sample}}.bc-offref.png",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
+    shell:
+        "ulimit -s unlimited && Rscript scripts/chrom-density-segs.R"
+        " {input.vcf} {input.segs} {output}"
+        " '{REF} bcftools Off-Reference Density ({wildcards.sample})'"
+        " 0 '{config[refgaps_bed]}' {config[scale_type]}"
+        " --ref {REF} --offref"
+
 rule pg_plots:
     """Per-sample PanGenie VCF → density ideogram"""
     input:
@@ -2229,6 +2250,70 @@ rule merge_longread_fb_pass_vcfs:
                   " | bcftools +fill-tags -Oz -o {output} -- -t AF,AC,AN"
                   " && tabix -p vcf {output}")
 
+rule merge_bc_vcfs:
+    """Merge per-sample bcftools VCFs with bcftools, add AF/AC/AN tags"""
+    input:
+        expand("{out}/{s}.bcftools.vcf.gz", out=OUT_DIR, s=SAMPLES),
+    output:
+        f"{OUT_DIR}/merged.bcftools.vcf.gz",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
+    shell:
+        "bcftools merge {input} -Oz"
+        " | bcftools +fill-tags -Oz -o {output} -- -t AF,AC,AN"
+        " && tabix -p vcf {output}"
+
+rule merge_longread_bc_vcfs:
+    """Merge long-read per-sample bcftools VCFs"""
+    input:
+        expand("{out}/{s}.bcftools.vcf.gz", out=OUT_DIR, s=LR_SAMPLES),
+    output:
+        f"{OUT_DIR}/merged.longread.bcftools.vcf.gz",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
+    run:
+        if len(input) == 1:
+            shell("bcftools +fill-tags {input} -Oz -o {output} -- -t AF,AC,AN"
+                  " && tabix -p vcf {output}")
+        else:
+            shell("bcftools merge {input} -Oz"
+                  " | bcftools +fill-tags -Oz -o {output} -- -t AF,AC,AN"
+                  " && tabix -p vcf {output}")
+
+rule merge_bc_pass_vcfs:
+    """Merge PASS-filtered per-sample bcftools VCFs"""
+    input:
+        expand("{out}/{s}.bcftools.pass-only.vcf.gz", out=OUT_DIR, s=SAMPLES),
+    output:
+        f"{OUT_DIR}/merged.bcftools.pass-prefiltered.vcf.gz",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
+    shell:
+        "bcftools merge {input} -Oz"
+        " | bcftools +fill-tags -Oz -o {output} -- -t AF,AC,AN"
+        " && tabix -p vcf {output}"
+
+rule merge_longread_bc_pass_vcfs:
+    """Merge PASS-filtered long-read per-sample bcftools VCFs"""
+    input:
+        expand("{out}/{s}.bcftools.pass-only.vcf.gz", out=OUT_DIR, s=LR_SAMPLES),
+    output:
+        f"{OUT_DIR}/merged.longread.bcftools.pass-prefiltered.vcf.gz",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
+    run:
+        if len(input) == 1:
+            shell("bcftools +fill-tags {input} -Oz -o {output} -- -t AF,AC,AN"
+                  " && tabix -p vcf {output}")
+        else:
+            shell("bcftools merge {input} -Oz"
+                  " | bcftools +fill-tags -Oz -o {output} -- -t AF,AC,AN"
+                  " && tabix -p vcf {output}")
+
 rule merge_pg_vcfs:
     """Merge per-sample PanGenie VCFs with bcftools, add AF/AC/AN tags"""
     input:
@@ -2305,6 +2390,23 @@ rule merged_fb_plots:
         "ulimit -s unlimited && Rscript scripts/chrom-density-segs.R"
         " {input.vcf} {input.segs} {output}"
         " '{REF} Merged FreeBayes Off-Reference Density'"
+        " 0 '{config[refgaps_bed]}' {config[scale_type]}"
+        " --ref {REF} --offref"
+
+rule merged_bc_plots:
+    """Merged bcftools VCF → density ideogram"""
+    input:
+        vcf=f"{OUT_DIR}/merged.bcftools.vcf.gz",
+        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
+    output:
+        f"{OUT_DIR}/merged.bc-offref.png",
+    resources:
+        mem_mb=256000,
+        runtime=2880,
+    shell:
+        "ulimit -s unlimited && Rscript scripts/chrom-density-segs.R"
+        " {input.vcf} {input.segs} {output}"
+        " '{REF} Merged bcftools Off-Reference Density'"
         " 0 '{config[refgaps_bed]}' {config[scale_type]}"
         " --ref {REF} --offref"
 
@@ -2515,6 +2617,41 @@ rule fb_stats:
     shell:
         "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{wildcards.sample}.fb.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} FreeBayes ({wildcards.sample})'"
+        " --segs {input.segs}"
+        " {params.annot_arg} {params.giab_arg} --no-sv"
+
+rule bc_stats:
+    """Per-sample bcftools VCF → variant stats + plots (one mode/filter combo)"""
+    input:
+        vcf=lambda wc: f"{OUT_DIR}/{wc.sample}.bcftools.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/{wc.sample}.bcftools.vcf.gz",
+        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
+        annot_beds=augref_annot_beds(),
+        giab_beds=augref_giab_strat_beds(),
+    output:
+        f"{OUT_DIR}/{{sample}}.bc.{{mode}}.{{filt}}.vcf-stats.tsv",
+        f"{OUT_DIR}/{{sample}}.bc.{{mode}}.{{filt}}.variant-types.png",
+        f"{OUT_DIR}/{{sample}}.bc.{{mode}}.{{filt}}.size-dist.png",
+        f"{OUT_DIR}/{{sample}}.bc.{{mode}}.{{filt}}.size-dist-log.png",
+        *([ f"{OUT_DIR}/{{sample}}.bc.{{mode}}.{{filt}}.variant-types-by-annot.png",
+            f"{OUT_DIR}/{{sample}}.bc.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv"]
+          if annotation_inputs() else []),
+        *([ f"{OUT_DIR}/{{sample}}.bc.{{mode}}.{{filt}}.giab-strat.png",
+            f"{OUT_DIR}/{{sample}}.bc.{{mode}}.{{filt}}.giab-strat.tsv"]
+          if giab_strat_configured() else []),
+    resources:
+        mem_mb=256000,
+        runtime=2880,
+    params:
+        annot_arg=lambda wc, input: (
+            f"--annot-beds {','.join(input.annot_beds)} --annot-names {','.join(annotation_names())}"
+            if annotation_inputs() else ""),
+        giab_arg=lambda wc, input: (
+            f"--giab-strat-beds {','.join(input.giab_beds)}"
+            f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
+            if giab_strat_configured() else ""),
+    shell:
+        "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{wildcards.sample}.bc.{wildcards.mode}.{wildcards.filt}"
+        " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} bcftools ({wildcards.sample})'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --no-sv"
 
@@ -2804,6 +2941,90 @@ rule merged_longread_fb_stats:
     shell:
         "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.longread.fb.{wildcards.mode}.{wildcards.filt}"
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged Long-Read FreeBayes'"
+        " --segs {input.segs}"
+        " {params.annot_arg} {params.giab_arg} --per-sample --no-sv"
+
+rule merged_bc_stats:
+    """Merged bcftools VCF → variant stats + plots (one mode/filter combo, includes AF spectrum)"""
+    input:
+        vcf=lambda wc: f"{OUT_DIR}/merged.bcftools.pass-prefiltered{'.normed' if wc.mode == 'variants' else ''}.vcf.gz" if wc.filt == "pass" else (f"{OUT_DIR}/merged.bcftools.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.bcftools.vcf.gz"),
+        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
+        annot_beds=augref_annot_beds(),
+        giab_beds=augref_giab_strat_beds(),
+    output:
+        f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}.vcf-stats.tsv",
+        f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}.variant-types.png",
+        f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}.size-dist.png",
+        f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}.size-dist-log.png",
+        f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}.af-spectrum.png",
+        *([ f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}.variant-types-by-annot.png",
+            f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv"]
+          if annotation_inputs() else []),
+        *([ f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}.giab-strat.png",
+            f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}.giab-strat.tsv"]
+          if giab_strat_configured() else []),
+        f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}.per-sample-types.png",
+        f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}.per-sample-types.tsv",
+        f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}.per-sample-sv-types.png",
+        *([ f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}.per-sample-giab-strat.png",
+            f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}.per-sample-giab-strat.tsv"]
+          if giab_strat_configured() else []),
+    resources:
+        mem_mb=256000,
+        runtime=2880,
+    params:
+        annot_arg=lambda wc, input: (
+            f"--annot-beds {','.join(input.annot_beds)} --annot-names {','.join(annotation_names())}"
+            if annotation_inputs() else ""),
+        giab_arg=lambda wc, input: (
+            f"--giab-strat-beds {','.join(input.giab_beds)}"
+            f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
+            if giab_strat_configured() else ""),
+    shell:
+        "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.bc.{wildcards.mode}.{wildcards.filt}"
+        " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged bcftools'"
+        " --segs {input.segs}"
+        " {params.annot_arg} {params.giab_arg} --per-sample --no-sv"
+
+rule merged_longread_bc_stats:
+    """Merged long-read bcftools VCF → variant stats + plots"""
+    input:
+        vcf=lambda wc: f"{OUT_DIR}/merged.longread.bcftools.pass-prefiltered{'.normed' if wc.mode == 'variants' else ''}.vcf.gz" if wc.filt == "pass" else (f"{OUT_DIR}/merged.longread.bcftools.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.longread.bcftools.vcf.gz"),
+        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
+        annot_beds=augref_annot_beds(),
+        giab_beds=augref_giab_strat_beds(),
+    output:
+        f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}.vcf-stats.tsv",
+        f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}.variant-types.png",
+        f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}.size-dist.png",
+        f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}.size-dist-log.png",
+        f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}.af-spectrum.png",
+        *([ f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}.variant-types-by-annot.png",
+            f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv"]
+          if annotation_inputs() else []),
+        *([ f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}.giab-strat.png",
+            f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}.giab-strat.tsv"]
+          if giab_strat_configured() else []),
+        f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}.per-sample-types.png",
+        f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}.per-sample-types.tsv",
+        f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}.per-sample-sv-types.png",
+        *([ f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}.per-sample-giab-strat.png",
+            f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}.per-sample-giab-strat.tsv"]
+          if giab_strat_configured() else []),
+    resources:
+        mem_mb=256000,
+        runtime=2880,
+    params:
+        annot_arg=lambda wc, input: (
+            f"--annot-beds {','.join(input.annot_beds)} --annot-names {','.join(annotation_names())}"
+            if annotation_inputs() else ""),
+        giab_arg=lambda wc, input: (
+            f"--giab-strat-beds {','.join(input.giab_beds)}"
+            f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
+            if giab_strat_configured() else ""),
+    shell:
+        "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.longread.bc.{wildcards.mode}.{wildcards.filt}"
+        " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged Long-Read bcftools'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample --no-sv"
 
@@ -4762,6 +4983,34 @@ rule summary_freebayes:
         " --cols 2"
         " --panels {params.panels}"
 
+rule summary_bcftools:
+    """Compose bcftools summary figure"""
+    input:
+        bc_types=f"{OUT_DIR}/merged.bc.sites.pass.variant-types.png",
+        bc_per_sample=f"{OUT_DIR}/merged.bc.sites.pass.per-sample-types.png",
+        vcfeval=f"{OUT_DIR}/merged.call-vs-bc.pass.vcfeval-compare.png",
+        bc_giab=[f"{OUT_DIR}/merged.bc.sites.pass.giab-strat.png"] if giab_strat_configured() else [],
+        annot_snp=[f"{OUT_DIR}/merged.bcftools.annot-snp-tstv.pass.png"] if annotation_inputs() else [],
+    output:
+        f"{OUT_DIR}/4d.bcftools-summary.png",
+    resources:
+        mem_mb=4000,
+        runtime=30,
+    params:
+        panels=lambda wc, input: " ".join(
+            [f"'BC Variant Types (PASS):{input.bc_types}'",
+             f"'BC Per-Sample Types (PASS):{input.bc_per_sample}'",
+             f"'Call vs BC (vcfeval):{input.vcfeval}'"]
+            + ([f"'BC GIAB Stratification:{input.bc_giab[0]}'"] if input.bc_giab else [])
+            + ([f"'BC SNP Ts/Tv by Annotation:{input.annot_snp[0]}'"] if input.annot_snp else [])
+        ),
+    shell:
+        "python3 scripts/compose-summary.py"
+        " --output {output}"
+        " --title 'bcftools (PASS)'"
+        " --cols 2"
+        " --panels {params.panels}"
+
 rule summary_concordance:
     """Compose call-vs-DV concordance stratification summary figure"""
     input:
@@ -4988,6 +5237,36 @@ rule summary_longread_freebayes:
         "python3 scripts/compose-summary.py"
         " --output {output}"
         " --title 'Long-Read FreeBayes (PASS)'"
+        " --cols 2"
+        " --panels {params.panels}"
+
+rule summary_longread_bcftools:
+    """Compose long-read bcftools summary figure"""
+    input:
+        bc_types=f"{OUT_DIR}/merged.longread.bc.sites.pass.variant-types.png",
+        bc_per_sample=f"{OUT_DIR}/merged.longread.bc.sites.pass.per-sample-types.png",
+        vcfeval=f"{OUT_DIR}/merged.lr.call-vs-bc.pass.vcfeval-compare.png",
+        bc_giab=[f"{OUT_DIR}/merged.longread.bc.sites.pass.giab-strat.png"] if giab_strat_configured() else [],
+        bc_per_sample_giab=[f"{OUT_DIR}/merged.longread.bc.sites.pass.per-sample-giab-strat.png"] if giab_strat_configured() else [],
+        annot_snp=[f"{OUT_DIR}/merged.longread.bc.sites.pass.variant-types-by-annot.png"] if annotation_inputs() else [],
+    output:
+        f"{OUT_DIR}/8d.bcftools-summary-longread.png",
+    resources:
+        mem_mb=4000,
+        runtime=30,
+    params:
+        panels=lambda wc, input: " ".join(
+            [f"'BC Variant Types (PASS):{input.bc_types}'",
+             f"'BC Per-Sample Types (PASS):{input.bc_per_sample}'",
+             f"'Call vs BC (vcfeval):{input.vcfeval}'"]
+            + ([f"'BC GIAB Stratification:{input.bc_giab[0]}'"] if input.bc_giab else [])
+            + ([f"'BC Per-Sample GIAB:{input.bc_per_sample_giab[0]}'"] if input.bc_per_sample_giab else [])
+            + ([f"'BC Types by Annotation:{input.annot_snp[0]}'"] if input.annot_snp else [])
+        ),
+    shell:
+        "python3 scripts/compose-summary.py"
+        " --output {output}"
+        " --title 'Long-Read bcftools (PASS)'"
         " --cols 2"
         " --panels {params.panels}"
 
