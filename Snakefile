@@ -2452,6 +2452,8 @@ rule deconstruct_sites_stats:
           if giab_strat_configured() else []),
         f"{OUT_DIR}/{OUT_NAME}.sites.per-sample-types.png",
         f"{OUT_DIR}/{OUT_NAME}.sites.per-sample-types.tsv",
+        f"{OUT_DIR}/{OUT_NAME}.sites.per-sample-types-by-hap.png",
+        f"{OUT_DIR}/{OUT_NAME}.sites.per-sample-types-by-hap.tsv",
         f"{OUT_DIR}/{OUT_NAME}.sites.per-sample-sv-types.png",
         *([ f"{OUT_DIR}/{OUT_NAME}.sites.per-sample-giab-strat.png",
             f"{OUT_DIR}/{OUT_NAME}.sites.per-sample-giab-strat.tsv"]
@@ -2471,7 +2473,7 @@ rule deconstruct_sites_stats:
         "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{OUT_NAME}.sites"
         " --mode sites --af-step 0.05 --title '{REF} Deconstruct'"
         " --segs {input.segs}"
-        " {params.annot_arg} {params.giab_arg} --per-sample --ref-sample {REF}"
+        " {params.annot_arg} {params.giab_arg} --per-sample --hap-breakdown --ref-sample {REF}"
 
 rule deconstruct_variants_stats:
     """Deconstruct VCF → variant-level stats + plots (uses pre-normed VCF)"""
@@ -4855,10 +4857,10 @@ rule summary_augref:
 rule summary_deconstruct:
     """Compose deconstruct variant catalog summary figure"""
     input:
-        variant_types=f"{OUT_DIR}/{OUT_NAME}.sites.variant-types.png",
         size_dist=f"{OUT_DIR}/{OUT_NAME}.sites.size-dist-log.png",
         af_spectrum=f"{OUT_DIR}/{OUT_NAME}.sites.af-spectrum.png",
         per_sample=f"{OUT_DIR}/{OUT_NAME}.sites.per-sample-types.png",
+        per_sample_hap=f"{OUT_DIR}/{OUT_NAME}.sites.per-sample-types-by-hap.png",
         annot_snp=[f"{OUT_DIR}/{OUT_NAME}.annot-snp-tstv.all.png"] if annotation_inputs() else [],
         giab_strat=[f"{OUT_DIR}/{OUT_NAME}.sites.giab-strat.png"] if giab_strat_configured() else [],
     output:
@@ -4868,10 +4870,10 @@ rule summary_deconstruct:
         runtime=30,
     params:
         panels=lambda wc, input: " ".join(
-            [f"'Variant Types:{input.variant_types}'",
-             f"'Size Distribution:{input.size_dist}'",
+            [f"'Size Distribution:{input.size_dist}'",
              f"'AF Spectrum:{input.af_spectrum}'",
-             f"'Per-Sample Types:{input.per_sample}'"]
+             f"'Per-Sample Types:{input.per_sample}'",
+             f"'Per-Sample Types by Haplotype:{input.per_sample_hap}'"]
             + ([f"'SNP Ts/Tv by Annotation:{input.annot_snp[0]}'"] if input.annot_snp else [])
             + ([f"'GIAB Stratification:{input.giab_strat[0]}'"] if input.giab_strat else [])
         ),

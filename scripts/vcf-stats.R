@@ -47,6 +47,7 @@ annot_names_arg <- NULL
 giab_strat_beds_arg  <- NULL
 giab_strat_names_arg <- NULL
 per_sample <- FALSE
+hap_breakdown <- FALSE
 ref_sample <- NULL
 no_sv      <- FALSE
 tsv_input  <- FALSE
@@ -83,6 +84,9 @@ while (i <= length(args)) {
     i <- i + 2
   } else if (args[i] == "--per-sample") {
     per_sample <- TRUE
+    i <- i + 1
+  } else if (args[i] == "--hap-breakdown") {
+    hap_breakdown <- TRUE
     i <- i + 1
   } else if (args[i] == "--ref-sample" && i + 1 <= length(args)) {
     ref_sample <- args[i + 1]
@@ -782,7 +786,9 @@ if (!is.null(giab_strat_beds_arg)) {
   region_levels <- strat_names
   giab_counts[, giab_region := factor(giab_region, levels = region_levels)]
 
-  # Grouped bar chart: facet by ref_context, dodge by GIAB region
+  # Grouped bar chart: facet by ref_context × type_class (SNP | Indel/MNP | SV)
+  # with free_y so SNP (millions) and SV (hundreds) each get their own scale.
+  # Ts/Tv ratio is overlaid as text on the SNP bars.
   region_colors <- c("Easy" = "forestgreen", "Segdup" = "firebrick",
                      "Other Difficult" = "darkorange")
   giab_plot_dt <- giab_counts[giab_region != "Unclassified"]
@@ -790,12 +796,42 @@ if (!is.null(giab_strat_beds_arg)) {
     cat("No variants in GIAB stratification regions; creating empty GIAB plot.\n")
     file.create(paste0(prefix, ".giab-strat.png"))
   } else {
+    sv_type_names <- c("SV Insertion", "SV Deletion")
+    giab_plot_dt[, type_class := fcase(
+      variant_type == "SNP",                     "SNP",
+      variant_type %in% sv_type_names,           "SV",
+      default =                                  "Indel/MNP")]
+    giab_plot_dt[, type_class := factor(type_class, levels = c("SNP", "Indel/MNP", "SV"))]
+
+    # Per-(giab_region, ref_context) Ts/Tv for SNPs, for text overlay on SNP bars
+    giab_tstv <- NULL
+    if ("tstv" %in% names(dt)) {
+      giab_tstv <- dt[variant_type == "SNP" & !is.na(tstv) & giab_region %in% region_levels,
+                      .(ts = sum(tstv == "Ts"), tv = sum(tstv == "Tv")),
+                      by = .(giab_region, ref_context)]
+      giab_tstv <- giab_tstv[giab_region != "Unclassified" & tv > 0]
+      if (nrow(giab_tstv) > 0) {
+        giab_tstv[, tstv_ratio := round(ts / tv, 2)]
+        giab_tstv[, giab_region := factor(giab_region, levels = region_levels)]
+        giab_tstv[, variant_type := factor("SNP", levels = levels(giab_plot_dt$variant_type))]
+        giab_tstv[, type_class := factor("SNP", levels = levels(giab_plot_dt$type_class))]
+        # Match count of the corresponding SNP bar for y-position
+        giab_tstv <- merge(
+          giab_tstv,
+          giab_plot_dt[variant_type == "SNP", .(giab_region, ref_context, count)],
+          by = c("giab_region", "ref_context"), all.x = TRUE)
+        giab_tstv[, label := paste0("Ts/Tv=", tstv_ratio)]
+      } else {
+        giab_tstv <- NULL
+      }
+    }
+
     p_giab <- ggplot(giab_plot_dt,
                      aes(x = variant_type, y = count, fill = giab_region)) +
-      geom_col(position = "dodge", width = 0.7) +
+      geom_col(position = position_dodge(width = 0.7), width = 0.7) +
       scale_fill_manual(values = region_colors, name = "GIAB Region") +
-      scale_y_continuous(labels = scales::comma) +
-      facet_wrap(~ ref_context, scales = "free_y") +
+      scale_y_continuous(labels = scales::comma, expand = expansion(mult = c(0.02, 0.15))) +
+      facet_grid(ref_context ~ type_class, scales = "free") +
       labs(title = title,
            subtitle = paste0("GIAB Genome Stratification ", mode_label, filter_label),
            x = "Variant Type", y = "Count") +
@@ -806,7 +842,14 @@ if (!is.null(giab_strat_beds_arg)) {
         panel.background = element_rect(fill = "white", color = NA),
         plot.background  = element_rect(fill = "white", color = NA)
       )
-    save_png(p_giab, paste0(prefix, ".giab-strat.png"), width = 10, height = 6)
+    if (!is.null(giab_tstv) && nrow(giab_tstv) > 0) {
+      p_giab <- p_giab +
+        geom_text(data = giab_tstv,
+                  aes(x = variant_type, y = count, label = label, group = giab_region),
+                  position = position_dodge(width = 0.7),
+                  vjust = -0.3, size = 2.8)
+    }
+    save_png(p_giab, paste0(prefix, ".giab-strat.png"), width = 12, height = 6)
   }
 
   # Write TSV
@@ -979,6 +1022,77 @@ if (per_sample) {
         )
 
       save_png(p_ps, paste0(prefix, ".per-sample-types.png"), width = 12)
+
+      # 6a'. Haplotype breakdown (--hap-breakdown): re-count carriers per haplotype,
+      # produce a parallel plot with dots colored by hap 1 (paternal) / hap 2 (maternal).
+      # Only meaningful for deconstruct (phased multi-sample VCF); caller outputs
+      # are single-sample and not reliably phased so the caller stats rules omit
+      # this flag.
+      if (hap_breakdown) {
+        cat("Computing haplotype-breakdown per-sample counts\n")
+        ps_list_hap <- vector("list", 2 * n_samples)
+        idx <- 1L
+        for (si in seq_along(sample_names)) {
+          sname <- sample_names[si]
+          col_idx <- match(sname, all_sample_names)
+          gt_col <- gt_sample_cols[col_idx]
+          gt_vec <- gt_dt[[gt_col]]
+          h1 <- grepl("^[1-9]", gt_vec)
+          h2 <- grepl("[|/][1-9]", gt_vec)
+          ps_list_hap[[idx]]     <- gt_dt[h1, .(count = .N), by = .(variant_type, ref_context)
+                                          ][, `:=`(sample = sname, haplotype = "hap1")]
+          ps_list_hap[[idx + 1L]] <- gt_dt[h2, .(count = .N), by = .(variant_type, ref_context)
+                                            ][, `:=`(sample = sname, haplotype = "hap2")]
+          idx <- idx + 2L
+        }
+        ps_hap <- rbindlist(ps_list_hap)
+        ps_hap <- ps_hap[variant_type %in% type_levels & variant_type != "Other"]
+        # Fill zero combinations (sample × hap × variant_type × ref_context)
+        all_combos_hap <- CJ(sample = sample_names,
+                             haplotype = c("hap1", "hap2"),
+                             variant_type = unique(ps_hap$variant_type),
+                             ref_context = unique(ps_hap$ref_context))
+        ps_hap <- merge(all_combos_hap, ps_hap,
+                        by = c("sample", "haplotype", "variant_type", "ref_context"),
+                        all.x = TRUE)
+        ps_hap[is.na(count), count := 0L]
+        ps_hap[, variant_type := factor(variant_type,
+          levels = intersect(setdiff(type_levels, "Other"), unique(variant_type)))]
+        ps_hap[, type_class := fcase(
+          variant_type == "SNP",                     "SNP",
+          variant_type %in% sv_type_names,           "SV",
+          default =                                  "Indel/MNP")]
+        ps_hap[, type_class := factor(type_class, levels = c("SNP", "Indel/MNP", "SV"))]
+        setorder(ps_hap, sample, haplotype, ref_context, variant_type)
+        fwrite(ps_hap, paste0(prefix, ".per-sample-types-by-hap.tsv"), sep = "\t")
+
+        p_ps_hap <- ggplot(ps_hap,
+                           aes(x = variant_type, y = count, fill = ref_context)) +
+          geom_violin(width = 0.7, alpha = 0.6, scale = "width",
+                      position = position_dodge(width = 0.7)) +
+          geom_jitter(aes(color = haplotype),
+                      position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.7),
+                      size = 1.2, alpha = 0.75) +
+          scale_fill_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
+                            name = "Ref Context") +
+          scale_color_manual(values = c("hap1" = "#1f77b4", "hap2" = "#d62728"),
+                             labels = c("hap1" = "Hap 1 (paternal)", "hap2" = "Hap 2 (maternal)"),
+                             name = "Haplotype") +
+          scale_y_continuous(labels = scales::comma) +
+          facet_grid(ref_context ~ type_class, scales = "free") +
+          labs(title = title,
+               subtitle = paste0("Per-Sample Variant Counts by Haplotype ", mode_label, filter_label,
+                                 " (N=", n_samples, " samples × 2 haplotypes)"),
+               x = "Variant Type", y = "Count") +
+          theme_minimal() +
+          theme(
+            plot.title = element_text(hjust = 0.5, face = "bold"),
+            plot.subtitle = element_text(hjust = 0.5),
+            panel.background = element_rect(fill = "white", color = NA),
+            plot.background  = element_rect(fill = "white", color = NA)
+          )
+        save_png(p_ps_hap, paste0(prefix, ".per-sample-types-by-hap.png"), width = 12)
+      }
 
       # 6b. SV-only per-sample plot (separate file for better visibility)
       ps_sv <- ps_counts[size_class == "Structural Variants"]
