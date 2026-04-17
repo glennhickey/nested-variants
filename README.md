@@ -472,6 +472,39 @@ nested-variants/
 └── LICENSE
 ```
 
+## Cartoon
+
+coming from hprc-v2.1-chm13-eval
+
+```
+vg chunk -x chr6.vg -p "CHM13#0#chr6:32408987-32422414" -S chr6.snarls > chr6_32408987_32422414_S.vg
+ln -s chr6_32408987_32422414_S.vg hla-drb1.vg
+
+# 1. Build paths file: CHM13 + our 4 samples' haps + all augref paths                                                
+  {                                                                                                                    
+    awk '/^P/ && $2 ~ /^CHM13#/ {print $2}' hla-drb1-aug.gfa                                                           
+    for s in NA19043 HG02056 HG01099 NA20827; do                                                                       
+      awk -v s="$s" '/^P/ && $2 ~ "^"s"#" {print $2}' hla-drb1-aug.gfa
+    done                                                                                                               
+    awk '/^P/ && $2 ~ /^augref_/ {print $2}' hla-drb1-aug.gfa
+  } > hla-drb1.quintet.full.paths                                                                                      
+                                                                                                                       
+  # 2. Strict subset by exact path name, unchop, emit GFA                                                              
+  vg paths -v hla-drb1-aug.vg -p hla-drb1.quintet.full.paths -r 2>/dev/null \                                          
+    | vg mod -u - 2>/dev/null \                                                                                        
+    | vg convert -fW - 2>/dev/null \                                                                                   
+    > hla-drb1.quintet.gfa                                                                                             
+                                                                                                                       
+  # 3. Generate BandageNG colour CSV                        
+  python3 ../centrolign-all/cartoons/augref-colors.py \                                                                
+    hla-drb1.quintet.gfa \                                                                                             
+    hla-drb1.quintet.colours.csv \                                                                                     
+    --top 7 --ref-color '#000000' --rest-color '#FAD7D7'                                                               
+                                                                                                                       
+  Prereq (once): convert .vg to .gfa so the awk path-name lookup works:                                                
+                                                                                                                       
+  vg convert -fW hla-drb1-aug.vg > hla-drb1-aug.gfa
+```
 ## License
 
 MIT License. See [LICENSE](LICENSE).
