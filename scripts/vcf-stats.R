@@ -868,7 +868,7 @@ if (!is.null(giab_strat_beds_arg)) {
       geom_col(position = position_dodge(width = 0.7), width = 0.7) +
       scale_fill_manual(values = region_colors, name = "GIAB Region") +
       scale_y_continuous(labels = scales::comma, expand = expansion(mult = c(0.02, 0.15))) +
-      facet_grid(ref_context ~ type_class, scales = "free") +
+      facet_wrap(vars(ref_context, type_class), scales = "free", ncol = 3) +
       labs(title = title,
            subtitle = paste0("GIAB Genome Stratification ", mode_label, filter_label),
            x = "Variant Type", y = "Count") +
@@ -1070,7 +1070,7 @@ if (per_sample) {
         scale_color_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
                            name = NULL) +
         scale_y_continuous(labels = scales::comma) +
-        facet_grid(ref_context ~ type_class, scales = "free") +
+        facet_wrap(vars(ref_context, type_class), scales = "free", ncol = 3) +
         labs(title = title,
              subtitle = paste0("Per-Sample Variant Counts ", mode_label, filter_label,
                                " (N=", n_samples, " samples)"),
@@ -1141,7 +1141,7 @@ if (per_sample) {
                              labels = c("hap1" = "Hap 1 (paternal)", "hap2" = "Hap 2 (maternal)"),
                              name = "Haplotype") +
           scale_y_continuous(labels = scales::comma) +
-          facet_grid(ref_context ~ type_class, scales = "free") +
+          facet_wrap(vars(ref_context, type_class), scales = "free", ncol = 3) +
           labs(title = title,
                subtitle = paste0("Per-Sample Variant Counts by Haplotype ", mode_label, filter_label,
                                  " (N=", n_samples, " samples × 2 haplotypes)"),
@@ -1364,7 +1364,7 @@ if (per_sample) {
             scale_fill_manual(values = region_colors_ps, name = "GIAB Region") +
             scale_color_manual(values = region_colors_ps, name = "GIAB Region") +
             scale_y_continuous(labels = scales::comma) +
-            facet_grid(ref_context ~ type_class, scales = "free") +
+            facet_wrap(vars(ref_context, type_class), scales = "free", ncol = 3) +
             labs(title = title,
                  subtitle = paste0("Per-Sample GIAB Stratification ", mode_label, filter_label,
                                    " (N=", n_samples, " samples)"),
