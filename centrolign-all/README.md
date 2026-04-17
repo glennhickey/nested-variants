@@ -136,7 +136,25 @@ python3 path-similarity.py chr12.paths.gfa CHM13
 python3 augref-colors.py chr12.trio5.win.aug.gfa chr12.trio5.win.colours.csv \
     --ref-color '#000000' --rest-color '#FAD7D7'
 ```
-
 Load `chr12.trio5.win.aug.gfa` in BandageNG, then *File → Load CSV data*
 on `chr12.trio5.win.colours.csv` and switch the *Colour* dropdown to
 **Custom colours**.
+
+
+### Run used for first submission
+```
+(base) ghickey@razzmatazz:~/dev/nested-variants/centrolign-all$ git log -1
+commit 8bef2c0da30619c675ddd9886671d71de444a4ad (HEAD -> refactor, origin/refactor)
+Author: Glenn Hickey <glenn.hickey@gmail.com>
+Date:   Fri Apr 17 07:34:28 2026 -0400
+
+    Add skip config for per-(chrom,sample) exclusion
+    
+    Usage: --config skip=chr4:HG03139,chr9:HG01234
+    
+    Needed when a sample's reads trigger a mapper crash on a specific
+    chromosome but the sample is fine elsewhere.
+    
+    Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+(base) ghickey@razzmatazz:~/dev/nested-variants/centrolign-all$ snakemake --profile ../profiles/slurm --default-resources slurm_partition=high_priority --config out=../output/centrolign-all emit_svg=true reads_dir=./extract_asat_reads skip_dv=true skip=chr4:HG03139 --rerun-incomplete
+```
