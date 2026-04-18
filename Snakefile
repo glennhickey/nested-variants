@@ -1224,6 +1224,42 @@ rule length_hist:
     shell:
         "ulimit -s unlimited && Rscript scripts/offref-length-hist.R {output.hist} {input}"
 
+rule augref_depth:
+    """Per-segment haplotype depth on augref paths (population frequency).
+    For every node in every augref path, count how many graph paths
+    (reference + haplotype senses) traverse it. Bin size > any contig
+    length so we get one row per augref path. Requires a vg build whose
+    `vg depth -P` honours haplotype-sense paths in GBZ (see config.vg_bin)."""
+    input:
+        gbz=f"{OUT_DIR}/{OUT_NAME}.gbz",
+    output:
+        f"{OUT_DIR}/{OUT_NAME}.augref-depth.tsv",
+    threads: rule_cpus("augref_depth", 8)
+    resources:
+        mem_mb=rule_mem_gb("augref_depth", 256) * 1024,
+        runtime=rule_runtime("augref_depth"),
+    params:
+        vg=config.get("vg_bin", "vg"),
+    shell:
+        "{params.vg} depth -P augref_{REF} -b 1000000000 -t {threads} {input.gbz}"
+        " > {output}"
+
+rule augref_frequency_plot:
+    """Augref-depth TSV → population-frequency plots (histogram + length scatter).
+    Filters to off-reference _alt contigs only; main chromosome paths
+    saturate the depth and aren't informative for frequency."""
+    input:
+        f"{OUT_DIR}/{OUT_NAME}.augref-depth.tsv",
+    output:
+        hist=f"{OUT_DIR}/{OUT_NAME}.augref-frequency.png",
+        scatter=f"{OUT_DIR}/{OUT_NAME}.augref-frequency-by-size.png",
+    resources:
+        mem_mb=8000,
+        runtime=120,
+    shell:
+        "ulimit -s unlimited && Rscript scripts/augref-frequency.R"
+        " {input} {OUT_DIR}/{OUT_NAME}"
+
 rule segment_density:
     """Augref segments → off-reference segment density ideogram"""
     input:
@@ -4977,6 +5013,8 @@ rule summary_augref:
         length_hist=f"{OUT_DIR}/{OUT_NAME}.augref-length-hist.png",
         length_loglog=f"{OUT_DIR}/{OUT_NAME}.augref-length-hist-loglog.png",
         ideogram=f"{OUT_DIR}/{OUT_NAME}.offref-segs.png",
+        frequency=f"{OUT_DIR}/{OUT_NAME}.augref-frequency.png",
+        frequency_by_size=f"{OUT_DIR}/{OUT_NAME}.augref-frequency-by-size.png",
         annot_summary=[f"{OUT_DIR}/{OUT_NAME}.annot-summary.png"] if annotation_inputs() else [],
         annot_repeats=[f"{OUT_DIR}/{OUT_NAME}.annot-repeats.png"] if config.get("annot_repeats", "") else [],
     output:
@@ -4988,7 +5026,9 @@ rule summary_augref:
         panels=lambda wc, input: " ".join(
             [f"'Segment Lengths:{input.length_hist}'",
              f"'Segment Lengths (log-log):{input.length_loglog}'",
-             f"'Density Ideogram:{input.ideogram}'"]
+             f"'Density Ideogram:{input.ideogram}'",
+             f"'Population Frequency:{input.frequency}'",
+             f"'Frequency vs Length:{input.frequency_by_size}'"]
             + ([f"'Annotation Overlap:{input.annot_summary[0]}'"] if input.annot_summary else [])
             + ([f"'Repeat Classes:{input.annot_repeats[0]}'"] if input.annot_repeats else [])
         ),

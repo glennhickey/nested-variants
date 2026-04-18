@@ -8,6 +8,10 @@ ref: GRCh38
 # Input VG file(s) — glob patterns accepted (quoted)
 vg: data/chr20.vg
 
+# Path to the vg binary. Defaults to whatever is on PATH; override if you need
+# a specific build (e.g. for vg depth haplotype handling on GBZ).
+vg_bin: vg
+
 # Output directory and naming prefix
 out_dir: output
 out_name: chr20.nested
