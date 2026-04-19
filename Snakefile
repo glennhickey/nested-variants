@@ -1228,13 +1228,14 @@ rule augref_depth:
     """Per-segment haplotype depth on augref _alt paths only.
     Wraps scripts/augref-depth.sh, which runs vg depth once per main
     chromosome (with trailing-underscore prefix so main refs are skipped),
-    in parallel across chromosomes. Each vg depth load of an HPRC GBZ is
-    ~13 GB; size mem / parallel accordingly."""
+    in parallel across chromosomes. Total threads / parallel = threads
+    per vg depth invocation (default 120 / 10 = 12). Each vg depth load
+    of an HPRC GBZ is ~13 GB; size mem / parallel accordingly."""
     input:
         gbz=f"{OUT_DIR}/{OUT_NAME}.gbz",
     output:
         f"{OUT_DIR}/{OUT_NAME}.augref-depth.tsv",
-    threads: rule_cpus("augref_depth", 10)
+    threads: rule_cpus("augref_depth", 120)
     resources:
         mem_mb=rule_mem_gb("augref_depth", 500) * 1024,
         runtime=rule_runtime("augref_depth"),
