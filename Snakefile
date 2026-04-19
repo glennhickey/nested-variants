@@ -1226,22 +1226,25 @@ rule length_hist:
 
 rule augref_depth:
     """Per-segment haplotype depth on augref _alt paths only.
-    Wraps scripts/augref-depth.sh, which loops vg depth over one prefix per
-    main chromosome so reference paths (~250 Mb each) are never scanned."""
+    Wraps scripts/augref-depth.sh, which runs vg depth once per main
+    chromosome (with trailing-underscore prefix so main refs are skipped),
+    in parallel across chromosomes. Each vg depth load of an HPRC GBZ is
+    ~13 GB; size mem / parallel accordingly."""
     input:
         gbz=f"{OUT_DIR}/{OUT_NAME}.gbz",
     output:
         f"{OUT_DIR}/{OUT_NAME}.augref-depth.tsv",
-    threads: rule_cpus("augref_depth", 8)
+    threads: rule_cpus("augref_depth", 10)
     resources:
-        mem_mb=rule_mem_gb("augref_depth", 256) * 1024,
+        mem_mb=rule_mem_gb("augref_depth", 500) * 1024,
         runtime=rule_runtime("augref_depth"),
     params:
         vg=config.get("vg_bin", "vg"),
+        parallel=config.get("augref_depth_parallel", 10),
     shell:
         "scripts/augref-depth.sh"
         " --gbz {input.gbz} --ref {REF} --out {output}"
-        " --vg {params.vg} --threads {threads}"
+        " --vg {params.vg} --threads {threads} --parallel {params.parallel}"
 
 rule augref_frequency_plot:
     """Augref-depth TSV → population-frequency plots (histogram + length scatter).
