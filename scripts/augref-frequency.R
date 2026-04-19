@@ -60,17 +60,28 @@ save_png <- function(plot, path, w = 8, h = 6) {
   })
 }
 
-# ---- Histogram: number of haplotypes covering each segment ----
+# ---- CCDF: # segments covered by AT LEAST N paths ----
 max_depth <- max(dt_alt$depth_int, na.rm = TRUE)
-p_hist <- ggplot(dt_alt, aes(x = depth_int)) +
-  geom_histogram(binwidth = 1, fill = "steelblue", color = "black", alpha = 0.8) +
-  scale_x_continuous(breaks = scales::pretty_breaks(n = min(10, max_depth + 1))) +
+ccdf_dt <- data.table(
+  depth = seq_len(max_depth),
+  n_segments = sapply(seq_len(max_depth),
+                      function(k) sum(dt_alt$depth_int >= k))
+)
+ccdf_dt[, total_bp := sapply(depth,
+                              function(k) sum(dt_alt$length[dt_alt$depth_int >= k]))]
+ccdf_dt[, frac_segments := n_segments / nrow(dt_alt)]
+ccdf_dt[, frac_bp       := total_bp / sum(dt_alt$length)]
+
+p_hist <- ggplot(ccdf_dt, aes(x = depth, y = n_segments)) +
+  geom_step(direction = "hv", linewidth = 0.9, color = "steelblue") +
+  geom_point(size = 2, color = "steelblue") +
+  scale_x_continuous(breaks = scales::pretty_breaks(n = min(10, max_depth))) +
   scale_y_continuous(labels = scales::comma) +
-  labs(title = "Off-Reference Segment Frequency",
-       subtitle = paste0("Number of graph paths traversing each augref segment (N=",
-                         format(nrow(dt_alt), big.mark = ","), " segments)"),
-       x = "# paths covering segment (including augref)",
-       y = "# segments") +
+  labs(title = "Off-Reference Segment Frequency (CCDF)",
+       subtitle = paste0("# segments supported by at least N graph paths (N=",
+                         format(nrow(dt_alt), big.mark = ","), " off-ref segments)"),
+       x = "# paths covering segment ≥ N (including augref)",
+       y = "# segments with depth ≥ N") +
   theme_minimal() +
   theme(
     plot.title    = element_text(hjust = 0.5, face = "bold"),
@@ -81,15 +92,16 @@ p_hist <- ggplot(dt_alt, aes(x = depth_int)) +
 save_png(p_hist, paste0(prefix, ".augref-frequency.png"))
 cat("Saved:", paste0(prefix, ".augref-frequency.png"), "\n")
 
-# ---- Scatter: segment length vs frequency ----
-p_scatter <- ggplot(dt_alt, aes(x = length, y = depth_int)) +
-  geom_point(alpha = 0.3, size = 0.8, color = "steelblue") +
-  scale_x_log10(labels = scales::comma, breaks = scales::breaks_log(n = 8)) +
-  scale_y_continuous(breaks = scales::pretty_breaks(n = min(10, max_depth + 1))) +
-  labs(title = "Off-Reference Segment: Length vs Population Frequency",
-       subtitle = paste0("N=", format(nrow(dt_alt), big.mark = ","), " off-ref segments"),
-       x = "Segment length (bp, log scale)",
-       y = "# paths covering segment") +
+# ---- CCDF of total bp: # bp in segments covered by AT LEAST N paths ----
+p_scatter <- ggplot(ccdf_dt, aes(x = depth, y = total_bp)) +
+  geom_step(direction = "hv", linewidth = 0.9, color = "firebrick") +
+  geom_point(size = 2, color = "firebrick") +
+  scale_x_continuous(breaks = scales::pretty_breaks(n = min(10, max_depth))) +
+  scale_y_continuous(labels = scales::comma) +
+  labs(title = "Off-Reference Sequence Content (CCDF)",
+       subtitle = paste0("Total bp in segments supported by at least N graph paths"),
+       x = "# paths covering segment ≥ N (including augref)",
+       y = "Total bp (segments with depth ≥ N)") +
   theme_minimal() +
   theme(
     plot.title    = element_text(hjust = 0.5, face = "bold"),

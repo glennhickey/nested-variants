@@ -1225,11 +1225,9 @@ rule length_hist:
         "ulimit -s unlimited && Rscript scripts/offref-length-hist.R {output.hist} {input}"
 
 rule augref_depth:
-    """Per-segment haplotype depth on augref paths (population frequency).
-    For every node in every augref path, count how many graph paths
-    (reference + haplotype senses) traverse it. Bin size > any contig
-    length so we get one row per augref path. Requires a vg build whose
-    `vg depth -P` honours haplotype-sense paths in GBZ (see config.vg_bin)."""
+    """Per-segment haplotype depth on augref _alt paths only.
+    Wraps scripts/augref-depth.sh, which loops vg depth over one prefix per
+    main chromosome so reference paths (~250 Mb each) are never scanned."""
     input:
         gbz=f"{OUT_DIR}/{OUT_NAME}.gbz",
     output:
@@ -1241,8 +1239,9 @@ rule augref_depth:
     params:
         vg=config.get("vg_bin", "vg"),
     shell:
-        "{params.vg} depth -P augref_{REF} -b 1000000000 -t {threads} {input.gbz}"
-        " > {output}"
+        "scripts/augref-depth.sh"
+        " --gbz {input.gbz} --ref {REF} --out {output}"
+        " --vg {params.vg} --threads {threads}"
 
 rule augref_frequency_plot:
     """Augref-depth TSV → population-frequency plots (histogram + length scatter).
