@@ -1102,10 +1102,10 @@ rule paths:
         f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
     threads: rule_cpus("paths", 128)
     resources:
-        mem_mb=rule_mem_gb("paths", 512) * 1024,
+        mem_mb=rule_mem_gb("paths", 1024) * 1024,
         runtime=rule_runtime("paths"),
     params:
-        mem_gb=rule_mem_gb("paths", 512),
+        mem_gb=rule_mem_gb("paths", 1024),
     shell:
         "scripts/paths.sh"
         " --vg '{input}'"
