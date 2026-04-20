@@ -282,7 +282,10 @@ if $LOCAL; then
     /usr/bin/time -v vg gbwt -G "${MERGED_GFA}" --gbz-format -g "${GBZ_OUTPUT}" 2>"${GBZ_LOG}"
 else
     CMD="/usr/bin/time -v vg gbwt -G \"${MERGED_GFA}\" --gbz-format -g \"${GBZ_OUTPUT}\""
-    sbatch -W \
+    # Note: sbatch -W propagates the wrapped job's exit status; set -e will
+    # abort the script if vg gbwt fails. If it "succeeds" but silently
+    # drops chromosomes, the post-build verification below will catch it.
+    if ! sbatch -W \
         --job-name="gbz" \
         --partition="${PARTITION}" \
         --nodes=1 \
@@ -292,8 +295,40 @@ else
         --time="${TIME}" \
         --output=/dev/null \
         --error="${OUTPUT_DIR}/${OUTPUT_NAME}.gbz.log" \
-        --wrap="$CMD"
+        --wrap="$CMD"; then
+        echo "ERROR: vg gbwt failed (see ${OUTPUT_DIR}/${OUTPUT_NAME}.gbz.log)" >&2
+        exit 1
+    fi
 fi
+
+# Post-build verification: every chromosome that appears in the merged
+# augref-segs.tsv (i.e. has at least one _alt segment) should have a
+# main-reference augref path in the GBZ. If any expected chrom is missing
+# it means chr-level inputs fell out somewhere between `vg paths` and
+# `vg gbwt`, and we must NOT keep the bad GBZ in place.
+echo "[paths] verifying GBZ augref chromosome coverage"
+# TSV has no header; col 4 is augref_<REF>#0#<chrom>_<N>_alt.
+EXPECTED_CHROMS=$(awk -F'\t' '{print $4}' "$SEGS_MERGED" \
+    | awk -F"#0#" '{print $2}' \
+    | sed -E 's/_[0-9]+_alt$//' \
+    | sort -u)
+ACTUAL_CHROMS=$(vg paths -x "$GBZ_OUTPUT" --list -R 2>/dev/null \
+    | grep -E "^${AUGREF_SAMPLE}#0#" \
+    | awk -F'#0#' '{print $2}' \
+    | sed -E 's/_[0-9]+_alt$//' \
+    | sort -u)
+MISSING_CHROMS=$(comm -23 <(echo "$EXPECTED_CHROMS") <(echo "$ACTUAL_CHROMS"))
+if [ -n "$MISSING_CHROMS" ]; then
+    echo "ERROR: GBZ augref chromosome set does not match merged segs TSV" >&2
+    echo "  GBZ:                 ${GBZ_OUTPUT}" >&2
+    echo "  merged TSV:          ${SEGS_MERGED}" >&2
+    echo "  missing from GBZ:    $(echo "$MISSING_CHROMS" | tr '\n' ' ')" >&2
+    # Rename the bad GBZ so downstream rules don't pick it up.
+    mv "$GBZ_OUTPUT" "${GBZ_OUTPUT}.incomplete"
+    echo "  Bad GBZ renamed to:  ${GBZ_OUTPUT}.incomplete" >&2
+    exit 1
+fi
+echo "[paths] OK: GBZ contains all $(echo "$EXPECTED_CHROMS" | wc -l) expected chromosomes"
 
 # Clean up merged GFA
 rm -f "${MERGED_GFA}"
