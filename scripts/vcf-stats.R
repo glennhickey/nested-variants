@@ -1071,15 +1071,26 @@ if (per_sample) {
                         by = "sample", all.x = TRUE)
         ps_pop[is.na(super_pop) | super_pop == "", super_pop := "Unknown"]
 
-        pop_levels <- c("AFR", "AMR", "EAS", "EUR", "SAS", "Reference", "Unknown")
+        # Drop reference samples (CHM13, GRCh38, etc. — flagged super_pop=Reference
+        # in the populations TSV). --ref-sample already excludes the VCF's own
+        # reference, but other reference haplotypes can appear as contrib samples
+        # (e.g. GRCh38 in a CHM13-based run) and bias the per-sample counts.
+        n_ref <- ps_pop[super_pop == "Reference", uniqueN(sample)]
+        if (n_ref > 0) {
+          ref_names <- sort(unique(ps_pop[super_pop == "Reference", sample]))
+          cat("Dropping", n_ref, "reference-labelled samples from pop plot:",
+              paste(ref_names, collapse = ", "), "\n")
+          ps_pop <- ps_pop[super_pop != "Reference"]
+        }
+
+        pop_levels <- c("AFR", "AMR", "EAS", "EUR", "SAS", "Unknown")
         pop_colors <- c(
-          "AFR"       = "#e31a1c",
-          "AMR"       = "#ff7f00",
-          "EAS"       = "#33a02c",
-          "EUR"       = "#1f78b4",
-          "SAS"       = "#6a3d9a",
-          "Reference" = "#969696",
-          "Unknown"   = "#000000"
+          "AFR"     = "#e31a1c",
+          "AMR"     = "#ff7f00",
+          "EAS"     = "#33a02c",
+          "EUR"     = "#1f78b4",
+          "SAS"     = "#6a3d9a",
+          "Unknown" = "#000000"
         )
         # Only keep factor levels that actually appear, plus preserve palette order
         present <- intersect(pop_levels, unique(ps_pop$super_pop))
