@@ -47,7 +47,7 @@ annot_names_arg <- NULL
 giab_strat_beds_arg  <- NULL
 giab_strat_names_arg <- NULL
 per_sample <- FALSE
-hap_breakdown <- FALSE
+populations_file <- NULL
 ref_sample <- NULL
 no_sv      <- FALSE
 tsv_input  <- FALSE
@@ -87,9 +87,9 @@ while (i <= length(args)) {
   } else if (args[i] == "--per-sample") {
     per_sample <- TRUE
     i <- i + 1
-  } else if (args[i] == "--hap-breakdown") {
-    hap_breakdown <- TRUE
-    i <- i + 1
+  } else if (args[i] == "--populations" && i + 1 <= length(args)) {
+    populations_file <- args[i + 1]
+    i <- i + 2
   } else if (args[i] == "--ref-sample" && i + 1 <= length(args)) {
     ref_sample <- args[i + 1]
     i <- i + 2
@@ -1085,66 +1085,59 @@ if (per_sample) {
 
       save_png(p_ps, paste0(prefix, ".per-sample-types.png"), width = 12)
 
-      # 6a'. Haplotype breakdown (--hap-breakdown): re-count carriers per haplotype,
-      # produce a parallel plot with dots colored by hap 1 (paternal) / hap 2 (maternal).
-      # Only meaningful for deconstruct (phased multi-sample VCF); caller outputs
-      # are single-sample and not reliably phased so the caller stats rules omit
-      # this flag.
-      if (hap_breakdown) {
-        cat("Computing haplotype-breakdown per-sample counts\n")
-        ps_list_hap <- vector("list", 2 * n_samples)
-        idx <- 1L
-        for (si in seq_along(sample_names)) {
-          sname <- sample_names[si]
-          col_idx <- match(sname, all_sample_names)
-          gt_col <- gt_sample_cols[col_idx]
-          gt_vec <- gt_dt[[gt_col]]
-          h1 <- grepl("^[1-9]", gt_vec)
-          h2 <- grepl("[|/][1-9]", gt_vec)
-          ps_list_hap[[idx]]     <- gt_dt[h1, .(count = .N), by = .(variant_type, ref_context)
-                                          ][, `:=`(sample = sname, haplotype = "hap1")]
-          ps_list_hap[[idx + 1L]] <- gt_dt[h2, .(count = .N), by = .(variant_type, ref_context)
-                                            ][, `:=`(sample = sname, haplotype = "hap2")]
-          idx <- idx + 2L
+      # 6a'. Super-population breakdown (--populations FILE): colour per-sample dots
+      # by 1000 Genomes super-population. Samples absent from the panel (references,
+      # non-1000G members like HG002-7) need explicit rows in the populations TSV;
+      # anything still unmatched falls through to "Unknown".
+      if (!is.null(populations_file)) {
+        cat("Loading populations from:", populations_file, "\n")
+        pops <- fread(populations_file)
+        if (!all(c("sample", "super_pop") %in% names(pops))) {
+          stop("populations file must have columns: sample, super_pop (got: ",
+               paste(names(pops), collapse = ","), ")")
         }
-        ps_hap <- rbindlist(ps_list_hap)
-        ps_hap <- ps_hap[variant_type %in% type_levels & variant_type != "Other"]
-        # Fill zero combinations (sample × hap × variant_type × ref_context)
-        all_combos_hap <- CJ(sample = sample_names,
-                             haplotype = c("hap1", "hap2"),
-                             variant_type = unique(ps_hap$variant_type),
-                             ref_context = unique(ps_hap$ref_context))
-        ps_hap <- merge(all_combos_hap, ps_hap,
-                        by = c("sample", "haplotype", "variant_type", "ref_context"),
-                        all.x = TRUE)
-        ps_hap[is.na(count), count := 0L]
-        ps_hap[, variant_type := factor(variant_type,
-          levels = intersect(setdiff(type_levels, "Other"), unique(variant_type)))]
-        ps_hap[, type_class := fcase(
-          variant_type == "SNP",                     "SNP",
-          variant_type %in% sv_type_names,           "SV",
-          default =                                  "Indel/MNP")]
-        ps_hap[, type_class := factor(type_class, levels = c("SNP", "Indel/MNP", "SV"))]
-        setorder(ps_hap, sample, haplotype, ref_context, variant_type)
-        fwrite(ps_hap, paste0(prefix, ".per-sample-types-by-hap.tsv"), sep = "\t")
+        ps_pop <- merge(ps_counts, pops[, .(sample, super_pop)],
+                        by = "sample", all.x = TRUE)
+        ps_pop[is.na(super_pop) | super_pop == "", super_pop := "Unknown"]
 
-        p_ps_hap <- ggplot(ps_hap,
+        pop_levels <- c("AFR", "AMR", "EAS", "EUR", "SAS", "Reference", "Unknown")
+        pop_colors <- c(
+          "AFR"       = "#e31a1c",
+          "AMR"       = "#ff7f00",
+          "EAS"       = "#33a02c",
+          "EUR"       = "#1f78b4",
+          "SAS"       = "#6a3d9a",
+          "Reference" = "#969696",
+          "Unknown"   = "#000000"
+        )
+        # Only keep factor levels that actually appear, plus preserve palette order
+        present <- intersect(pop_levels, unique(ps_pop$super_pop))
+        extras  <- setdiff(unique(ps_pop$super_pop), pop_levels)
+        ps_pop[, super_pop := factor(super_pop, levels = c(present, extras))]
+
+        setorder(ps_pop, super_pop, sample, ref_context, variant_type)
+        fwrite(ps_pop, paste0(prefix, ".per-sample-types-by-pop.tsv"), sep = "\t")
+
+        n_per_pop <- ps_pop[, .(n = uniqueN(sample)), by = super_pop]
+        cat("Samples per super-population:\n"); print(n_per_pop)
+
+        p_ps_pop <- ggplot(ps_pop,
                            aes(x = variant_type, y = count, fill = ref_context)) +
           geom_violin(width = 0.7, alpha = 0.6, scale = "width",
                       position = position_dodge(width = 0.7)) +
-          geom_jitter(aes(color = haplotype),
+          geom_jitter(aes(color = super_pop),
                       position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.7),
-                      size = 1.2, alpha = 0.75) +
+                      size = 1.2, alpha = 0.85) +
           scale_fill_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
                             name = "Ref Context") +
-          scale_color_manual(values = c("hap1" = "#1f77b4", "hap2" = "#d62728"),
-                             labels = c("hap1" = "Hap 1 (paternal)", "hap2" = "Hap 2 (maternal)"),
-                             name = "Haplotype") +
+          scale_color_manual(values = pop_colors, name = "Super-Population",
+                             drop = FALSE, na.value = "#000000") +
           scale_y_continuous(labels = scales::comma) +
           facet_wrap(vars(ref_context, type_class), scales = "free", ncol = 3) +
           labs(title = title,
-               subtitle = paste0("Per-Sample Variant Counts by Haplotype ", mode_label, filter_label,
-                                 " (N=", n_samples, " samples × 2 haplotypes)"),
+               subtitle = paste0("Per-Sample Variant Counts by Super-Population ",
+                                 mode_label, filter_label,
+                                 " (N=", n_samples, " samples)"),
                x = "Variant Type", y = "Count") +
           theme_minimal() +
           theme(
@@ -1153,7 +1146,7 @@ if (per_sample) {
             panel.background = element_rect(fill = "white", color = NA),
             plot.background  = element_rect(fill = "white", color = NA)
           )
-        save_png(p_ps_hap, paste0(prefix, ".per-sample-types-by-hap.png"), width = 12)
+        save_png(p_ps_pop, paste0(prefix, ".per-sample-types-by-pop.png"), width = 12)
       }
 
       # 6b. SV-only per-sample plot (separate file for better visibility)

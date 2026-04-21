@@ -19,8 +19,11 @@ out_name: chr20.nested
 # Minimum augmented-reference fragment length
 min_augref_len: 50
 
-# Minimum contig length for surjection/DeepVariant (0 = no filtering)
-min_surject_len: 1000
+# Minimum contig length for surjection/DeepVariant (0 = no filtering).
+# Must exceed DeepVariant's allele-counter margin (~100 bp) with some slack —
+# contigs slightly above the threshold have triggered an INVALID_ARGUMENT abort
+# in make_examples (overlap region start < 0). 1500 keeps that well clear.
+min_surject_len: 1500
 
 # Minimum contig length for vcfeval/aardvark comparison (0 = use all eval contigs)
 min_vcfeval_len: 0

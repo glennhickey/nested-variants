@@ -150,7 +150,7 @@ All settings live in `config.yaml` (committed defaults) and can be overridden in
 | `out_dir` | `output` | Output directory |
 | `out_name` | `chr20.nested` | Output filename prefix |
 | `min_augref_len` | `50` | Minimum augref fragment length |
-| `min_surject_len` | `0` | Minimum contig length for surjection/call (0 = no filtering) |
+| `min_surject_len` | `1500` | Minimum contig length for surjection/call (0 = no filtering; must exceed ~100 bp to avoid DeepVariant overlap-region crash) |
 | `dv_version` | `1.9.0` | DeepVariant Docker image version |
 | `refgaps_bed` | *(empty)* | BED file for reference gap overlay on plots |
 | `scale_type` | `log1p` | Scale type for density plots |
@@ -350,6 +350,18 @@ output/v2.1-chm13/
 ├── merged.dv.sites.{vcf-stats.tsv,variant-types.png,size-dist.png,af-spectrum.png}
 └── merged.dv.variants.{vcf-stats.tsv,variant-types.png,size-dist.png,af-spectrum.png}
 ```
+
+### Sample super-populations
+
+The deconstruct per-sample plots colour each sample's dot by its 1000 Genomes super-population.
+The lookup table `data/sample-super-populations.tsv` (columns: `sample`, `pop`, `super_pop`,
+`gender`) combines:
+
+- the [1000 Genomes Phase-3 panel](http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/integrated_call_samples_v3.20130502.ALL.panel) (2504 samples), and
+- hand-added rows for the GIAB trios (HG002–HG004 → AJ/EUR, HG005–HG007 → CHS/EAS) and for
+  the reference samples (CHM13, GRCh38 → Reference).
+
+Any sample not present in the table falls back to `Unknown` at plot time.
 
 ## Cluster Usage
 
