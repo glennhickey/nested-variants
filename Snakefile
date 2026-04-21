@@ -2477,6 +2477,7 @@ rule deconstruct_sites_stats:
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
         annot_beds=augref_annot_beds(),
         giab_beds=augref_giab_strat_beds(),
+        populations="sample-super-populations.tsv",
     threads: rule_cpus("deconstruct_stats", 32)
     output:
         f"{OUT_DIR}/{OUT_NAME}.sites.vcf-stats.tsv",
@@ -2514,7 +2515,7 @@ rule deconstruct_sites_stats:
         " --mode sites --af-step 0.05 --title '{REF} Deconstruct'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample"
-        " --populations sample-super-populations.tsv --ref-sample {REF}"
+        " --populations {input.populations} --ref-sample {REF}"
         " --threads {threads}"
 
 rule deconstruct_variants_stats:
