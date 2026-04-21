@@ -55,8 +55,7 @@ dump_records <- FALSE
 records_only <- FALSE
 segs_file    <- NULL
 segs_strip_prefix <- NULL
-cache_file   <- NULL
-cache_only   <- FALSE
+threads      <- 1
 
 i <- 3
 while (i <= length(args)) {
@@ -111,12 +110,9 @@ while (i <= length(args)) {
   } else if (args[i] == "--segs-strip-prefix" && i + 1 <= length(args)) {
     segs_strip_prefix <- args[i + 1]
     i <- i + 2
-  } else if (args[i] == "--cache" && i + 1 <= length(args)) {
-    cache_file <- args[i + 1]
+  } else if (args[i] == "--threads" && i + 1 <= length(args)) {
+    threads <- as.integer(args[i + 1])
     i <- i + 2
-  } else if (args[i] == "--cache-only") {
-    cache_only <- TRUE
-    i <- i + 1
   } else {
     i <- i + 1
   }
@@ -135,37 +131,36 @@ mode_label <- if (mode == "sites") "(per site)" else "(per variant)"
 filter_label <- if (filter == "pass") ", PASS only" else ""
 
 # ---------------------------------------------------------------------------
-# Cache path: if --cache is given and the file exists, load parsed dt (and
-# gt_dt when --per-sample) from RDS and skip VCF reads. Two slow bcftools
-# query passes (main fields + per-sample GTs) on huge VCFs get completely
-# skipped, turning multi-hour reruns into a couple minutes. On cache miss,
-# normal VCF reading runs; at the end we saveRDS() so the next run hits.
-# --cache-only parses + saves + exits (for a dedicated cache-build rule).
+# Read VCF (or pre-extracted TSV)
+#
+# VCF reads go through scripts/bcftools-query-parallel.sh, which shards by
+# main chromosome (grouping `_alt` contigs under their parent chrom) and runs
+# one bcftools pipeline per shard concurrently. Single-threaded bcftools on a
+# 26 GB HPRC VCF is a multi-hour serial bottleneck; sharded it finishes in
+# minutes. Parallelism is controlled by --threads (default 1 = serial path).
 # ---------------------------------------------------------------------------
-cache_loaded <- FALSE
-if (!is.null(cache_file) && file.exists(cache_file)) {
-  cat("Loading cached parsed data from:", cache_file, "\n")
-  t0 <- Sys.time()
-  cached <- readRDS(cache_file)
-  dt <- cached$dt
-  has_af <- cached$has_af
-  has_tr <- cached$has_tr
-  if ("gt_dt" %in% names(cached)) {
-    gt_dt <- cached$gt_dt
-    all_sample_names <- cached$all_sample_names
-    n_all_samples <- cached$n_all_samples
-  }
-  cache_loaded <- TRUE
-  cat("  Loaded", nrow(dt), "records in",
-      round(as.numeric(difftime(Sys.time(), t0, units = "secs")), 1), "s\n")
-  if (exists("gt_dt")) {
-    cat("  Loaded gt_dt:", nrow(gt_dt), "records ×", n_all_samples, "samples\n")
-  }
+script_dir <- dirname(sub("^--file=", "", grep("^--file=", commandArgs(), value = TRUE)[1]))
+if (is.na(script_dir) || !nzchar(script_dir)) script_dir <- "scripts"
+parallel_wrapper <- file.path(script_dir, "bcftools-query-parallel.sh")
+if (!file.exists(parallel_wrapper)) {
+  # Fallback for when Rscript is invoked in a way that doesn't expose --file=
+  parallel_wrapper <- "scripts/bcftools-query-parallel.sh"
 }
 
-# ---------------------------------------------------------------------------
-# Read VCF (or pre-extracted TSV)
-# ---------------------------------------------------------------------------
+bcftools_query <- function(format_str, filter = "all", norm = FALSE) {
+  args <- c(
+    "--vcf",    shQuote(vcf),
+    "--format", shQuote(format_str),
+    "--parallel", as.integer(threads)
+  )
+  if (filter == "pass") args <- c(args, "--filter", "pass")
+  if (norm) args <- c(args, "--norm")
+  paste(shQuote(parallel_wrapper), paste(args, collapse = " "))
+}
+
+cache_loaded <- FALSE  # retained only so downstream `if (!cache_loaded)` guards
+                       # still evaluate correctly; cache itself is gone.
+
 if (!cache_loaded && tsv_input) {
   cat("Reading pre-extracted TSV:", vcf, "\n")
   dt <- fread(vcf)
@@ -187,23 +182,17 @@ if (!cache_loaded && tsv_input) {
   if (has_tr) cat("TR annotation detected:", sum(dt$is_repeat), "tandem repeat indels\n")
   if (nrow(dt) == 0) { cat("No variants found. Exiting.\n"); quit(status = 0) }
 } else if (!cache_loaded) {
-cat("Reading VCF:", vcf, " (mode:", mode, ", filter:", filter, ")\n")
+cat("Reading VCF:", vcf, " (mode:", mode, ", filter:", filter, ", threads:", threads, ")\n")
 
-# Build pipeline prefix: variants mode pipes through bcftools norm -m- first
-# +fill-tags computes AF from genotypes when INFO/AF is absent (e.g., single-sample vg call)
-# When filter=="pass", insert bcftools view -f PASS to keep only PASS variants
-filter_cmd <- if (filter == "pass") "bcftools view -f PASS 2>/dev/null |" else ""
-
-if (mode == "variants") {
-  pipe_prefix <- sprintf("bcftools norm -m- '%s' 2>/dev/null | bcftools view -c1 2>/dev/null | %s bcftools +fill-tags - -- -t AF 2>/dev/null", vcf, filter_cmd)
-} else {
-  pipe_prefix <- sprintf("bcftools view -c1 '%s' 2>/dev/null | %s bcftools +fill-tags - -- -t AF 2>/dev/null", vcf, filter_cmd)
-}
+# VCF reading is delegated to scripts/bcftools-query-parallel.sh for
+# chromosome-level parallelism. The wrapper also handles the +fill-tags
+# stage (so single-sample VCFs without INFO/AF still get an AF computed
+# from GTs) and the optional PASS filter / --norm pre-pass.
 
 # Try with AF + TR_MOTIF first (filter out all-homref sites from vg call -A)
-cmd_af <- sprintf(
-  "%s | bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT\\t%%INFO/AF\\t%%INFO/TR_MOTIF\\n' 2>/dev/null",
-  pipe_prefix
+cmd_af <- bcftools_query(
+  "%CHROM\t%POS\t%REF\t%ALT\t%INFO/AF\t%INFO/TR_MOTIF\n",
+  filter = filter, norm = (mode == "variants")
 )
 dt <- tryCatch(
   fread(cmd = cmd_af, col.names = c("CHROM", "POS", "REF", "ALT", "AF_str", "TR_MOTIF")),
@@ -215,9 +204,9 @@ has_af <- !is.null(dt) && nrow(dt) > 0 && !all(is.na(dt$AF_str) | dt$AF_str == "
 
 if (is.null(dt) || nrow(dt) == 0) {
   # Fallback: read without AF (still include TR_MOTIF)
-  cmd_no_af <- sprintf(
-    "%s | bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT\\t%%INFO/TR_MOTIF\\n' 2>/dev/null",
-    pipe_prefix
+  cmd_no_af <- bcftools_query(
+    "%CHROM\t%POS\t%REF\t%ALT\t%INFO/TR_MOTIF\n",
+    filter = filter, norm = (mode == "variants")
   )
   dt <- tryCatch(
     fread(cmd = cmd_no_af, col.names = c("CHROM", "POS", "REF", "ALT", "TR_MOTIF")),
@@ -226,9 +215,9 @@ if (is.null(dt) || nrow(dt) == 0) {
   )
   if (is.null(dt) || nrow(dt) == 0) {
     # Final fallback: no AF, no TR_MOTIF
-    cmd_bare <- sprintf(
-      "%s | bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT\\n' 2>/dev/null",
-      pipe_prefix
+    cmd_bare <- bcftools_query(
+      "%CHROM\t%POS\t%REF\t%ALT\n",
+      filter = filter, norm = (mode == "variants")
     )
     dt <- fread(cmd = cmd_bare, col.names = c("CHROM", "POS", "REF", "ALT"))
   }
@@ -935,12 +924,12 @@ if (per_sample) {
              paste0(prefix, ".per-sample-giab-strat.tsv"), sep = "\t")
     }
   } else {
-    # 2. Read per-sample GTs through same pipeline as site-level
-    #    (bcftools outputs all samples; we filter to non-ref samples after melting)
+    # 2. Read per-sample GTs through the parallel wrapper (same pipeline as
+    #    site-level — +fill-tags + optional PASS filter + optional --norm).
     if (!cache_loaded) {
-      gt_cmd <- sprintf(
-        "%s | bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT[\\t%%GT]\\n' 2>/dev/null",
-        pipe_prefix
+      gt_cmd <- bcftools_query(
+        "%CHROM\t%POS\t%REF\t%ALT[\t%GT]\n",
+        filter = filter, norm = (mode == "variants")
       )
       gt_cols <- c("CHROM", "POS", "REF", "ALT", paste0("GT_", seq_len(n_all_samples)))
       gt_dt <- fread(cmd = gt_cmd, col.names = gt_cols)
@@ -988,24 +977,6 @@ if (per_sample) {
         gt_dt <- gt_dt[!variant_type %in% c("SV Insertion", "SV Deletion")]
       }
 
-      # Save the cache now that both dt and gt_dt are parsed+classified. Annot
-      # and GIAB intersect columns, if they were added to dt upstream, are
-      # preserved automatically because they live inside dt.
-      if (!is.null(cache_file)) {
-        cat("Saving cache to:", cache_file, "\n")
-        t0 <- Sys.time()
-        saveRDS(list(dt = dt, gt_dt = gt_dt,
-                     has_af = has_af, has_tr = has_tr,
-                     all_sample_names = all_sample_names,
-                     n_all_samples = n_all_samples),
-                cache_file, compress = TRUE)
-        cat("  Cache saved in",
-            round(as.numeric(difftime(Sys.time(), t0, units = "secs")), 1), "s\n")
-        if (cache_only) {
-          cat("--cache-only: exiting after cache write.\n")
-          quit(status = 0)
-        }
-      }
      }  # end if (!cache_loaded) for classification
 
       # 4. Count carriers per sample without melting (avoids exceeding R's 2^31

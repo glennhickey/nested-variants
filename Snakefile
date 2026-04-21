@@ -2470,71 +2470,14 @@ rule merged_pg_plots:
 # VCF statistics rules
 ############################################################################
 
-rule deconstruct_sites_cache:
-    """Parse deconstruct VCF once and cache dt + gt_dt as RDS.
-    Subsequent deconstruct_sites_stats runs read the cache and skip the
-    two bcftools queries on the 30 GB VCF (the dominant cost for HPRC).
-    Delete the .cache.rds to force a fresh reparse."""
-    input:
-        vcf=f"{OUT_DIR}/{OUT_NAME}.tr.vcf.gz",
-        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
-        annot_beds=augref_annot_beds(),
-        giab_beds=augref_giab_strat_beds(),
-    output:
-        f"{OUT_DIR}/{OUT_NAME}.sites.cache.rds",
-    resources:
-        mem_mb=int(rule_mem_gb("deconstruct_stats", 512)) * 1024,
-        runtime=2880,
-    params:
-        annot_arg=lambda wc, input: (
-            f"--annot-beds {','.join(input.annot_beds)} --annot-names {','.join(annotation_names())}"
-            if annotation_inputs() else ""),
-        giab_arg=lambda wc, input: (
-            f"--giab-strat-beds {','.join(input.giab_beds)}"
-            f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
-            if giab_strat_configured() else ""),
-    shell:
-        "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{OUT_NAME}.sites"
-        " --mode sites --af-step 0.05 --title '{REF} Deconstruct'"
-        " --segs {input.segs}"
-        " {params.annot_arg} {params.giab_arg} --per-sample --ref-sample {REF}"
-        " --cache {output} --cache-only"
-
-rule deconstruct_variants_cache:
-    """Parse normed deconstruct VCF once and cache as RDS (see deconstruct_sites_cache)."""
-    input:
-        vcf=f"{OUT_DIR}/{OUT_NAME}.tr.normed.vcf.gz",
-        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
-        annot_beds=augref_annot_beds(),
-        giab_beds=augref_giab_strat_beds(),
-    output:
-        f"{OUT_DIR}/{OUT_NAME}.variants.cache.rds",
-    resources:
-        mem_mb=int(rule_mem_gb("deconstruct_stats", 512)) * 1024,
-        runtime=2880,
-    params:
-        annot_arg=lambda wc, input: (
-            f"--annot-beds {','.join(input.annot_beds)} --annot-names {','.join(annotation_names())}"
-            if annotation_inputs() else ""),
-        giab_arg=lambda wc, input: (
-            f"--giab-strat-beds {','.join(input.giab_beds)}"
-            f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
-            if giab_strat_configured() else ""),
-    shell:
-        "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{OUT_NAME}.variants"
-        " --mode variants --af-step 0.05 --title '{REF} Deconstruct'"
-        " --segs {input.segs}"
-        " {params.annot_arg} {params.giab_arg} --per-sample --ref-sample {REF}"
-        " --cache {output} --cache-only"
-
 rule deconstruct_sites_stats:
     """Deconstruct VCF → site-level stats + plots (includes AF spectrum)"""
     input:
         vcf=f"{OUT_DIR}/{OUT_NAME}.tr.vcf.gz",
-        cache=f"{OUT_DIR}/{OUT_NAME}.sites.cache.rds",
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
         annot_beds=augref_annot_beds(),
         giab_beds=augref_giab_strat_beds(),
+    threads: rule_cpus("deconstruct_stats", 32)
     output:
         f"{OUT_DIR}/{OUT_NAME}.sites.vcf-stats.tsv",
         f"{OUT_DIR}/{OUT_NAME}.sites.variant-types.png",
@@ -2572,16 +2515,16 @@ rule deconstruct_sites_stats:
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample"
         " --populations sample-super-populations.tsv --ref-sample {REF}"
-        " --cache {input.cache}"
+        " --threads {threads}"
 
 rule deconstruct_variants_stats:
     """Deconstruct VCF → variant-level stats + plots (uses pre-normed VCF)"""
     input:
         vcf=f"{OUT_DIR}/{OUT_NAME}.tr.normed.vcf.gz",
-        cache=f"{OUT_DIR}/{OUT_NAME}.variants.cache.rds",
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
         annot_beds=augref_annot_beds(),
         giab_beds=augref_giab_strat_beds(),
+    threads: rule_cpus("deconstruct_stats", 32)
     output:
         f"{OUT_DIR}/{OUT_NAME}.variants.vcf-stats.tsv",
         f"{OUT_DIR}/{OUT_NAME}.variants.variant-types.png",
@@ -2616,7 +2559,7 @@ rule deconstruct_variants_stats:
         " --mode variants --af-step 0.05 --title '{REF} Deconstruct'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample --ref-sample {REF}"
-        " --cache {input.cache}"
+        " --threads {threads}"
 
 rule call_stats:
     """Per-sample call VCF → variant stats + plots (one mode/filter combo)"""
@@ -2793,80 +2736,14 @@ rule pg_stats:
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --no-sv"
 
-# ---------------------------------------------------------------------------
-# Generic merged-stats cache: one rule covers every caller × SR/LR × mode ×
-# filter. Expanding the 9 per-caller cache rules into a single parameterized
-# rule via wildcard constraints + caller lookup tables. Matches both
-# "merged.{caller}.{mode}.{filt}.cache.rds" (SR) and
-# "merged.longread.{caller}.{mode}.{filt}.cache.rds" (LR).
-# ---------------------------------------------------------------------------
-_CALLER_VCF_NAME = {"call": "call", "dv": "deepvariant", "fb": "freebayes",
-                    "pg": "pangenie", "bc": "bcftools"}
-_CALLER_DISPLAY  = {"call": "Call", "dv": "DeepVariant", "fb": "FreeBayes",
-                    "pg": "PanGenie", "bc": "bcftools"}
-
-def _merged_stats_vcf(wc):
-    """Map {lr, caller, mode, filt} wildcards → the corresponding merged VCF."""
-    long = _CALLER_VCF_NAME[wc.caller]
-    lr   = wc.lr  # "" or "longread."
-    if wc.filt == "pass":
-        suf = ".pass-prefiltered" + (".normed" if wc.mode == "variants" else "")
-    else:
-        suf = ".normed" if wc.mode == "variants" else ""
-    return f"{OUT_DIR}/merged.{lr}{long}{suf}.vcf.gz"
-
-def _merged_stats_title(wc):
-    lr_txt = "Long-Read " if wc.lr else ""
-    return f"{REF} Merged {lr_txt}{_CALLER_DISPLAY[wc.caller]}"
-
-rule merged_stats_cache:
-    """Parse any merged-caller VCF once and cache dt + gt_dt as RDS.
-    Subsequent merged_{caller}_stats runs hit this cache and skip the
-    bcftools query passes on the merged VCF. Delete the .cache.rds to
-    force a fresh reparse."""
-    input:
-        vcf=_merged_stats_vcf,
-        segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
-        annot_beds=lambda wc: call_annot_beds() if wc.caller == "call" else augref_annot_beds(),
-        giab_beds=lambda wc: call_giab_strat_beds() if wc.caller == "call" else augref_giab_strat_beds(),
-    output:
-        f"{OUT_DIR}/merged.{{lr}}{{caller}}.{{mode}}.{{filt}}.cache.rds",
-    wildcard_constraints:
-        lr="(longread\\.)?",
-        caller="call|dv|fb|pg|bc",
-        mode="sites|variants",
-        filt="all|pass",
-    resources:
-        mem_mb=256000,
-        runtime=2880,
-    params:
-        title=_merged_stats_title,
-        strip_prefix_arg=lambda wc: f"--segs-strip-prefix '{AUGREF}#0#'" if wc.caller == "call" else "",
-        no_sv_arg=lambda wc: "" if wc.caller == "call" else "--no-sv",
-        annot_arg=lambda wc, input: (
-            f"--annot-beds {','.join(input.annot_beds)} --annot-names {','.join(annotation_names())}"
-            if annotation_inputs() else ""),
-        giab_arg=lambda wc, input: (
-            f"--giab-strat-beds {','.join(input.giab_beds)}"
-            f" --giab-strat-names {','.join(GIAB_STRAT_DISPLAY)}"
-            if giab_strat_configured() else ""),
-    shell:
-        "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf}"
-        " {OUT_DIR}/merged.{wildcards.lr}{wildcards.caller}.{wildcards.mode}.{wildcards.filt}"
-        " --mode {wildcards.mode} --filter {wildcards.filt}"
-        " --title '{params.title}'"
-        " --segs {input.segs} {params.strip_prefix_arg}"
-        " {params.annot_arg} {params.giab_arg} --per-sample {params.no_sv_arg}"
-        " --cache {output} --cache-only"
-
 rule merged_call_stats:
     """Merged call VCF → variant stats + plots (one mode/filter combo, includes AF spectrum)"""
     input:
         vcf=lambda wc: f"{OUT_DIR}/merged.call.pass-prefiltered{'.normed' if wc.mode == 'variants' else ''}.vcf.gz" if wc.filt == "pass" else (f"{OUT_DIR}/merged.call.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.call.vcf.gz"),
-        cache=f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.cache.rds",
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
         annot_beds=call_annot_beds(),
         giab_beds=call_giab_strat_beds(),
+    threads: rule_cpus("merged_stats", 32)
     output:
         f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.vcf-stats.tsv",
         f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.variant-types.png",
@@ -2902,16 +2779,16 @@ rule merged_call_stats:
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged Call'"
         " --segs {input.segs} --segs-strip-prefix '{AUGREF}#0#'"
         " {params.annot_arg} {params.giab_arg} --per-sample"
-        " --cache {input.cache}"
+        " --threads {threads}"
 
 rule merged_longread_call_stats:
     """Merged long-read call VCF → variant stats + plots"""
     input:
         vcf=lambda wc: f"{OUT_DIR}/merged.longread.call.pass-prefiltered{'.normed' if wc.mode == 'variants' else ''}.vcf.gz" if wc.filt == "pass" else (f"{OUT_DIR}/merged.longread.call.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.longread.call.vcf.gz"),
-        cache=f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.cache.rds",
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
         annot_beds=call_annot_beds(),
         giab_beds=call_giab_strat_beds(),
+    threads: rule_cpus("merged_stats", 32)
     output:
         f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.vcf-stats.tsv",
         f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.variant-types.png",
@@ -2947,16 +2824,16 @@ rule merged_longread_call_stats:
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged Long-Read Call'"
         " --segs {input.segs} --segs-strip-prefix '{AUGREF}#0#'"
         " {params.annot_arg} {params.giab_arg} --per-sample"
-        " --cache {input.cache}"
+        " --threads {threads}"
 
 rule merged_longread_dv_stats:
     """Merged long-read DeepVariant VCF → variant stats + plots"""
     input:
         vcf=lambda wc: f"{OUT_DIR}/merged.longread.deepvariant.pass-prefiltered{'.normed' if wc.mode == 'variants' else ''}.vcf.gz" if wc.filt == "pass" else (f"{OUT_DIR}/merged.longread.deepvariant.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.longread.deepvariant.vcf.gz"),
-        cache=f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.cache.rds",
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
         annot_beds=augref_annot_beds(),
         giab_beds=augref_giab_strat_beds(),
+    threads: rule_cpus("merged_stats", 32)
     output:
         f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.vcf-stats.tsv",
         f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.variant-types.png",
@@ -2991,16 +2868,16 @@ rule merged_longread_dv_stats:
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged Long-Read DeepVariant'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample --no-sv"
-        " --cache {input.cache}"
+        " --threads {threads}"
 
 rule merged_dv_stats:
     """Merged DeepVariant VCF → variant stats + plots (one mode/filter combo, includes AF spectrum)"""
     input:
         vcf=lambda wc: f"{OUT_DIR}/merged.deepvariant.pass-prefiltered{'.normed' if wc.mode == 'variants' else ''}.vcf.gz" if wc.filt == "pass" else (f"{OUT_DIR}/merged.deepvariant.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.deepvariant.vcf.gz"),
-        cache=f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.cache.rds",
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
         annot_beds=augref_annot_beds(),
         giab_beds=augref_giab_strat_beds(),
+    threads: rule_cpus("merged_stats", 32)
     output:
         f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.vcf-stats.tsv",
         f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.variant-types.png",
@@ -3035,16 +2912,16 @@ rule merged_dv_stats:
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged DeepVariant'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample --no-sv"
-        " --cache {input.cache}"
+        " --threads {threads}"
 
 rule merged_fb_stats:
     """Merged FreeBayes VCF → variant stats + plots (one mode/filter combo, includes AF spectrum)"""
     input:
         vcf=lambda wc: f"{OUT_DIR}/merged.freebayes.pass-prefiltered{'.normed' if wc.mode == 'variants' else ''}.vcf.gz" if wc.filt == "pass" else (f"{OUT_DIR}/merged.freebayes.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.freebayes.vcf.gz"),
-        cache=f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}.cache.rds",
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
         annot_beds=augref_annot_beds(),
         giab_beds=augref_giab_strat_beds(),
+    threads: rule_cpus("merged_stats", 32)
     output:
         f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}.vcf-stats.tsv",
         f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}.variant-types.png",
@@ -3079,16 +2956,16 @@ rule merged_fb_stats:
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged FreeBayes'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample --no-sv"
-        " --cache {input.cache}"
+        " --threads {threads}"
 
 rule merged_longread_fb_stats:
     """Merged long-read FreeBayes VCF → variant stats + plots"""
     input:
         vcf=lambda wc: f"{OUT_DIR}/merged.longread.freebayes.pass-prefiltered{'.normed' if wc.mode == 'variants' else ''}.vcf.gz" if wc.filt == "pass" else (f"{OUT_DIR}/merged.longread.freebayes.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.longread.freebayes.vcf.gz"),
-        cache=f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}.cache.rds",
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
         annot_beds=augref_annot_beds(),
         giab_beds=augref_giab_strat_beds(),
+    threads: rule_cpus("merged_stats", 32)
     output:
         f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}.vcf-stats.tsv",
         f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}.variant-types.png",
@@ -3123,16 +3000,16 @@ rule merged_longread_fb_stats:
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged Long-Read FreeBayes'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample --no-sv"
-        " --cache {input.cache}"
+        " --threads {threads}"
 
 rule merged_bc_stats:
     """Merged bcftools VCF → variant stats + plots (one mode/filter combo, includes AF spectrum)"""
     input:
         vcf=lambda wc: f"{OUT_DIR}/merged.bcftools.pass-prefiltered{'.normed' if wc.mode == 'variants' else ''}.vcf.gz" if wc.filt == "pass" else (f"{OUT_DIR}/merged.bcftools.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.bcftools.vcf.gz"),
-        cache=f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}.cache.rds",
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
         annot_beds=augref_annot_beds(),
         giab_beds=augref_giab_strat_beds(),
+    threads: rule_cpus("merged_stats", 32)
     output:
         f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}.vcf-stats.tsv",
         f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}.variant-types.png",
@@ -3167,16 +3044,16 @@ rule merged_bc_stats:
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged bcftools'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample --no-sv"
-        " --cache {input.cache}"
+        " --threads {threads}"
 
 rule merged_longread_bc_stats:
     """Merged long-read bcftools VCF → variant stats + plots"""
     input:
         vcf=lambda wc: f"{OUT_DIR}/merged.longread.bcftools.pass-prefiltered{'.normed' if wc.mode == 'variants' else ''}.vcf.gz" if wc.filt == "pass" else (f"{OUT_DIR}/merged.longread.bcftools.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.longread.bcftools.vcf.gz"),
-        cache=f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}.cache.rds",
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
         annot_beds=augref_annot_beds(),
         giab_beds=augref_giab_strat_beds(),
+    threads: rule_cpus("merged_stats", 32)
     output:
         f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}.vcf-stats.tsv",
         f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}.variant-types.png",
@@ -3211,16 +3088,16 @@ rule merged_longread_bc_stats:
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged Long-Read bcftools'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample --no-sv"
-        " --cache {input.cache}"
+        " --threads {threads}"
 
 rule merged_pg_stats:
     """Merged PanGenie VCF → variant stats + plots (one mode/filter combo, includes AF spectrum)"""
     input:
         vcf=lambda wc: f"{OUT_DIR}/merged.pangenie.pass-prefiltered{'.normed' if wc.mode == 'variants' else ''}.vcf.gz" if wc.filt == "pass" else (f"{OUT_DIR}/merged.pangenie.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.pangenie.vcf.gz"),
-        cache=f"{OUT_DIR}/merged.pg.{{mode}}.{{filt}}.cache.rds",
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
         annot_beds=augref_annot_beds(),
         giab_beds=augref_giab_strat_beds(),
+    threads: rule_cpus("merged_stats", 32)
     output:
         f"{OUT_DIR}/merged.pg.{{mode}}.{{filt}}.vcf-stats.tsv",
         f"{OUT_DIR}/merged.pg.{{mode}}.{{filt}}.variant-types.png",
@@ -3255,7 +3132,7 @@ rule merged_pg_stats:
         " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged PanGenie'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample --no-sv"
-        " --cache {input.cache}"
+        " --threads {threads}"
 
 ############################################################################
 # Call vs DeepVariant comparison
