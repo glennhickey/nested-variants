@@ -357,11 +357,17 @@ The deconstruct per-sample plots colour each sample's dot by its 1000 Genomes su
 The lookup table `sample-super-populations.tsv` (columns: `sample`, `pop`, `super_pop`,
 `gender`) combines:
 
-- the [1000 Genomes Phase-3 panel](http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/integrated_call_samples_v3.20130502.ALL.panel) (2504 samples), and
+- the [1000 Genomes 3202-sample pedigree panel](https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000G_2504_high_coverage/20130606_g1k_3202_samples_ped_population.txt)
+  (2504 Phase-3 samples + 698 related trio/family members);
 - hand-added rows for the GIAB trios (HG002–HG004 → AJ/EUR, HG005–HG007 → CHS/EAS) and for
-  the reference samples (CHM13, GRCh38 → Reference).
+  the reference samples (CHM13, GRCh38 → Reference);
+- four HPRC samples (HG01123, HG02486, HG02559, HG03471) looked up via the
+  [IGSR sample API](https://www.internationalgenome.org/api/beta/sample/) — they're in IGSR
+  but outside the 3202 high-coverage cohort.
 
-Any sample not present in the table falls back to `Unknown` at plot time.
+Any sample not present in the table falls back to `Unknown` at plot time (a handful of
+HPRC-only samples — e.g. HG02109, HG06807, NA21309 — are not in any 1000G/IGSR cohort and
+stay Unknown unless you extend the TSV manually).
 
 ## Cluster Usage
 
