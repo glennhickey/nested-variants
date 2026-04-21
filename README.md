@@ -354,7 +354,7 @@ output/v2.1-chm13/
 ### Sample super-populations
 
 The deconstruct per-sample plots colour each sample's dot by its 1000 Genomes super-population.
-The lookup table `data/sample-super-populations.tsv` (columns: `sample`, `pop`, `super_pop`,
+The lookup table `sample-super-populations.tsv` (columns: `sample`, `pop`, `super_pop`,
 `gender`) combines:
 
 - the [1000 Genomes Phase-3 panel](http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/integrated_call_samples_v3.20130502.ALL.panel) (2504 samples), and

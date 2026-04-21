@@ -2571,7 +2571,7 @@ rule deconstruct_sites_stats:
         " --mode sites --af-step 0.05 --title '{REF} Deconstruct'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample"
-        " --populations data/sample-super-populations.tsv --ref-sample {REF}"
+        " --populations sample-super-populations.tsv --ref-sample {REF}"
         " --cache {input.cache}"
 
 rule deconstruct_variants_stats:
