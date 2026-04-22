@@ -1105,10 +1105,9 @@ if (per_sample) {
 
         p_ps_pop <- ggplot(ps_pop,
                            aes(x = variant_type, y = count, fill = ref_context)) +
-          geom_violin(width = 0.7, alpha = 0.6, scale = "width",
-                      position = position_dodge(width = 0.7)) +
+          geom_violin(width = 0.7, alpha = 0.6, scale = "width") +
           geom_jitter(aes(color = super_pop),
-                      position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.7),
+                      position = position_jitter(width = 0.15, height = 0),
                       size = 1.2, alpha = 0.85) +
           scale_fill_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
                             name = "Ref Context") +
