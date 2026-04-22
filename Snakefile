@@ -4021,6 +4021,36 @@ rule vcfeval_fb_compare_plot:
         " --title '{REF} Call vs FreeBayes (vcfeval)'"
         " --no-sv"
 
+rule vcfeval_fb_detailed_plot:
+    """FreeBayes-vs-vg-call vcfeval plot with FB-only split by graph membership
+    and stacks by GIAB region; Ts/Tv annotated on SNP bars. Sibling of
+    vcfeval_fb_compare_plot — kept alongside it in figure 4b."""
+    input:
+        tp_baseline=expand(f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/tp-baseline.vcf.gz", sample=SAMPLES, allow_missing=True),
+        fp=expand(f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/fp.vcf.gz", sample=SAMPLES, allow_missing=True),
+        fn=expand(f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/fn.vcf.gz", sample=SAMPLES, allow_missing=True),
+        truth=expand(f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/truth.vcf.gz", sample=SAMPLES, allow_missing=True),
+        giab_beds=augref_giab_strat_beds(),
+    output:
+        f"{OUT_DIR}/merged.call-vs-fb.{{filt}}.vcfeval-detailed.png",
+        f"{OUT_DIR}/merged.call-vs-fb.{{filt}}.vcfeval-detailed.tsv",
+    params:
+        vcfeval_dirs=lambda wc, input: ",".join(
+            [f"{OUT_DIR}/vcfeval-fb/{wc.filt}/{s}" for s in SAMPLES]),
+        sample_names=",".join(SAMPLES),
+    resources:
+        mem_mb=32000,
+        runtime=120,
+    shell:
+        "ulimit -s unlimited && Rscript scripts/vcfeval-fb-detailed.R"
+        " {OUT_DIR}/merged.call-vs-fb.{wildcards.filt}"
+        " --vcfeval-dirs {params.vcfeval_dirs}"
+        " --samples {params.sample_names}"
+        " --giab-beds {input.giab_beds[0]},{input.giab_beds[1]},{input.giab_beds[2]}"
+        " --giab-names " + ",".join(GIAB_STRAT_DISPLAY) +
+        " --filter {wildcards.filt}"
+        " --title '{REF} Call vs FreeBayes — detailed (vcfeval)'"
+
 rule vcfeval_fb_chromsplit:
     """Per-contig FP/FN/TP breakdown from vcfeval/aardvark output (FreeBayes)"""
     input:
@@ -5030,6 +5060,8 @@ rule summary_freebayes:
         fb_types=f"{OUT_DIR}/merged.fb.sites.pass.variant-types.png",
         fb_per_sample=f"{OUT_DIR}/merged.fb.sites.pass.per-sample-types.png",
         vcfeval=f"{OUT_DIR}/merged.call-vs-fb.pass.vcfeval-compare.png",
+        vcfeval_detailed=([f"{OUT_DIR}/merged.call-vs-fb.pass.vcfeval-detailed.png"]
+                          if giab_strat_configured() else []),
         fb_giab=[f"{OUT_DIR}/merged.fb.sites.pass.giab-strat.png"] if giab_strat_configured() else [],
         annot_snp=[f"{OUT_DIR}/merged.freebayes.annot-snp-tstv.pass.png"] if annotation_inputs() else [],
     output:
@@ -5042,6 +5074,7 @@ rule summary_freebayes:
             [f"'FB Variant Types (PASS):{input.fb_types}'",
              f"'FB Per-Sample Types (PASS):{input.fb_per_sample}'",
              f"'Call vs FB (vcfeval):{input.vcfeval}'"]
+            + ([f"'Call vs FB — detailed:{input.vcfeval_detailed[0]}'"] if input.vcfeval_detailed else [])
             + ([f"'FB GIAB Stratification:{input.fb_giab[0]}'"] if input.fb_giab else [])
             + ([f"'FB SNP Ts/Tv by Annotation:{input.annot_snp[0]}'"] if input.annot_snp else [])
         ),
