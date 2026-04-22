@@ -121,20 +121,38 @@ read_vcf_records <- function(vcf) {
   )
 }
 
-read_vcf_positions <- function(vcf) {
-  # Returns a keyed data.table of CHROM/POS from a VCF (no filter — every
-  # position vg call -a -A emitted counts as "in graph").
-  if (!file.exists(vcf)) {
-    return(data.table(CHROM = character(), POS = integer(), key = c("CHROM", "POS")))
+in_graph_positions <- function(fp_dt, truth_vcf) {
+  # For each FP record, return a logical vector indicating whether its
+  # (CHROM, POS) is present in truth_vcf.
+  #
+  # Naive approach: fread the full 50 M-row truth VCF into a keyed table and
+  # join. On HPRC that's minutes per sample. Instead, narrow the truth read
+  # to *only* the ~10k FP positions via a BED + `bcftools view -R`. tabix
+  # handles the region-tree lookup in a single indexed pass.
+  if (nrow(fp_dt) == 0 || !file.exists(truth_vcf)) {
+    return(rep(FALSE, nrow(fp_dt)))
   }
-  cmd <- sprintf("bcftools query -f '%%CHROM\\t%%POS\\n' '%s' 2>/dev/null", vcf)
-  dt <- tryCatch(
+  bed <- tempfile(fileext = ".bed")
+  on.exit(unlink(bed), add = TRUE)
+  # BED is half-open 0-based; one row per unique FP position.
+  uniq_pos <- unique(fp_dt[, .(CHROM, POS)])
+  setorder(uniq_pos, CHROM, POS)
+  fwrite(uniq_pos[, .(CHROM, POS - 1L, POS)], bed, sep = "\t", col.names = FALSE)
+  cmd <- sprintf(
+    "bcftools view -R '%s' '%s' 2>/dev/null | bcftools query -f '%%CHROM\\t%%POS\\n' 2>/dev/null",
+    bed, truth_vcf)
+  hits <- tryCatch(
     fread(cmd = cmd, col.names = c("CHROM", "POS"),
           colClasses = c(CHROM = "character", POS = "integer")),
     error = function(e) data.table(CHROM = character(), POS = integer())
   )
-  setkey(dt, CHROM, POS)
-  dt
+  if (nrow(hits) == 0) return(rep(FALSE, nrow(fp_dt)))
+  hits <- unique(hits, by = c("CHROM", "POS"))
+  setkey(hits, CHROM, POS)
+  # data.table by-key membership lookup: returns row indices; NA where missing.
+  idx <- hits[fp_dt[, .(CHROM, POS)], on = c("CHROM", "POS"),
+              which = TRUE, mult = "first"]
+  !is.na(idx)
 }
 
 classify_variants <- function(dt) {
@@ -237,16 +255,11 @@ for (si in seq_len(n_samples)) {
   fn <- classify_variants(read_vcf_records(file.path(ve_dir, "fn.vcf.gz")))
   fp <- classify_variants(read_vcf_records(file.path(ve_dir, "fp.vcf.gz")))
 
-  # --- Classify FP as in-graph vs not-in-graph via the baseline truth VCF.
-  # truth.vcf.gz is the pre-renamed call VCF vcfeval was given as truth —
-  # it's already in the same (augref-space) CHROM namespace as fp.vcf.gz.
-  graph_pos <- read_vcf_positions(file.path(ve_dir, "truth.vcf.gz"))
-  # De-dupe graph positions (vg call -a -A can emit multiple records at the
-  # same CHROM:POS — one per alt allele) so the update-join below is 1:1.
-  graph_pos <- unique(graph_pos, by = c("CHROM", "POS"))
+  # --- Classify FP as in-graph vs not-in-graph by querying the baseline
+  # truth VCF only at the ~few-thousand FP positions (via bcftools view -R).
+  # Avoids a full fread of the 50 M-row truth.vcf.gz on HPRC.
   if (nrow(fp) > 0) {
-    fp[, in_graph := FALSE]
-    fp[graph_pos, in_graph := TRUE, on = c("CHROM", "POS")]
+    fp[, in_graph := in_graph_positions(fp, file.path(ve_dir, "truth.vcf.gz"))]
   } else {
     fp[, in_graph := logical(0)]
   }

@@ -4030,6 +4030,7 @@ rule vcfeval_fb_detailed_plot:
         fp=expand(f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/fp.vcf.gz", sample=SAMPLES, allow_missing=True),
         fn=expand(f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/fn.vcf.gz", sample=SAMPLES, allow_missing=True),
         truth=expand(f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/truth.vcf.gz", sample=SAMPLES, allow_missing=True),
+        truth_tbi=expand(f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/truth.vcf.gz.tbi", sample=SAMPLES, allow_missing=True),
         giab_beds=augref_giab_strat_beds(),
     output:
         f"{OUT_DIR}/merged.call-vs-fb.{{filt}}.vcfeval-detailed.png",
@@ -4040,7 +4041,7 @@ rule vcfeval_fb_detailed_plot:
         sample_names=",".join(SAMPLES),
     resources:
         mem_mb=32000,
-        runtime=120,
+        runtime=240,
     shell:
         "ulimit -s unlimited && Rscript scripts/vcfeval-fb-detailed.R"
         " {OUT_DIR}/merged.call-vs-fb.{wildcards.filt}"
