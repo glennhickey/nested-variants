@@ -361,13 +361,15 @@ The lookup table `sample-super-populations.tsv` (columns: `sample`, `pop`, `supe
   (2504 Phase-3 samples + 698 related trio/family members);
 - hand-added rows for the GIAB trios (HG002–HG004 → AJ/EUR, HG005–HG007 → CHS/EAS) and for
   the reference samples (CHM13, GRCh38 → Reference);
-- four HPRC samples (HG01123, HG02486, HG02559, HG03471) looked up via the
+- four samples (HG01123, HG02486, HG02559, HG03471) looked up via the
   [IGSR sample API](https://www.internationalgenome.org/api/beta/sample/) — they're in IGSR
-  but outside the 3202 high-coverage cohort.
+  but outside the 3202 high-coverage cohort;
+- three HPRC-native samples (HG02109 → ACB/AFR, HG06807 → ASL/AFR,
+  NA21309 → MKK/AFR) resolved from
+  [HPRC's release-2 metadata](https://raw.githubusercontent.com/human-pangenomics/HPRC_Intermediate_Assembly/main/data_tables/sample/hprc_release2_sample_metadata.csv).
 
-Any sample not present in the table falls back to `Unknown` at plot time (a handful of
-HPRC-only samples — e.g. HG02109, HG06807, NA21309 — are not in any 1000G/IGSR cohort and
-stay Unknown unless you extend the TSV manually).
+All 230 HPRC v2.1 samples now have a population label. Any sample not present in the table
+falls back to `Unknown` at plot time.
 
 ## Cluster Usage
 
