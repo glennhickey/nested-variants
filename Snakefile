@@ -4026,11 +4026,12 @@ rule vcfeval_fb_detailed_plot:
     and stacks by GIAB region; Ts/Tv annotated on SNP bars. Sibling of
     vcfeval_fb_compare_plot — kept alongside it in figure 4b."""
     input:
+        # tp-baseline being present implies truth.vcf.gz(.tbi) are in the same
+        # vcfeval-fb dir (they're side-effect outputs of vcfeval_fb_per_sample).
+        # The R script reads truth.vcf.gz via bcftools view -R.
         tp_baseline=expand(f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/tp-baseline.vcf.gz", sample=SAMPLES, allow_missing=True),
         fp=expand(f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/fp.vcf.gz", sample=SAMPLES, allow_missing=True),
         fn=expand(f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/fn.vcf.gz", sample=SAMPLES, allow_missing=True),
-        truth=expand(f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/truth.vcf.gz", sample=SAMPLES, allow_missing=True),
-        truth_tbi=expand(f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/truth.vcf.gz.tbi", sample=SAMPLES, allow_missing=True),
         giab_beds=augref_giab_strat_beds(),
     output:
         f"{OUT_DIR}/merged.call-vs-fb.{{filt}}.vcfeval-detailed.png",
