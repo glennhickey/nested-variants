@@ -4048,7 +4048,7 @@ rule vcfeval_fb_detailed_plot:
         " --samples {params.sample_names}"
         " --giab-beds {input.giab_beds[0]},{input.giab_beds[1]},{input.giab_beds[2]}"
         " --giab-names " + ",".join(GIAB_STRAT_DISPLAY) +
-        " --filter {wildcards.filt}"
+        " --filter-label '{wildcards.filt} only'"
         " --title '{REF} Call vs FreeBayes — detailed (vcfeval)'"
 
 rule vcfeval_fb_chromsplit:

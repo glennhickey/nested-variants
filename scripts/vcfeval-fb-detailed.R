@@ -22,11 +22,16 @@
 #     --samples s1,s2,...
 #     --giab-beds  easy.bed,segdup.bed,otherdif.bed
 #     --giab-names Easy,Segdup,Other_Difficult
-#     [--filter all|pass] [--title TITLE]
+#     [--filter-label STR] [--title TITLE]
 #
 # The "in-graph" lookup uses the baseline VCF that vcfeval was given, which
 # lives in each vcfeval dir as `truth.vcf.gz` (prefix-renamed to match the
 # augref-space CHROMs of the other vcfeval outputs).
+#
+# Note: vcfeval strips the FILTER field on its output VCFs (all records become
+# FILTER='.'), so we do NOT re-apply PASS filtering here. The caller picks
+# filter-ness by choosing the vcfeval-fb/{all,pass}/ dir; --filter-label is
+# only for the plot subtitle.
 #
 # Outputs:
 #   {prefix}.vcfeval-detailed.png
@@ -49,7 +54,7 @@ vcfeval_dirs  <- NULL
 sample_names  <- NULL
 giab_beds     <- NULL
 giab_names    <- NULL
-filter        <- "all"
+filter_label_arg <- ""
 
 i <- 2
 while (i <= length(args)) {
@@ -63,8 +68,8 @@ while (i <= length(args)) {
     giab_beds <- unlist(strsplit(args[i + 1], ",", fixed = TRUE)); i <- i + 2
   } else if (args[i] == "--giab-names" && i + 1 <= length(args)) {
     giab_names <- unlist(strsplit(args[i + 1], ",", fixed = TRUE)); i <- i + 2
-  } else if (args[i] == "--filter" && i + 1 <= length(args)) {
-    filter <- args[i + 1]; i <- i + 2
+  } else if (args[i] == "--filter-label" && i + 1 <= length(args)) {
+    filter_label_arg <- args[i + 1]; i <- i + 2
   } else {
     i <- i + 1
   }
@@ -82,7 +87,7 @@ if (length(giab_beds) != length(giab_names)) {
   quit(status = 1)
 }
 n_samples <- length(sample_names)
-filter_label <- if (filter == "pass") ", PASS only" else ""
+filter_label <- if (nzchar(filter_label_arg)) paste0(", ", filter_label_arg) else ""
 if (is.null(title)) title <- "Call vs FreeBayes — detailed (vcfeval)"
 
 # Canonicalise the GIAB names to the display values used throughout the
@@ -101,16 +106,12 @@ giab_colors  <- c("Easy" = "forestgreen",
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-read_vcf_records <- function(vcf, filter) {
+read_vcf_records <- function(vcf) {
   if (!file.exists(vcf)) {
     return(data.table(CHROM = character(), POS = integer(),
                       REF = character(), ALT = character()))
   }
-  if (filter == "pass") {
-    cmd <- sprintf("bcftools view -f PASS '%s' 2>/dev/null | bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT\\n' 2>/dev/null", vcf)
-  } else {
-    cmd <- sprintf("bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT\\n' '%s' 2>/dev/null", vcf)
-  }
+  cmd <- sprintf("bcftools query -f '%%CHROM\\t%%POS\\t%%REF\\t%%ALT\\n' '%s' 2>/dev/null", vcf)
   tryCatch(
     fread(cmd = cmd, col.names = c("CHROM", "POS", "REF", "ALT"),
           colClasses = c(CHROM = "character", POS = "integer",
@@ -232,9 +233,9 @@ for (si in seq_len(n_samples)) {
   ve_dir <- vcfeval_dirs[si]
   cat("[", sname, "] reading vcfeval from ", ve_dir, "\n", sep = "")
 
-  tp <- classify_variants(read_vcf_records(file.path(ve_dir, "tp-baseline.vcf.gz"), filter))
-  fn <- classify_variants(read_vcf_records(file.path(ve_dir, "fn.vcf.gz"),          filter))
-  fp <- classify_variants(read_vcf_records(file.path(ve_dir, "fp.vcf.gz"),          filter))
+  tp <- classify_variants(read_vcf_records(file.path(ve_dir, "tp-baseline.vcf.gz")))
+  fn <- classify_variants(read_vcf_records(file.path(ve_dir, "fn.vcf.gz")))
+  fp <- classify_variants(read_vcf_records(file.path(ve_dir, "fp.vcf.gz")))
 
   # --- Classify FP as in-graph vs not-in-graph via the baseline truth VCF.
   # truth.vcf.gz is the pre-renamed call VCF vcfeval was given as truth —
