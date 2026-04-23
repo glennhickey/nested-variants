@@ -18,7 +18,7 @@
 #
 ################################################################################
 
-set -e
+set -eo pipefail
 
 # Initialize variables
 BAM=""
@@ -234,9 +234,36 @@ trap 'rm -rf "$SHARD_DIR"' EXIT
 NUMBERED_REGIONS="$SHARD_DIR/regions.numbered.tsv"
 awk '{printf "%07d\t%s\n", NR, $0}' "$REGIONS_FILE" > "$NUMBERED_REGIONS"
 
+N_REGIONS=$(wc -l < "$NUMBERED_REGIONS")
+echo "Launching freebayes on $N_REGIONS regions with -j $CPUS workers"
+
+# Probe freebayes once up-front so a bad flag (e.g. --limit-coverage on
+# freebayes < 1.3) fails loudly instead of killing 96 workers silently.
+if [ -n "$EXTRA_ARGS" ]; then
+    echo "Flag probe: $FB_CMD $EXTRA_ARGS --help"
+    # shellcheck disable=SC2086
+    if ! $FB_CMD $EXTRA_ARGS --help >/dev/null 2>&1; then
+        # --help itself always exits 0 on sane CLIs; any non-zero here means
+        # the flag parser choked before reaching --help.
+        echo "Error: freebayes rejects extra-args '$EXTRA_ARGS' (unknown flag?)." >&2
+        echo "       Installed freebayes: $($FB_CMD --version 2>&1 | head -1)" >&2
+        exit 1
+    fi
+fi
+
 /usr/bin/time -v parallel -j "$CPUS" --colsep '\t' --halt now,fail=1 \
     "$FB_CMD -f $REF_ABS $BAM_ABS --region {2} $EXTRA_ARGS > $SHARD_DIR/region-{1}.vcf" \
   :::: "$NUMBERED_REGIONS"
+
+# Sanity-check shard count. An empty shard dir would silently produce an
+# empty 28-byte BGZF through the cat pipeline below (cat-missing-glob is
+# not fatal under set -eo pipefail because it's the first element of a
+# pipe). Fail loudly instead.
+N_SHARDS=$(find "$SHARD_DIR" -maxdepth 1 -name 'region-*.vcf' | wc -l)
+if [ "$N_SHARDS" -ne "$N_REGIONS" ]; then
+    echo "Error: produced $N_SHARDS region shards, expected $N_REGIONS." >&2
+    exit 1
+fi
 
 # Concat shards in glob order (= FAI order by construction). awk keeps
 # first header only and forces FILTER=PASS (FreeBayes emits "." by default).
@@ -246,3 +273,13 @@ cat "$SHARD_DIR"/region-*.vcf \
   | bcftools reheader -s <(echo "$SAMPLE") \
   | bgzip > "$VCF"
 tabix -p vcf "$VCF"
+
+# Final sanity: bgzipped VCF must contain at least one non-header record.
+# A 28-byte output is BGZF EOF only — a dead giveaway that the concat
+# pipeline saw nothing.
+N_RECS=$(bcftools view -H "$VCF" 2>/dev/null | head -1 | wc -l)
+if [ "$N_RECS" -eq 0 ]; then
+    echo "Error: produced VCF '$VCF' has zero records." >&2
+    echo "       Size: $(stat -c '%s' "$VCF") bytes" >&2
+    exit 1
+fi
