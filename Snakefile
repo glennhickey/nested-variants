@@ -75,6 +75,27 @@ def pangenie_enabled():
     val = config.get("enable_pangenie", "true")
     return str(val).lower() not in ("false", "0", "no", "")
 
+def deepvariant_enabled():
+    """True when DeepVariant is enabled (default true, set enable_deepvariant=false to disable).
+
+    Disabling DV drops DV-specific outputs (per-sample .deepvariant.vcf.gz, merged DV VCFs,
+    DV stats/plots) and every comparison that has DV on one side (call-vs-dv, dv-vs-fb,
+    dv-vs-bc, dv-vs-pg), plus figures 4, 5, 5b, 8, 9, 9b, 11*, 13*."""
+    val = config.get("enable_deepvariant", "true")
+    return str(val).lower() not in ("false", "0", "no", "")
+
+def _default_callers():
+    """Canonical list of callers, filtered by enable_* config flags. Used as the
+    `callers=None` default in every *_outputs() helper so disabling a caller
+    propagates through the many per-caller dispatches without touching each."""
+    callers = ["deconstruct", "call"]
+    if deepvariant_enabled():
+        callers.append("deepvariant")
+    callers.append("freebayes")
+    if pangenie_enabled():
+        callers.append("pangenie")
+    return callers
+
 def freebayes_longread_enabled():
     """True when FreeBayes on long reads is enabled (default false).
     FreeBayes is slow and unreliable on HiFi in complex regions (centromeres),
@@ -151,7 +172,7 @@ def annotation_snp_outputs(callers=None):
     if not annotation_inputs():
         return []
     if callers is None:
-        callers = ["deconstruct", "call", "deepvariant", "freebayes", "pangenie"]
+        callers = _default_callers()
     outputs = []
     for plot in ["annot-snp-counts", "annot-snp-tstv"]:
         if "deconstruct" in callers:
@@ -237,7 +258,7 @@ def annotation_stats_outputs(callers=None):
     if not annotation_inputs():
         return []
     if callers is None:
-        callers = ["deconstruct", "call", "deepvariant", "freebayes", "pangenie"]
+        callers = _default_callers()
     outputs = []
     for suffix in ["variant-types-by-annot.png", "vcf-stats-by-annot.tsv"]:
         if "deconstruct" in callers:
@@ -346,7 +367,7 @@ def giab_strat_stats_outputs(callers=None):
     if not giab_strat_configured():
         return []
     if callers is None:
-        callers = ["deconstruct", "call", "deepvariant", "freebayes", "pangenie"]
+        callers = _default_callers()
     outputs = []
     for suffix in ["giab-strat.png", "giab-strat.tsv"]:
         if "deconstruct" in callers:
@@ -395,7 +416,7 @@ def giab_strat_stats_outputs(callers=None):
 def per_sample_stats_outputs(callers=None):
     """Return per-sample stats outputs for multisample VCF rules."""
     if callers is None:
-        callers = ["deconstruct", "call", "deepvariant", "freebayes", "pangenie"]
+        callers = _default_callers()
     outputs = []
     for suffix in ["per-sample-types.png", "per-sample-types.tsv", "per-sample-sv-types.png"]:
         if "deconstruct" in callers:
@@ -460,7 +481,7 @@ def per_sample_stats_outputs(callers=None):
 
 def compare_call_dv_outputs():
     """Return call-vs-DV comparison outputs when samples are configured."""
-    if not SAMPLES:
+    if not SAMPLES or not deepvariant_enabled():
         return []
     outputs = []
     for mode in ["sites", "variants"]:
@@ -471,7 +492,7 @@ def compare_call_dv_outputs():
 
 def vcfeval_lr_compare_outputs():
     """Return vcfeval-based call-vs-DV comparison outputs for long-read samples."""
-    if not LR_SAMPLES:
+    if not LR_SAMPLES or not deepvariant_enabled():
         return []
     outputs = []
     for filt in ["all", "pass"]:
@@ -542,7 +563,7 @@ def vcfeval_lr_fb_compare_outputs():
 
 def vcfeval_dv_vs_fb_compare_outputs():
     """Return vcfeval-based DV-vs-FB comparison outputs when samples are configured."""
-    if not SAMPLES:
+    if not SAMPLES or not deepvariant_enabled():
         return []
     outputs = []
     for filt in ["all", "pass"]:
@@ -562,7 +583,7 @@ def vcfeval_dv_vs_fb_compare_outputs():
 
 def vcfeval_lr_dv_vs_fb_compare_outputs():
     """Return vcfeval-based DV-vs-FB comparison outputs for long-read samples."""
-    if not LR_SAMPLES or not freebayes_longread_enabled():
+    if not LR_SAMPLES or not freebayes_longread_enabled() or not deepvariant_enabled():
         return []
     outputs = []
     for filt in ["all", "pass"]:
@@ -602,7 +623,7 @@ def vcfeval_lr_bc_compare_outputs():
 
 def vcfeval_dv_vs_bc_compare_outputs():
     """Return vcfeval-based DV-vs-bcftools comparison outputs when samples are configured."""
-    if not SAMPLES or not bcftools_enabled():
+    if not SAMPLES or not bcftools_enabled() or not deepvariant_enabled():
         return []
     outputs = []
     for filt in ["all", "pass"]:
@@ -612,7 +633,7 @@ def vcfeval_dv_vs_bc_compare_outputs():
 
 def vcfeval_lr_dv_vs_bc_compare_outputs():
     """Return vcfeval-based DV-vs-bcftools comparison outputs for long-read samples."""
-    if not LR_SAMPLES or not bcftools_enabled() or not bcftools_longread_enabled():
+    if not LR_SAMPLES or not bcftools_enabled() or not bcftools_longread_enabled() or not deepvariant_enabled():
         return []
     outputs = []
     for filt in ["all", "pass"]:
@@ -657,7 +678,7 @@ def vcfeval_lr_pg_compare_outputs():
 
 def vcfeval_dv_vs_pg_compare_outputs():
     """Return vcfeval-based DV-vs-PG comparison outputs when samples are configured."""
-    if not SAMPLES or not pangenie_enabled():
+    if not SAMPLES or not pangenie_enabled() or not deepvariant_enabled():
         return []
     outputs = []
     for filt in ["all", "pass"]:
@@ -681,7 +702,7 @@ def vcfeval_lr_dv_vs_pg_compare_outputs():
 
 def vcfeval_compare_outputs():
     """Return vcfeval-based call-vs-DV comparison outputs when samples are configured."""
-    if not SAMPLES:
+    if not SAMPLES or not deepvariant_enabled():
         return []
     outputs = []
     for filt in ["all", "pass"]:
@@ -765,14 +786,17 @@ def summary_figure_outputs():
     ]
     if SAMPLES:
         outputs.append(f"{OUT_DIR}/3.call-summary.png")
-        outputs.append(f"{OUT_DIR}/4.deepvariant-summary.png")
+        if deepvariant_enabled():
+            outputs.append(f"{OUT_DIR}/4.deepvariant-summary.png")
         outputs.append(f"{OUT_DIR}/4b.freebayes-summary.png")
         if pangenie_enabled():
             outputs.append(f"{OUT_DIR}/4c.pangenie-summary.png")
         if bcftools_enabled():
             outputs.append(f"{OUT_DIR}/4d.bcftools-summary.png")
-        outputs.append(f"{OUT_DIR}/5.concordance-summary.png")
-        outputs.append(f"{OUT_DIR}/5b.concordance-onref-summary.png")
+        if deepvariant_enabled():
+            # 5 / 5b are call-vs-DV concordance — no DV, no panel
+            outputs.append(f"{OUT_DIR}/5.concordance-summary.png")
+            outputs.append(f"{OUT_DIR}/5b.concordance-onref-summary.png")
         outputs.append(f"{OUT_DIR}/5c.coverage-summary.png")
         outputs.append(f"{OUT_DIR}/5d.mapq-summary.png")
         outputs.append(f"{OUT_DIR}/10.freebayes-concordance-summary.png")
@@ -782,13 +806,15 @@ def summary_figure_outputs():
             outputs.append(f"{OUT_DIR}/12b.pangenie-concordance-onref-summary.png")
     if LR_SAMPLES:
         outputs.append(f"{OUT_DIR}/7.call-summary-longread.png")
-        outputs.append(f"{OUT_DIR}/8.deepvariant-summary-longread.png")
+        if deepvariant_enabled():
+            outputs.append(f"{OUT_DIR}/8.deepvariant-summary-longread.png")
         if freebayes_longread_enabled():
             outputs.append(f"{OUT_DIR}/8b.freebayes-summary-longread.png")
         if bcftools_enabled() and bcftools_longread_enabled():
             outputs.append(f"{OUT_DIR}/8d.bcftools-summary-longread.png")
-        outputs.append(f"{OUT_DIR}/9.concordance-summary-longread.png")
-        outputs.append(f"{OUT_DIR}/9b.concordance-onref-summary-longread.png")
+        if deepvariant_enabled():
+            outputs.append(f"{OUT_DIR}/9.concordance-summary-longread.png")
+            outputs.append(f"{OUT_DIR}/9b.concordance-onref-summary-longread.png")
         outputs.append(f"{OUT_DIR}/9c.coverage-summary-longread.png")
         outputs.append(f"{OUT_DIR}/9d.mapq-summary-longread.png")
         if freebayes_longread_enabled():
@@ -854,8 +880,9 @@ rule all:
         expand("{out}/{s}.vcf.gz", out=OUT_DIR, s=LR_SAMPLES),
         expand("{out}/{s}.call-offref.png", out=OUT_DIR, s=LR_SAMPLES),
         expand("{out}/{s}.contig-depth.png", out=OUT_DIR, s=LR_SAMPLES),
-        expand("{out}/{s}.deepvariant.vcf.gz", out=OUT_DIR, s=LR_SAMPLES),
-        expand("{out}/{s}.dv-offref.png", out=OUT_DIR, s=LR_SAMPLES),
+        *(expand("{out}/{s}.deepvariant.vcf.gz", out=OUT_DIR, s=LR_SAMPLES)
+          + expand("{out}/{s}.dv-offref.png", out=OUT_DIR, s=LR_SAMPLES)
+          if deepvariant_enabled() else []),
         *(expand("{out}/{s}.freebayes.vcf.gz", out=OUT_DIR, s=LR_SAMPLES)
           + expand("{out}/{s}.fb-offref.png", out=OUT_DIR, s=LR_SAMPLES)
           if freebayes_longread_enabled() else []),
@@ -863,10 +890,11 @@ rule all:
         expand("{out}/{s}.call.{mode}.{filt}.variant-types.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
         expand("{out}/{s}.call.{mode}.{filt}.size-dist.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
         expand("{out}/{s}.call.{mode}.{filt}.size-dist-log.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
-        expand("{out}/{s}.dv.{mode}.{filt}.vcf-stats.tsv", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
-        expand("{out}/{s}.dv.{mode}.{filt}.variant-types.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
-        expand("{out}/{s}.dv.{mode}.{filt}.size-dist.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
-        expand("{out}/{s}.dv.{mode}.{filt}.size-dist-log.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"]),
+        *(expand("{out}/{s}.dv.{mode}.{filt}.vcf-stats.tsv", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"])
+          + expand("{out}/{s}.dv.{mode}.{filt}.variant-types.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"])
+          + expand("{out}/{s}.dv.{mode}.{filt}.size-dist.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"])
+          + expand("{out}/{s}.dv.{mode}.{filt}.size-dist-log.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"])
+          if deepvariant_enabled() else []),
         *(expand("{out}/{s}.fb.{mode}.{filt}.vcf-stats.tsv", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"])
           + expand("{out}/{s}.fb.{mode}.{filt}.variant-types.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"])
           + expand("{out}/{s}.fb.{mode}.{filt}.size-dist.png", out=OUT_DIR, s=LR_SAMPLES, mode=["sites", "variants"], filt=["all", "pass"])
@@ -880,17 +908,18 @@ rule all:
         expand("{out}/{s}.call.variants.{filt}.variant-types.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.call.variants.{filt}.size-dist.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
         expand("{out}/{s}.call.variants.{filt}.size-dist-log.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
-        # per-sample deepvariant outputs
-        expand("{out}/{s}.deepvariant.vcf.gz", out=OUT_DIR, s=SAMPLES),
-        expand("{out}/{s}.dv-offref.png", out=OUT_DIR, s=SAMPLES),
-        expand("{out}/{s}.dv.sites.{filt}.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.dv.sites.{filt}.variant-types.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.dv.sites.{filt}.size-dist.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.dv.sites.{filt}.size-dist-log.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.dv.variants.{filt}.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.dv.variants.{filt}.variant-types.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.dv.variants.{filt}.size-dist.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
-        expand("{out}/{s}.dv.variants.{filt}.size-dist-log.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"]),
+        # per-sample deepvariant outputs (gated by enable_deepvariant)
+        *(expand("{out}/{s}.deepvariant.vcf.gz", out=OUT_DIR, s=SAMPLES)
+          + expand("{out}/{s}.dv-offref.png", out=OUT_DIR, s=SAMPLES)
+          + expand("{out}/{s}.dv.sites.{filt}.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"])
+          + expand("{out}/{s}.dv.sites.{filt}.variant-types.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"])
+          + expand("{out}/{s}.dv.sites.{filt}.size-dist.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"])
+          + expand("{out}/{s}.dv.sites.{filt}.size-dist-log.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"])
+          + expand("{out}/{s}.dv.variants.{filt}.vcf-stats.tsv", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"])
+          + expand("{out}/{s}.dv.variants.{filt}.variant-types.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"])
+          + expand("{out}/{s}.dv.variants.{filt}.size-dist.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"])
+          + expand("{out}/{s}.dv.variants.{filt}.size-dist-log.png", out=OUT_DIR, s=SAMPLES, filt=["all", "pass"])
+          if deepvariant_enabled() else []),
         # per-sample freebayes outputs
         expand("{out}/{s}.freebayes.vcf.gz", out=OUT_DIR, s=SAMPLES),
         expand("{out}/{s}.fb-offref.png", out=OUT_DIR, s=SAMPLES),
@@ -911,12 +940,12 @@ rule all:
           if pangenie_enabled() else []),
         # merged outputs
         f"{OUT_DIR}/merged.call.vcf.gz",
-        f"{OUT_DIR}/merged.deepvariant.vcf.gz",
+        *([f"{OUT_DIR}/merged.deepvariant.vcf.gz"] if deepvariant_enabled() else []),
         f"{OUT_DIR}/merged.freebayes.vcf.gz",
         *([f"{OUT_DIR}/merged.pangenie.vcf.gz",
            f"{OUT_DIR}/merged.pg-offref.png"] if pangenie_enabled() else []),
         f"{OUT_DIR}/merged.call-offref.png",
-        f"{OUT_DIR}/merged.dv-offref.png",
+        *([f"{OUT_DIR}/merged.dv-offref.png"] if deepvariant_enabled() else []),
         f"{OUT_DIR}/merged.fb-offref.png",
         f"{OUT_DIR}/merged.call.sites.all.vcf-stats.tsv",
         f"{OUT_DIR}/merged.call.sites.all.variant-types.png",
@@ -938,26 +967,12 @@ rule all:
         f"{OUT_DIR}/merged.call.variants.pass.size-dist.png",
         f"{OUT_DIR}/merged.call.variants.pass.size-dist-log.png",
         f"{OUT_DIR}/merged.call.variants.pass.af-spectrum.png",
-        f"{OUT_DIR}/merged.dv.sites.all.vcf-stats.tsv",
-        f"{OUT_DIR}/merged.dv.sites.all.variant-types.png",
-        f"{OUT_DIR}/merged.dv.sites.all.size-dist.png",
-        f"{OUT_DIR}/merged.dv.sites.all.size-dist-log.png",
-        f"{OUT_DIR}/merged.dv.sites.all.af-spectrum.png",
-        f"{OUT_DIR}/merged.dv.sites.pass.vcf-stats.tsv",
-        f"{OUT_DIR}/merged.dv.sites.pass.variant-types.png",
-        f"{OUT_DIR}/merged.dv.sites.pass.size-dist.png",
-        f"{OUT_DIR}/merged.dv.sites.pass.size-dist-log.png",
-        f"{OUT_DIR}/merged.dv.sites.pass.af-spectrum.png",
-        f"{OUT_DIR}/merged.dv.variants.all.vcf-stats.tsv",
-        f"{OUT_DIR}/merged.dv.variants.all.variant-types.png",
-        f"{OUT_DIR}/merged.dv.variants.all.size-dist.png",
-        f"{OUT_DIR}/merged.dv.variants.all.size-dist-log.png",
-        f"{OUT_DIR}/merged.dv.variants.all.af-spectrum.png",
-        f"{OUT_DIR}/merged.dv.variants.pass.vcf-stats.tsv",
-        f"{OUT_DIR}/merged.dv.variants.pass.variant-types.png",
-        f"{OUT_DIR}/merged.dv.variants.pass.size-dist.png",
-        f"{OUT_DIR}/merged.dv.variants.pass.size-dist-log.png",
-        f"{OUT_DIR}/merged.dv.variants.pass.af-spectrum.png",
+        *([f"{OUT_DIR}/merged.dv.{mode}.{filt}.{suffix}"
+           for mode in ["sites", "variants"]
+           for filt in ["all", "pass"]
+           for suffix in ["vcf-stats.tsv", "variant-types.png", "size-dist.png",
+                          "size-dist-log.png", "af-spectrum.png"]]
+          if deepvariant_enabled() else []),
         f"{OUT_DIR}/merged.fb.sites.all.vcf-stats.tsv",
         f"{OUT_DIR}/merged.fb.sites.all.variant-types.png",
         f"{OUT_DIR}/merged.fb.sites.all.size-dist.png",
@@ -985,11 +1000,13 @@ rule all:
                           "size-dist-log.png", "af-spectrum.png"]]
           if pangenie_enabled() else []),
         # merged long-read outputs (when longread_samples configured)
-        *([f"{OUT_DIR}/merged.longread.call.vcf.gz",
-           f"{OUT_DIR}/merged.longread.deepvariant.vcf.gz"]
+        *([f"{OUT_DIR}/merged.longread.call.vcf.gz"]
+          + ([f"{OUT_DIR}/merged.longread.deepvariant.vcf.gz"] if deepvariant_enabled() else [])
           + ([f"{OUT_DIR}/merged.longread.freebayes.vcf.gz"] if freebayes_longread_enabled() else [])
           + [f"{OUT_DIR}/merged.longread.{caller}.{mode}.{filt}.{suffix}"
-             for caller in ["call", "dv"] + (["fb"] if freebayes_longread_enabled() else [])
+             for caller in ["call"]
+                           + (["dv"] if deepvariant_enabled() else [])
+                           + (["fb"] if freebayes_longread_enabled() else [])
              for mode in ["sites", "variants"]
              for filt in ["all", "pass"]
              for suffix in ["vcf-stats.tsv", "variant-types.png", "size-dist.png",
@@ -5482,12 +5499,12 @@ rule summary_pantree:
 ############################################################################
 
 rule summary_freebayes_concordance:
-    """Compose FB concordance summary: call-vs-FB and DV-vs-FB (off-ref)"""
+    """Compose FB concordance summary: call-vs-FB (+ DV-vs-FB if enabled), off-ref"""
     input:
         call_disc=f"{OUT_DIR}/merged.call-vs-fb.pass.chromsplit-top.png",
         call_conc=f"{OUT_DIR}/merged.call-vs-fb.pass.chromsplit-concordant.png",
-        dv_disc=f"{OUT_DIR}/merged.dv-vs-fb.pass.chromsplit-top.png",
-        dv_conc=f"{OUT_DIR}/merged.dv-vs-fb.pass.chromsplit-concordant.png",
+        dv_disc=[f"{OUT_DIR}/merged.dv-vs-fb.pass.chromsplit-top.png"] if deepvariant_enabled() else [],
+        dv_conc=[f"{OUT_DIR}/merged.dv-vs-fb.pass.chromsplit-concordant.png"] if deepvariant_enabled() else [],
         annot=f"{OUT_DIR}/merged.call-vs-fb.pass.chromsplit-annot.png" if annotation_inputs() else [],
         giab=f"{OUT_DIR}/merged.call-vs-fb.pass.chromsplit-giab.png" if giab_strat_configured() else [],
     output:
@@ -5497,10 +5514,10 @@ rule summary_freebayes_concordance:
         runtime=30,
     params:
         panels=lambda wc, input: " ".join(
-            [f"'Call vs FB Discordant:{input.call_disc}'",
-             f"'DV vs FB Discordant:{input.dv_disc}'",
-             f"'Call vs FB Concordant:{input.call_conc}'",
-             f"'DV vs FB Concordant:{input.dv_conc}'"]
+            [f"'Call vs FB Discordant:{input.call_disc}'"]
+            + ([f"'DV vs FB Discordant:{input.dv_disc[0]}'"] if input.dv_disc else [])
+            + [f"'Call vs FB Concordant:{input.call_conc}'"]
+            + ([f"'DV vs FB Concordant:{input.dv_conc[0]}'"] if input.dv_conc else [])
             + ([f"'Call vs FB by Annotation:{input.annot}'"] if input.annot else [])
             + ([f"'Call vs FB by GIAB:{input.giab}'"] if input.giab else [])
         ),
@@ -5512,35 +5529,38 @@ rule summary_freebayes_concordance:
         " --panels {params.panels}"
 
 rule summary_freebayes_concordance_onref:
-    """Compose FB concordance summary: call-vs-FB and DV-vs-FB (on-ref)"""
+    """Compose FB concordance summary: call-vs-FB (+ DV-vs-FB if enabled), on-ref"""
     input:
         call_disc=f"{OUT_DIR}/merged.call-vs-fb.pass.chromsplit-top-onref.png",
         call_conc=f"{OUT_DIR}/merged.call-vs-fb.pass.chromsplit-concordant-onref.png",
-        dv_disc=f"{OUT_DIR}/merged.dv-vs-fb.pass.chromsplit-top-onref.png",
-        dv_conc=f"{OUT_DIR}/merged.dv-vs-fb.pass.chromsplit-concordant-onref.png",
+        dv_disc=[f"{OUT_DIR}/merged.dv-vs-fb.pass.chromsplit-top-onref.png"] if deepvariant_enabled() else [],
+        dv_conc=[f"{OUT_DIR}/merged.dv-vs-fb.pass.chromsplit-concordant-onref.png"] if deepvariant_enabled() else [],
     output:
         f"{OUT_DIR}/10b.freebayes-concordance-onref-summary.png",
     resources:
         mem_mb=4000,
         runtime=30,
+    params:
+        panels=lambda wc, input: " ".join(
+            [f"'Call vs FB Discordant:{input.call_disc}'"]
+            + ([f"'DV vs FB Discordant:{input.dv_disc[0]}'"] if input.dv_disc else [])
+            + [f"'Call vs FB Concordant:{input.call_conc}'"]
+            + ([f"'DV vs FB Concordant:{input.dv_conc[0]}'"] if input.dv_conc else [])
+        ),
     shell:
         "python3 scripts/compose-summary.py"
         " --output {output}"
         " --title 'FreeBayes Concordance — On-Ref (PASS)'"
         " --cols 2"
-        " --panels"
-        " 'Call vs FB Discordant:{input.call_disc}'"
-        " 'DV vs FB Discordant:{input.dv_disc}'"
-        " 'Call vs FB Concordant:{input.call_conc}'"
-        " 'DV vs FB Concordant:{input.dv_conc}'"
+        " --panels {params.panels}"
 
 rule summary_longread_freebayes_concordance:
-    """Compose LR FB concordance summary: call-vs-FB and DV-vs-FB (off-ref)"""
+    """Compose LR FB concordance summary: call-vs-FB (+ DV-vs-FB if enabled), off-ref"""
     input:
         call_disc=f"{OUT_DIR}/merged.lr.call-vs-fb.pass.chromsplit-top.png",
         call_conc=f"{OUT_DIR}/merged.lr.call-vs-fb.pass.chromsplit-concordant.png",
-        dv_disc=f"{OUT_DIR}/merged.lr.dv-vs-fb.pass.chromsplit-top.png",
-        dv_conc=f"{OUT_DIR}/merged.lr.dv-vs-fb.pass.chromsplit-concordant.png",
+        dv_disc=[f"{OUT_DIR}/merged.lr.dv-vs-fb.pass.chromsplit-top.png"] if deepvariant_enabled() else [],
+        dv_conc=[f"{OUT_DIR}/merged.lr.dv-vs-fb.pass.chromsplit-concordant.png"] if deepvariant_enabled() else [],
         annot=f"{OUT_DIR}/merged.lr.call-vs-fb.pass.chromsplit-annot.png" if annotation_inputs() else [],
         giab=f"{OUT_DIR}/merged.lr.call-vs-fb.pass.chromsplit-giab.png" if giab_strat_configured() else [],
     output:
@@ -5550,10 +5570,10 @@ rule summary_longread_freebayes_concordance:
         runtime=30,
     params:
         panels=lambda wc, input: " ".join(
-            [f"'Call vs FB Discordant:{input.call_disc}'",
-             f"'DV vs FB Discordant:{input.dv_disc}'",
-             f"'Call vs FB Concordant:{input.call_conc}'",
-             f"'DV vs FB Concordant:{input.dv_conc}'"]
+            [f"'Call vs FB Discordant:{input.call_disc}'"]
+            + ([f"'DV vs FB Discordant:{input.dv_disc[0]}'"] if input.dv_disc else [])
+            + [f"'Call vs FB Concordant:{input.call_conc}'"]
+            + ([f"'DV vs FB Concordant:{input.dv_conc[0]}'"] if input.dv_conc else [])
             + ([f"'Call vs FB by Annotation:{input.annot}'"] if input.annot else [])
             + ([f"'Call vs FB by GIAB:{input.giab}'"] if input.giab else [])
         ),
@@ -5565,27 +5585,30 @@ rule summary_longread_freebayes_concordance:
         " --panels {params.panels}"
 
 rule summary_longread_freebayes_concordance_onref:
-    """Compose LR FB concordance summary: call-vs-FB and DV-vs-FB (on-ref)"""
+    """Compose LR FB concordance summary: call-vs-FB (+ DV-vs-FB if enabled), on-ref"""
     input:
         call_disc=f"{OUT_DIR}/merged.lr.call-vs-fb.pass.chromsplit-top-onref.png",
         call_conc=f"{OUT_DIR}/merged.lr.call-vs-fb.pass.chromsplit-concordant-onref.png",
-        dv_disc=f"{OUT_DIR}/merged.lr.dv-vs-fb.pass.chromsplit-top-onref.png",
-        dv_conc=f"{OUT_DIR}/merged.lr.dv-vs-fb.pass.chromsplit-concordant-onref.png",
+        dv_disc=[f"{OUT_DIR}/merged.lr.dv-vs-fb.pass.chromsplit-top-onref.png"] if deepvariant_enabled() else [],
+        dv_conc=[f"{OUT_DIR}/merged.lr.dv-vs-fb.pass.chromsplit-concordant-onref.png"] if deepvariant_enabled() else [],
     output:
         f"{OUT_DIR}/11b.freebayes-concordance-onref-summary-longread.png",
     resources:
         mem_mb=4000,
         runtime=30,
+    params:
+        panels=lambda wc, input: " ".join(
+            [f"'Call vs FB Discordant:{input.call_disc}'"]
+            + ([f"'DV vs FB Discordant:{input.dv_disc[0]}'"] if input.dv_disc else [])
+            + [f"'Call vs FB Concordant:{input.call_conc}'"]
+            + ([f"'DV vs FB Concordant:{input.dv_conc[0]}'"] if input.dv_conc else [])
+        ),
     shell:
         "python3 scripts/compose-summary.py"
         " --output {output}"
         " --title 'Long-Read FreeBayes Concordance — On-Ref (PASS)'"
         " --cols 2"
-        " --panels"
-        " 'Call vs FB Discordant:{input.call_disc}'"
-        " 'DV vs FB Discordant:{input.dv_disc}'"
-        " 'Call vs FB Concordant:{input.call_conc}'"
-        " 'DV vs FB Concordant:{input.dv_conc}'"
+        " --panels {params.panels}"
 
 ############################################################################
 # Call vs PanGenie comparison
@@ -6014,12 +6037,12 @@ rule summary_pangenie:
 ############################################################################
 
 rule summary_pangenie_concordance:
-    """Compose PG concordance summary: call-vs-PG and DV-vs-PG (off-ref)"""
+    """Compose PG concordance summary: call-vs-PG (+ DV-vs-PG if enabled), off-ref"""
     input:
         call_disc=f"{OUT_DIR}/merged.call-vs-pg.pass.chromsplit-top.png",
         call_conc=f"{OUT_DIR}/merged.call-vs-pg.pass.chromsplit-concordant.png",
-        dv_disc=f"{OUT_DIR}/merged.dv-vs-pg.pass.chromsplit-top.png",
-        dv_conc=f"{OUT_DIR}/merged.dv-vs-pg.pass.chromsplit-concordant.png",
+        dv_disc=[f"{OUT_DIR}/merged.dv-vs-pg.pass.chromsplit-top.png"] if deepvariant_enabled() else [],
+        dv_conc=[f"{OUT_DIR}/merged.dv-vs-pg.pass.chromsplit-concordant.png"] if deepvariant_enabled() else [],
         annot=f"{OUT_DIR}/merged.call-vs-pg.pass.chromsplit-annot.png" if annotation_inputs() else [],
         giab=f"{OUT_DIR}/merged.call-vs-pg.pass.chromsplit-giab.png" if giab_strat_configured() else [],
     output:
@@ -6029,10 +6052,10 @@ rule summary_pangenie_concordance:
         runtime=30,
     params:
         panels=lambda wc, input: " ".join(
-            [f"'Call vs PG Discordant:{input.call_disc}'",
-             f"'DV vs PG Discordant:{input.dv_disc}'",
-             f"'Call vs PG Concordant:{input.call_conc}'",
-             f"'DV vs PG Concordant:{input.dv_conc}'"]
+            [f"'Call vs PG Discordant:{input.call_disc}'"]
+            + ([f"'DV vs PG Discordant:{input.dv_disc[0]}'"] if input.dv_disc else [])
+            + [f"'Call vs PG Concordant:{input.call_conc}'"]
+            + ([f"'DV vs PG Concordant:{input.dv_conc[0]}'"] if input.dv_conc else [])
             + ([f"'Call vs PG by Annotation:{input.annot}'"] if input.annot else [])
             + ([f"'Call vs PG by GIAB:{input.giab}'"] if input.giab else [])
         ),
@@ -6044,25 +6067,28 @@ rule summary_pangenie_concordance:
         " --panels {params.panels}"
 
 rule summary_pangenie_concordance_onref:
-    """Compose PG concordance summary: call-vs-PG and DV-vs-PG (on-ref)"""
+    """Compose PG concordance summary: call-vs-PG (+ DV-vs-PG if enabled), on-ref"""
     input:
         call_disc=f"{OUT_DIR}/merged.call-vs-pg.pass.chromsplit-top-onref.png",
         call_conc=f"{OUT_DIR}/merged.call-vs-pg.pass.chromsplit-concordant-onref.png",
-        dv_disc=f"{OUT_DIR}/merged.dv-vs-pg.pass.chromsplit-top-onref.png",
-        dv_conc=f"{OUT_DIR}/merged.dv-vs-pg.pass.chromsplit-concordant-onref.png",
+        dv_disc=[f"{OUT_DIR}/merged.dv-vs-pg.pass.chromsplit-top-onref.png"] if deepvariant_enabled() else [],
+        dv_conc=[f"{OUT_DIR}/merged.dv-vs-pg.pass.chromsplit-concordant-onref.png"] if deepvariant_enabled() else [],
     output:
         f"{OUT_DIR}/12b.pangenie-concordance-onref-summary.png",
     resources:
         mem_mb=4000,
         runtime=30,
+    params:
+        panels=lambda wc, input: " ".join(
+            [f"'Call vs PG Discordant:{input.call_disc}'"]
+            + ([f"'DV vs PG Discordant:{input.dv_disc[0]}'"] if input.dv_disc else [])
+            + [f"'Call vs PG Concordant:{input.call_conc}'"]
+            + ([f"'DV vs PG Concordant:{input.dv_conc[0]}'"] if input.dv_conc else [])
+        ),
     shell:
         "python3 scripts/compose-summary.py"
         " --output {output}"
         " --title 'PanGenie Concordance — On-Ref (PASS)'"
         " --cols 2"
-        " --panels"
-        " 'Call vs PG Discordant:{input.call_disc}'"
-        " 'DV vs PG Discordant:{input.dv_disc}'"
-        " 'Call vs PG Concordant:{input.call_conc}'"
-        " 'DV vs PG Concordant:{input.dv_conc}'"
+        " --panels {params.panels}"
 

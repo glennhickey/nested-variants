@@ -56,6 +56,18 @@ scale_type: log1p
 # DeepVariant Docker image version
 dv_version: "1.9.0"
 
+# Enable DeepVariant in `rule all` (default true). Set to false to skip every
+# DV-specific output (per-sample .deepvariant.vcf.gz, merged DV VCFs, DV
+# stats/plots) and every comparison that has DV on one side (call-vs-dv,
+# dv-vs-fb, dv-vs-bc, dv-vs-pg) — along with figures 4, 5, 5b, 8, 9, 9b,
+# 11 / 11b, 13 / 13b. Does NOT block the `deepvariant_all` standalone target.
+# enable_deepvariant: true
+
+# Enable PanGenie in `rule all` (default true). Mirrors enable_deepvariant:
+# disables PG-specific outputs + call-vs-pg / dv-vs-pg comparisons and
+# panels 4c / 12 / 12b.
+# enable_pangenie: true
+
 # PanGenie panel-prep maximum fraction of missing alleles per position for
 # off-reference (_alt) contigs. The on-ref threshold is hard-coded at 0.2;
 # off-ref is separated because off-ref variants are sparse by construction
