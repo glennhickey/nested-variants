@@ -1900,7 +1900,7 @@ rule freebayes:
     params:
         mem_gb=rule_mem_gb("freebayes", 1024),
         region_size=config.get("freebayes_region_size", 100000),
-        extra_args=lambda wc: (config.get("freebayes_longread_args") or "--limit-coverage 100") if wc.sample in config.get("longread_samples", {}) else config.get("freebayes_extra_args", ""),
+        extra_args=lambda wc: (config.get("freebayes_longread_args") or "--limit-coverage 100") if wc.sample in config.get("longread_samples", {}) else (config.get("freebayes_extra_args") or ""),
         # Default to native freebayes on PATH; set freebayes_docker in config
         # to pin a container if the binary isn't available on the node.
         docker_arg=lambda wc: f"--docker {config['freebayes_docker']}" if config.get("freebayes_docker") else "",
