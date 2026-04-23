@@ -102,11 +102,9 @@ pipeline. The repeats file uses 6-column BED with RepeatMasker-style classes
 in column 6.
 
 **Note on FreeBayes versions:** the default `freebayes_extra_args` is
-`--max-coverage 500` (added to suppress pileup-blowup on HPRC-scale repeats).
-FreeBayes ≥ 1.3 implements this correctly; FreeBayes **v1.0.2 has an inverted
-`--max-coverage` sense** that drops *everything* on low-coverage data. If
-you're testing locally with an older freebayes, override the config to bypass
-the flag:
+`--limit-coverage 500` (added to suppress pileup-blowup on HPRC-scale
+repeats). This requires freebayes ≥ 1.3. If you're stuck on an older
+freebayes, override the config to bypass the flag:
 
 ```bash
 snakemake --cores 4 all --config ... freebayes_extra_args=''

@@ -72,13 +72,12 @@ freebayes_min_qual: 20
 freebayes_longread_args: "--limit-coverage 100"
 
 # FreeBayes extra args for short-read samples. The default caps per-region
-# coverage at 500x (--max-coverage): without it, pileups in high-depth /
+# coverage at 500x via --limit-coverage: without it, pileups in high-depth /
 # repeat-prone regions balloon the per-region runtime (some 100 kb shards
-# become multi-hour outliers that the parallelism can't absorb). Uses
-# --max-coverage (drops pileups above N) rather than --limit-coverage
-# (downsample) for broad version compatibility — --max-coverage has
-# existed since freebayes 1.0.
-freebayes_extra_args: "--max-coverage 500"
+# become multi-hour outliers that the parallelism can't absorb). Requires
+# freebayes >= 1.3 (older versions only have --max-coverage, which was
+# removed in 1.3.x).
+freebayes_extra_args: "--limit-coverage 500"
 
 # FreeBayes Docker image. Leave empty to run freebayes natively (binary on
 # PATH) — strongly preferred: avoids ~30k docker-run starts per sample on
