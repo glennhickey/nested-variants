@@ -139,7 +139,16 @@ OUT_VCF="${OUTPUT_DIR}/${OUTPUT_NAME}"
 # Use absolute OUTPUT_DIR as base to ensure Docker can mount it
 OUTPUT_DIR_ABS="$(cd "$OUTPUT_DIR" && pwd)"
 WORK_TMPDIR=$(mktemp -d "${OUTPUT_DIR_ABS}/pangenie.${SAMPLE}.XXXXXX")
-trap '[ -n "${WORK_TMPDIR}" ] && rm -rf "${WORK_TMPDIR}"' EXIT
+
+# Deterministic container name + trap so `scancel` (which SIGTERMs this
+# wrapper) takes the docker container down with us. Without this,
+# cancelling the SLURM job leaves PanGenie running on the compute node
+# because dockerd owns the container lifecycle, not the shell wrapper.
+CONTAINER_NAME="pangenie-${SAMPLE}-$$"
+trap '
+    docker stop --time=10 "'"${CONTAINER_NAME}"'" >/dev/null 2>&1 || true
+    [ -n "'"${WORK_TMPDIR}"'" ] && rm -rf "'"${WORK_TMPDIR}"'"
+' EXIT INT TERM
 
 echo "PanGenie scratch: ${WORK_TMPDIR}"
 
@@ -197,8 +206,9 @@ while IFS= read -r fq || [ -n "$fq" ]; do
     esac
 done < "$READS"
 
-echo "Running PanGenie via Docker"
+echo "Running PanGenie via Docker (container=${CONTAINER_NAME})"
 /usr/bin/time -v docker run \
+    --rm --name "${CONTAINER_NAME}" \
     --user "$(id -u):$(id -g)" \
     -v "${WORK_TMPDIR}":"${WORK_TMPDIR}" \
     "${DOCKER_IMAGE}" \

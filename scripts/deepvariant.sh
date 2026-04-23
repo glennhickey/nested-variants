@@ -180,7 +180,14 @@ mkdir -p "${DV_TMPDIR}"
 # DV_TMPDIR is bind-mounted at the same host path and also as /tmp inside the
 # container, so ALL temp operations (DV tfrecords, Bazel runfiles, GNU Parallel
 # scratch) use our controlled scratch dir instead of the container's /tmp.
+#
+# --name + --rm + EXIT trap: ensures the container dies with its wrapper.
+# Without this, `scancel` kills the SLURM job but leaves run_deepvariant
+# running on the node because dockerd owns the container lifecycle, not
+# the wrapper process (zombie DV on node for hours).
+CONTAINER_NAME="dv-${SAMPLE}-$$"
 CMD="/usr/bin/time -v docker run \
+  --rm --name \"${CONTAINER_NAME}\" \
   --user \"$(id -u):$(id -g)\" \
   -v \"$(dirname "${REF_ABS}")\":\"$(dirname "${REF_ABS}")\" \
   -v \"$(dirname "${BAM_ABS}")\":\"$(dirname "${BAM_ABS}")\" \
@@ -198,12 +205,18 @@ CMD="/usr/bin/time -v docker run \
   --intermediate_results_dir=\"${DV_TMPDIR}\" \
   --make_examples_extra_args=\"min_mapping_quality=0,keep_legacy_allele_counter_behavior=true,normalize_reads=true\""
 
+# Stop the container if the wrapper exits for any reason (cancel, signal, error).
+CLEANUP_CMD="docker stop --time=10 '${CONTAINER_NAME}' >/dev/null 2>&1 || true; rm -rf '${DV_TMPDIR}'"
+
 if $LOCAL; then
-    # Run locally
+    # Run locally. Trap EXIT/INT/TERM here so `scancel` (which SIGTERMs this
+    # script via the SLURM job wrapper) reaches the docker stop.
+    trap "$CLEANUP_CMD" EXIT INT TERM
     bash -c "$CMD"
-    rm -rf "${DV_TMPDIR}"
+    # Cleanup runs via trap on success exit too.
 else
-    # Submit SLURM job with resource requirements
+    # Submit SLURM job with resource requirements. The sbatch --wrap shell
+    # gets SIGTERM from scancel; install the same trap inside it.
     sbatch -W \
         --job-name="${JOB_NAME}" \
         --partition="${PARTITION}" \
@@ -214,5 +227,5 @@ else
         --time="${TIME}" \
         --output=/dev/null \
         --error="${OUTPUT_DIR}/${OUTPUT_NAME%.vcf.gz}.deepvariant.log" \
-        --wrap="$CMD && rm -rf '${DV_TMPDIR}'"
+        --wrap="trap \"${CLEANUP_CMD}\" EXIT INT TERM; $CMD"
 fi
