@@ -282,11 +282,17 @@ if [ "$N_SHARDS" -ne "$N_REGIONS" ]; then
     exit 1
 fi
 
-# Concat shards in glob order (= FAI order by construction). awk keeps
-# first header only and forces FILTER=PASS (FreeBayes emits "." by default).
-# Merged VCF is built on scratch first, then copied to $OUTPUT_DIR — avoids
-# half-written output hitting shared FS if the job is cancelled mid-merge.
-cat "$SHARD_DIR"/region-*.vcf \
+# Concat shards in glob order (= FAI order by construction, because the
+# shard filenames are zero-padded). `cat region-*.vcf` would inline all
+# 70k+ filenames on the command line on HPRC-scale runs and hit Linux
+# ARG_MAX (~2 MB) → `cat: Argument list too long`. Use `find | sort |
+# xargs cat` which streams filenames across multiple cat invocations.
+# awk keeps first header only and forces FILTER=PASS (FreeBayes emits "."
+# by default). Merged VCF is built on scratch first, then mv'd to
+# $OUTPUT_DIR — avoids half-written output hitting shared FS on cancel.
+find "$SHARD_DIR" -maxdepth 1 -name 'region-*.vcf' -print0 \
+  | LC_ALL=C sort -z \
+  | xargs -0 cat \
   | awk 'BEGIN{OFS="\t"; p=1} /^#/{if(p)print; if(/^#CHROM/)p=0; next} {if($7==".") $7="PASS"; print}' \
   | bcftools annotate -x FORMAT/DPR \
   | bcftools reheader -s <(echo "$SAMPLE") \
