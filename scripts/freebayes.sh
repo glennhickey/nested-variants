@@ -158,30 +158,59 @@ set -x
 
 mkdir -p "$OUTPUT_DIR"
 
-VCF="${OUTPUT_DIR}/${OUTPUT_NAME}"
-
-# FreeBayes requires uncompressed FASTA; decompress bgzipped ref if needed
-if [[ "$REF" == *.gz ]]; then
-    REF_PLAIN="${OUTPUT_DIR}/${OUTPUT_NAME%.vcf.gz}.ref.fa"
-    echo "Decompressing reference to $REF_PLAIN"
-    gunzip -c "$REF" > "$REF_PLAIN"
-    samtools faidx "$REF_PLAIN"
-    REF="$REF_PLAIN"
+# All intermediate work — input copies, decompressed ref, per-region shards,
+# merged VCF — lives on node-local scratch. Only the final VCF and .tbi are
+# copied back to $OUTPUT_DIR at the end.
+#
+# Scratch priority: $TMPDIR (set by SLURM to node-local dir in most setups)
+# → /data/tmp (cluster-specific) → $OUTPUT_DIR (fallback, shared FS).
+SCRATCH_BASE="${TMPDIR:-}"
+if [ -z "$SCRATCH_BASE" ] && [ -d /data/tmp ]; then
+    SCRATCH_BASE=/data/tmp
 fi
+if [ -z "$SCRATCH_BASE" ]; then
+    SCRATCH_BASE="$OUTPUT_DIR"
+fi
+WORK_TMPDIR=$(mktemp -d "${SCRATCH_BASE}/freebayes.${SAMPLE}.XXXXXX")
+trap 'rm -rf "$WORK_TMPDIR"' EXIT INT TERM
+echo "Scratch dir: $WORK_TMPDIR"
+
+# Final outputs land here.
+VCF="${OUTPUT_DIR}/${OUTPUT_NAME}"
+# Intermediate outputs are on scratch.
+VCF_SCRATCH="${WORK_TMPDIR}/out.vcf.gz"
+
+# Stage inputs to scratch. BAM + BAI are the big ones (tens of GB on HPRC);
+# the reference FASTA is ~3 GB bgzipped / ~9 GB decompressed.
+echo "Staging BAM + BAI to scratch"
+BAM_ABS="$(realpath "$BAM")"
+cp "$BAM_ABS" "${WORK_TMPDIR}/input.bam"
+if [ -f "${BAM_ABS}.bai" ]; then
+    cp "${BAM_ABS}.bai" "${WORK_TMPDIR}/input.bam.bai"
+else
+    samtools index "${WORK_TMPDIR}/input.bam"
+fi
+BAM_LOCAL="${WORK_TMPDIR}/input.bam"
+
+echo "Staging reference to scratch"
+REF_ABS_SRC="$(realpath "$REF")"
+if [[ "$REF_ABS_SRC" == *.gz ]]; then
+    gunzip -c "$REF_ABS_SRC" > "${WORK_TMPDIR}/ref.fa"
+else
+    cp "$REF_ABS_SRC" "${WORK_TMPDIR}/ref.fa"
+fi
+samtools faidx "${WORK_TMPDIR}/ref.fa"
+REF_LOCAL="${WORK_TMPDIR}/ref.fa"
+FAI_LOCAL="${REF_LOCAL}.fai"
 
 # Generate regions from FAI, filtered to contigs present in the BAM.
 # Without this, HPRC-scale FASTAs with 283k contigs generate hundreds of
 # thousands of freebayes invocations on empty contigs.
-FAI="${REF}.fai"
-if [ ! -f "$FAI" ]; then
-    samtools faidx "$REF"
-fi
+BAM_CONTIGS="${WORK_TMPDIR}/bam-contigs.txt"
+samtools idxstats "$BAM_LOCAL" | awk '$3 > 0 {print $1}' > "$BAM_CONTIGS"
+echo "BAM has reads on $(wc -l < "$BAM_CONTIGS") of $(wc -l < "$FAI_LOCAL") contigs"
 
-BAM_CONTIGS="${OUTPUT_DIR}/${OUTPUT_NAME%.vcf.gz}.bam-contigs.txt"
-samtools idxstats "$BAM" | awk '$3 > 0 {print $1}' > "$BAM_CONTIGS"
-echo "BAM has reads on $(wc -l < "$BAM_CONTIGS") of $(wc -l < "$FAI") contigs"
-
-REGIONS_FILE="${OUTPUT_DIR}/${OUTPUT_NAME%.vcf.gz}.regions.txt"
+REGIONS_FILE="${WORK_TMPDIR}/regions.txt"
 awk -v size="$REGION_SIZE" 'NR==FNR{keep[$1]=1;next} ($1 in keep) {
     chrom = $1; len = $2; pos = 0
     while (pos < len) {
@@ -190,26 +219,16 @@ awk -v size="$REGION_SIZE" 'NR==FNR{keep[$1]=1;next} ($1 in keep) {
         print chrom ":" pos "-" end
         pos = end
     }
-}' "$BAM_CONTIGS" "$FAI" > "$REGIONS_FILE"
+}' "$BAM_CONTIGS" "$FAI_LOCAL" > "$REGIONS_FILE"
 rm -f "$BAM_CONTIGS"
 
 echo "Generated $(wc -l < "$REGIONS_FILE") regions (${REGION_SIZE}bp chunks)"
 
-REF_ABS="$(realpath "$REF")"
-BAM_ABS="$(realpath "$BAM")"
-
 if [ -n "$DOCKER_IMAGE" ]; then
-    # Docker fallback (legacy path). Dedup parent dirs so we don't pass
-    # redundant -v flags when REF/BAM live in the same directory.
-    declare -A MOUNT_SET
-    MOUNT_SET["$(dirname "$REF_ABS")"]=1
-    MOUNT_SET["$(dirname "$BAM_ABS")"]=1
-    MOUNT_FLAGS=""
-    for d in "${!MOUNT_SET[@]}"; do
-        MOUNT_FLAGS="$MOUNT_FLAGS -v $d:$d"
-    done
+    # Docker fallback (legacy path). Mount the scratch dir so the container
+    # sees the staged inputs and writes shards back to the same place.
     echo "Running FreeBayes via Docker: $DOCKER_IMAGE"
-    FB_CMD="docker run --rm --user $(id -u):$(id -g) $MOUNT_FLAGS $DOCKER_IMAGE freebayes"
+    FB_CMD="docker run --rm --user $(id -u):$(id -g) -v ${WORK_TMPDIR}:${WORK_TMPDIR} $DOCKER_IMAGE freebayes"
 else
     # Native path: freebayes binary on PATH (preferred — avoids ~30k docker
     # starts per sample on HPRC-scale augref).
@@ -222,16 +241,14 @@ else
 fi
 
 # Per-region temp-file parallelism: each worker writes its region's VCF to
-# its own file named with a zero-padded FAI-order index, so glob-order =
-# final-output order. Avoids `parallel -k`, which forced workers to block
-# on stdout until all preceding regions drained — under uneven region
-# difficulty that serialised up to 30k workers and caused piles of
-# "sleeping" docker wrappers / idle freebayes processes.
-SHARD_DIR=$(mktemp -d "${TMPDIR:-$OUTPUT_DIR}/fb-shards.XXXXXX")
-trap 'rm -rf "$SHARD_DIR"' EXIT
+# its own file on scratch, named with a zero-padded FAI-order index so
+# glob-order = final-output order. Avoids `parallel -k`, which forced
+# workers to block on stdout until all preceding regions drained.
+SHARD_DIR="${WORK_TMPDIR}/shards"
+mkdir -p "$SHARD_DIR"
 
 # Number the regions so the shard filenames sort in FAI order.
-NUMBERED_REGIONS="$SHARD_DIR/regions.numbered.tsv"
+NUMBERED_REGIONS="${WORK_TMPDIR}/regions.numbered.tsv"
 awk '{printf "%07d\t%s\n", NR, $0}' "$REGIONS_FILE" > "$NUMBERED_REGIONS"
 
 N_REGIONS=$(wc -l < "$NUMBERED_REGIONS")
@@ -252,7 +269,7 @@ if [ -n "$EXTRA_ARGS" ]; then
 fi
 
 /usr/bin/time -v parallel -j "$CPUS" --colsep '\t' --halt now,fail=1 \
-    "$FB_CMD -f $REF_ABS $BAM_ABS --region {2} $EXTRA_ARGS > $SHARD_DIR/region-{1}.vcf" \
+    "$FB_CMD -f $REF_LOCAL $BAM_LOCAL --region {2} $EXTRA_ARGS > $SHARD_DIR/region-{1}.vcf" \
   :::: "$NUMBERED_REGIONS"
 
 # Sanity-check shard count. An empty shard dir would silently produce an
@@ -267,19 +284,38 @@ fi
 
 # Concat shards in glob order (= FAI order by construction). awk keeps
 # first header only and forces FILTER=PASS (FreeBayes emits "." by default).
+# Merged VCF is built on scratch first, then copied to $OUTPUT_DIR — avoids
+# half-written output hitting shared FS if the job is cancelled mid-merge.
 cat "$SHARD_DIR"/region-*.vcf \
   | awk 'BEGIN{OFS="\t"; p=1} /^#/{if(p)print; if(/^#CHROM/)p=0; next} {if($7==".") $7="PASS"; print}' \
   | bcftools annotate -x FORMAT/DPR \
   | bcftools reheader -s <(echo "$SAMPLE") \
-  | bgzip > "$VCF"
-tabix -p vcf "$VCF"
+  | bgzip > "$VCF_SCRATCH"
+tabix -p vcf "$VCF_SCRATCH"
 
 # Final sanity: bgzipped VCF must contain at least one non-header record.
 # A 28-byte output is BGZF EOF only — a dead giveaway that the concat
-# pipeline saw nothing.
-N_RECS=$(bcftools view -H "$VCF" 2>/dev/null | head -1 | wc -l)
-if [ "$N_RECS" -eq 0 ]; then
-    echo "Error: produced VCF '$VCF' has zero records." >&2
-    echo "       Size: $(stat -c '%s' "$VCF") bytes" >&2
+# pipeline saw nothing. Cheap first check: file size. Second check: try
+# to read one record, but disable pipefail for the `head -1` pipeline —
+# `head -1` can close its input after the first record, giving bcftools
+# SIGPIPE, which under set -o pipefail would abort the whole script.
+VCF_SIZE=$(stat -c '%s' "$VCF_SCRATCH")
+if [ "$VCF_SIZE" -le 100 ]; then
+    echo "Error: produced VCF '$VCF_SCRATCH' is ${VCF_SIZE} bytes — concat saw nothing." >&2
     exit 1
 fi
+set +o pipefail
+N_RECS=$(bcftools view -H "$VCF_SCRATCH" 2>/dev/null | head -1 | wc -l)
+set -o pipefail
+if [ "$N_RECS" -eq 0 ]; then
+    echo "Error: produced VCF '$VCF_SCRATCH' has zero records (size ${VCF_SIZE})." >&2
+    exit 1
+fi
+
+# Atomic-ish publish to shared output dir. mv on a same-filesystem target
+# is atomic; cross-FS it's copy + unlink, which leaves a partial file
+# visible for a moment — but the upstream failure-mode guarantees we only
+# publish a complete VCF.
+echo "Publishing merged VCF to $VCF"
+mv "$VCF_SCRATCH" "$VCF"
+mv "${VCF_SCRATCH}.tbi" "${VCF}.tbi"
