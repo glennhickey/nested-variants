@@ -74,8 +74,11 @@ freebayes_longread_args: "--limit-coverage 100"
 # FreeBayes extra args for short-read samples (empty = defaults)
 freebayes_extra_args: ""
 
-# FreeBayes Docker image
-freebayes_docker: "staphb/freebayes:1.3.7"
+# FreeBayes Docker image. Leave empty to run freebayes natively (binary on
+# PATH) — strongly preferred: avoids ~30k docker-run starts per sample on
+# HPRC-scale augref and removes the pile of sleeping docker wrappers that
+# `parallel -k` creates. Set to a tag string to pin a containerised fallback.
+freebayes_docker: ""
 
 # Set to true to run FreeBayes on long-read samples (default: false;
 # FreeBayes is slow and unreliable on HiFi in complex regions).

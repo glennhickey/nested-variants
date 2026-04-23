@@ -4,9 +4,11 @@
 # freebayes.sh
 #
 # Description:
-#   Runs FreeBayes (via Docker) in parallel to call variants from a BAM file
-#   against a FASTA reference.  Uses GNU parallel to split by genomic regions;
-#   each region runs in its own Docker container.
+#   Runs FreeBayes in parallel to call variants from a BAM file against a
+#   FASTA reference.  Uses GNU parallel to split by genomic regions; each
+#   region is a separate freebayes process. Runs natively (freebayes binary
+#   on PATH) by default. Pass --docker IMAGE to fall back to containerised
+#   execution when the binary isn't available.
 #
 # Usage:
 #   freebayes.sh --bam <file.bam> --ref <file.fa.gz> --sample <name> \
@@ -26,7 +28,7 @@ OUTPUT_DIR="."
 OUTPUT_NAME=""
 REGION_SIZE=100000
 EXTRA_ARGS=""
-DOCKER_IMAGE="staphb/freebayes:1.3.7"
+DOCKER_IMAGE=""  # empty = run freebayes natively; set to a tag for docker fallback
 
 # SLURM resource defaults
 CPUS="16"
@@ -190,27 +192,40 @@ rm -f "$BAM_CONTIGS"
 
 echo "Generated $(wc -l < "$REGIONS_FILE") regions (${REGION_SIZE}bp chunks)"
 
-# Absolute paths for Docker bind mounts; dedup parent dirs so we don't
-# pass redundant -v flags when REF/BAM live in the same directory.
 REF_ABS="$(realpath "$REF")"
 BAM_ABS="$(realpath "$BAM")"
-declare -A MOUNT_SET
-MOUNT_SET["$(dirname "$REF_ABS")"]=1
-MOUNT_SET["$(dirname "$BAM_ABS")"]=1
-MOUNT_FLAGS=""
-for d in "${!MOUNT_SET[@]}"; do
-    MOUNT_FLAGS="$MOUNT_FLAGS -v $d:$d"
-done
 
-echo "Running FreeBayes via Docker: $DOCKER_IMAGE"
+if [ -n "$DOCKER_IMAGE" ]; then
+    # Docker fallback (legacy path). Dedup parent dirs so we don't pass
+    # redundant -v flags when REF/BAM live in the same directory.
+    declare -A MOUNT_SET
+    MOUNT_SET["$(dirname "$REF_ABS")"]=1
+    MOUNT_SET["$(dirname "$BAM_ABS")"]=1
+    MOUNT_FLAGS=""
+    for d in "${!MOUNT_SET[@]}"; do
+        MOUNT_FLAGS="$MOUNT_FLAGS -v $d:$d"
+    done
+    echo "Running FreeBayes via Docker: $DOCKER_IMAGE"
+    FB_CMD="docker run --rm --user $(id -u):$(id -g) $MOUNT_FLAGS $DOCKER_IMAGE freebayes"
+else
+    # Native path: freebayes binary on PATH (preferred — avoids ~30k docker
+    # starts per sample on HPRC-scale augref, and eliminates the pile of
+    # sleeping docker wrappers when `parallel -k` holds workers open waiting
+    # for earlier regions to drain their stdout).
+    if ! command -v freebayes >/dev/null 2>&1; then
+        echo "Error: freebayes not on PATH (and --docker not set)" >&2
+        exit 1
+    fi
+    echo "Running FreeBayes natively: $(command -v freebayes)"
+    FB_CMD="freebayes"
+fi
 
-# Run freebayes in parallel over regions (one docker container per region),
-# keep first header only, set FILTER=PASS on all records (FreeBayes outputs
-# "." by default), then bgzip and index. Docker startup overhead (~0.2s) is
-# negligible against per-region freebayes runtime.
+# Run freebayes in parallel over regions, keep first header only, set
+# FILTER=PASS on all records (FreeBayes outputs "." by default), then
+# bgzip and index.
 /usr/bin/time -v cat "$REGIONS_FILE" \
   | parallel -k -j "$CPUS" \
-      "docker run --rm --user $(id -u):$(id -g) $MOUNT_FLAGS $DOCKER_IMAGE freebayes -f '$REF_ABS' '$BAM_ABS' --region {} $EXTRA_ARGS" \
+      "$FB_CMD -f '$REF_ABS' '$BAM_ABS' --region {} $EXTRA_ARGS" \
   | awk 'BEGIN{OFS="\t"; p=1} /^#/{if(p)print; if(/^#CHROM/)p=0; next} {if($7==".") $7="PASS"; print}' \
   | bcftools annotate -x FORMAT/DPR \
   | bcftools reheader -s <(echo "$SAMPLE") \
