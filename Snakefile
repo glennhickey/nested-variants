@@ -1958,6 +1958,7 @@ rule pangenie_prepare_panel:
         runtime=2880,
     params:
         exclude_samples=config.get("pangenie_exclude_samples", ""),
+        alt_missing=config.get("pangenie_alt_missing", 0.9),
     shell:
         "TMPDIR=$(mktemp -d \"${{TMPDIR:-.}}/pg-prep.XXXXXX\")"
         " && trap 'rm -rf \"$TMPDIR\"' EXIT"
@@ -1968,7 +1969,8 @@ rule pangenie_prepare_panel:
         "    else bcftools view {input.vcf}; fi"
         "    | awk 'BEGIN{{OFS=\"\\t\"}} /^#/{{print;next}}"
         "      {{for(i=10;i<=NF;i++){{g=$i; if(g==\".\")$i=\".|.\"; else $i=g\"|\"g}} print}}'"
-        "    | python3 scripts/pangenie/prepare-vcf.py --missing 0.2 2>/dev/null"
+        "    | python3 scripts/pangenie/prepare-vcf.py --missing 0.2"
+        "      --alt-missing {params.alt_missing} 2>/dev/null"
         "    | python3 scripts/pangenie/add-ids.py 2>/dev/null"
         "    | bgzip > $TMPDIR/callset.vcf.gz"
         " && tabix -fp vcf $TMPDIR/callset.vcf.gz"

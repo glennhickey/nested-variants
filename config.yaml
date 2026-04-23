@@ -56,6 +56,15 @@ scale_type: log1p
 # DeepVariant Docker image version
 dv_version: "1.9.0"
 
+# PanGenie panel-prep maximum fraction of missing alleles per position for
+# off-reference (_alt) contigs. The on-ref threshold is hard-coded at 0.2;
+# off-ref is separated because off-ref variants are sparse by construction
+# (often present in only a few panel haplotypes) and 0.2 would drop ~99.8%
+# of them. 0.9 keeps anything with at least one haplotype present while
+# dropping the "literally empty across every haplotype" long tail that
+# blows up PanGenie's kmer tables (HG006 SIGSEGV at Determine-unique-kmers).
+pangenie_alt_missing: 0.9
+
 # FreeBayes minimum QUAL for vcfeval comparisons (applied during pre-filtering, not to raw VCF)
 freebayes_min_qual: 20
 
