@@ -26,7 +26,10 @@ REF=""
 SAMPLE=""
 OUTPUT_DIR="."
 OUTPUT_NAME=""
-REGION_SIZE=100000
+REGION_SIZE=1000000   # 1 Mb per shard: ~9.7k regions on HPRC (was 100 kb /
+                      # ~97k regions); with parallel -j 96 that's ~100
+                      # regions per worker — enough load balancing, far
+                      # less per-region startup / file-system overhead.
 EXTRA_ARGS=""
 DOCKER_IMAGE=""  # empty = run freebayes natively; set to a tag for docker fallback
 
@@ -104,7 +107,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --out-name <name>     Output name for VCF file"
             echo ""
             echo "FreeBayes Options:"
-            echo "  --region-size <N>     Region chunk size for parallelization (default: 100000)"
+            echo "  --region-size <N>     Region chunk size for parallelization (default: 1000000)"
             echo "  --docker <image>      Docker image (default: staphb/freebayes:1.3.7)"
             echo ""
             echo "Execution Options:"
