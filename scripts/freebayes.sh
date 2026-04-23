@@ -209,9 +209,7 @@ if [ -n "$DOCKER_IMAGE" ]; then
     FB_CMD="docker run --rm --user $(id -u):$(id -g) $MOUNT_FLAGS $DOCKER_IMAGE freebayes"
 else
     # Native path: freebayes binary on PATH (preferred — avoids ~30k docker
-    # starts per sample on HPRC-scale augref, and eliminates the pile of
-    # sleeping docker wrappers when `parallel -k` holds workers open waiting
-    # for earlier regions to drain their stdout).
+    # starts per sample on HPRC-scale augref).
     if ! command -v freebayes >/dev/null 2>&1; then
         echo "Error: freebayes not on PATH (and --docker not set)" >&2
         exit 1
@@ -220,12 +218,26 @@ else
     FB_CMD="freebayes"
 fi
 
-# Run freebayes in parallel over regions, keep first header only, set
-# FILTER=PASS on all records (FreeBayes outputs "." by default), then
-# bgzip and index.
-/usr/bin/time -v cat "$REGIONS_FILE" \
-  | parallel -k -j "$CPUS" \
-      "$FB_CMD -f '$REF_ABS' '$BAM_ABS' --region {} $EXTRA_ARGS" \
+# Per-region temp-file parallelism: each worker writes its region's VCF to
+# its own file named with a zero-padded FAI-order index, so glob-order =
+# final-output order. Avoids `parallel -k`, which forced workers to block
+# on stdout until all preceding regions drained — under uneven region
+# difficulty that serialised up to 30k workers and caused piles of
+# "sleeping" docker wrappers / idle freebayes processes.
+SHARD_DIR=$(mktemp -d "${TMPDIR:-$OUTPUT_DIR}/fb-shards.XXXXXX")
+trap 'rm -rf "$SHARD_DIR"' EXIT
+
+# Number the regions so the shard filenames sort in FAI order.
+NUMBERED_REGIONS="$SHARD_DIR/regions.numbered.tsv"
+awk '{printf "%07d\t%s\n", NR, $0}' "$REGIONS_FILE" > "$NUMBERED_REGIONS"
+
+/usr/bin/time -v parallel -j "$CPUS" --colsep '\t' --halt now,fail=1 \
+    "$FB_CMD -f $REF_ABS $BAM_ABS --region {2} $EXTRA_ARGS > $SHARD_DIR/region-{1}.vcf" \
+  :::: "$NUMBERED_REGIONS"
+
+# Concat shards in glob order (= FAI order by construction). awk keeps
+# first header only and forces FILTER=PASS (FreeBayes emits "." by default).
+cat "$SHARD_DIR"/region-*.vcf \
   | awk 'BEGIN{OFS="\t"; p=1} /^#/{if(p)print; if(/^#CHROM/)p=0; next} {if($7==".") $7="PASS"; print}' \
   | bcftools annotate -x FORMAT/DPR \
   | bcftools reheader -s <(echo "$SAMPLE") \

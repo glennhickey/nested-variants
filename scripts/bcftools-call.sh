@@ -193,11 +193,23 @@ fi
 
 echo "Running bcftools mpileup|call (preset: $CONFIG_PRESET, $(bcftools --version | head -1))"
 
-# Each region emits a full VCF (with header); awk keeps first header only and
-# sets FILTER=PASS on all records (bcftools call emits "." by default).
-/usr/bin/time -v cat "$REGIONS_FILE" \
-  | parallel -k -j "$CPUS" \
-      "bcftools mpileup -Ou --config $CONFIG_PRESET -a $FORMAT_ANNOTS -f '$REF' -r {} '$BAM' $EXTRA_ARGS | bcftools call -mv" \
+# Per-region temp-file parallelism: each worker writes its region's VCF to
+# its own file named with a zero-padded FAI-order index, so glob-order =
+# final-output order. Avoids `parallel -k`, which forced workers to block
+# on stdout until all preceding regions drained.
+SHARD_DIR=$(mktemp -d "${TMPDIR:-$OUTPUT_DIR}/bcfcall-shards.XXXXXX")
+trap 'rm -rf "$SHARD_DIR"' EXIT
+
+NUMBERED_REGIONS="$SHARD_DIR/regions.numbered.tsv"
+awk '{printf "%07d\t%s\n", NR, $0}' "$REGIONS_FILE" > "$NUMBERED_REGIONS"
+
+/usr/bin/time -v parallel -j "$CPUS" --colsep '\t' --halt now,fail=1 \
+    "bcftools mpileup -Ou --config $CONFIG_PRESET -a $FORMAT_ANNOTS -f '$REF' -r {2} '$BAM' $EXTRA_ARGS | bcftools call -mv > $SHARD_DIR/region-{1}.vcf" \
+  :::: "$NUMBERED_REGIONS"
+
+# Concat shards in glob order (= FAI order). awk keeps first header only
+# and forces FILTER=PASS (bcftools call emits "." by default).
+cat "$SHARD_DIR"/region-*.vcf \
   | awk 'BEGIN{OFS="\t"; p=1} /^#/{if(p)print; if(/^#CHROM/)p=0; next} {if($7==".") $7="PASS"; print}' \
   | bcftools reheader -s <(echo "$SAMPLE") \
   | bgzip > "$VCF"

@@ -139,15 +139,18 @@ process_shard() {
 export -f process_shard
 export VCF FORMAT WORK READ_STAGE FILTER_STAGE FILL_STAGE
 
-# 5. Parallel dispatch. `-k` preserves shard-order on stdout; use `--line-buffer`
-#    instead if order doesn't matter and you want streaming. Keep -k for
-#    reproducibility — output size is not affected.
+# 5. Parallel dispatch. `--line-buffer` streams each completed line as it
+#    arrives without serialising shards behind each other (vs `-k`, which
+#    made workers wait to drain stdout in FAI order — effectively single-
+#    threaded under uneven shard difficulty). Downstream consumers (R
+#    fread into a groupby aggregation, aggregator scripts) don't care
+#    about line order.
 if [ "$PARALLEL" -le 1 ]; then
     for shard in $SHARD_ORDER; do
         process_shard "$shard"
     done
 else
-    echo "$SHARD_ORDER" | parallel --will-cite -j "$PARALLEL" -k process_shard {}
+    echo "$SHARD_ORDER" | parallel --will-cite -j "$PARALLEL" --line-buffer process_shard {}
 fi
 
 echo "[bcftools-query-parallel] done" >&2
