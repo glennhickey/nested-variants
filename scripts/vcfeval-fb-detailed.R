@@ -97,11 +97,20 @@ normalize_giab_name <- function(nm) {
   nm
 }
 giab_display <- normalize_giab_name(giab_names)
-giab_order   <- c("Easy", "Segdup", "Other Difficult", "Other")
+
+# Pantree-paper stratification (Dwarshuis et al. 2023): every variant falls
+# into exactly one of three buckets — Easy, Segdup, Hard — with Segdup taking
+# priority over Hard. In this codebase's BEDs:
+#   Easy    = GIAB notinalldifficultregions
+#   Segdup  = GIAB alllowmapandsegdupregions
+#   Hard    = GIAB alldifficultregions − Segdup   (plus any position that
+#             doesn't hit any of the 3 BEDs — harmless because the three
+#             BEDs were constructed to partition the genome, but a position
+#             off the BED coverage still gets assigned Hard).
+giab_order   <- c("Easy", "Segdup", "Hard")
 giab_colors  <- c("Easy" = "forestgreen",
                   "Segdup" = "firebrick",
-                  "Other Difficult" = "darkorange",
-                  "Other" = "grey60")
+                  "Hard" = "darkorange")
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -228,17 +237,27 @@ bed_membership <- function(dt, bed_file) {
 }
 
 assign_giab_region <- function(dt, giab_beds, giab_display_names) {
-  # One pass per BED; first hit wins in the priority order the user provided,
-  # defaulting to "Other" when nothing matches.
+  # Pantree-paper 3-way partition (Easy / Segdup / Hard), first-hit-wins.
+  # Any BED hit whose display name is neither "Easy" nor "Segdup" is folded
+  # into "Hard" — that absorbs the "Other Difficult" partition BED and any
+  # positions that don't hit any BED. Segdup takes priority over Hard by
+  # bed-order (Snakefile passes Easy, Segdup, Other Difficult — but "Other
+  # Difficult" hits are relabelled Hard below, keeping Segdup strictly
+  # above Hard as pantree requires).
   if (nrow(dt) == 0) return(character(0))
-  out <- rep("Other", nrow(dt))
+  out <- rep("Hard", nrow(dt))
   assigned <- rep(FALSE, nrow(dt))
   for (k in seq_along(giab_beds)) {
-    nm <- giab_display_names[k]
+    raw_nm <- giab_display_names[k]
+    nm <- if (raw_nm %in% c("Easy", "Segdup")) raw_nm else "Hard"
     hits <- bed_membership(dt[!assigned], giab_beds[k])
     idx <- which(!assigned)[hits]
     if (length(idx) > 0) {
       out[idx] <- nm
+      # Only mark as "assigned" if the label is final (Easy or Segdup);
+      # Hard hits stay fair game for a later-priority BED — but since
+      # the convention has no higher-priority BED after Hard, this
+      # simplifies to "always mark assigned".
       assigned[idx] <- TRUE
     }
   }
