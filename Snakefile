@@ -4065,14 +4065,45 @@ rule vcfeval_fb_detailed_plot:
         mem_mb=32000,
         runtime=240,
     shell:
-        "ulimit -s unlimited && Rscript scripts/vcfeval-fb-detailed.R"
+        "ulimit -s unlimited && Rscript scripts/vcfeval-detailed.R"
         " {OUT_DIR}/merged.call-vs-fb.{wildcards.filt}"
         " --vcfeval-dirs {params.vcfeval_dirs}"
         " --samples {params.sample_names}"
         " --giab-beds {input.giab_beds[0]},{input.giab_beds[1]},{input.giab_beds[2]}"
         " --giab-names " + ",".join(GIAB_STRAT_DISPLAY) +
+        " --label-b FreeBayes"
         " --filter-label '{wildcards.filt} only'"
         " --title '{REF} Call vs FreeBayes — detailed (vcfeval)'"
+
+rule vcfeval_bc_detailed_plot:
+    """bcftools-vs-vg-call vcfeval plot — sibling of vcfeval_fb_detailed_plot,
+    same layout / partition, but with bcftools as the FP side. Kept in
+    figure 4d alongside vcfeval_bc_compare_plot."""
+    input:
+        tp_baseline=expand(f"{OUT_DIR}/vcfeval-bc/{{filt}}/{{sample}}/tp-baseline.vcf.gz", sample=SAMPLES, allow_missing=True),
+        fp=expand(f"{OUT_DIR}/vcfeval-bc/{{filt}}/{{sample}}/fp.vcf.gz", sample=SAMPLES, allow_missing=True),
+        fn=expand(f"{OUT_DIR}/vcfeval-bc/{{filt}}/{{sample}}/fn.vcf.gz", sample=SAMPLES, allow_missing=True),
+        giab_beds=augref_giab_strat_beds(),
+    output:
+        f"{OUT_DIR}/merged.call-vs-bc.{{filt}}.vcfeval-detailed.png",
+        f"{OUT_DIR}/merged.call-vs-bc.{{filt}}.vcfeval-detailed.tsv",
+    params:
+        vcfeval_dirs=lambda wc, input: ",".join(
+            [f"{OUT_DIR}/vcfeval-bc/{wc.filt}/{s}" for s in SAMPLES]),
+        sample_names=",".join(SAMPLES),
+    resources:
+        mem_mb=32000,
+        runtime=240,
+    shell:
+        "ulimit -s unlimited && Rscript scripts/vcfeval-detailed.R"
+        " {OUT_DIR}/merged.call-vs-bc.{wildcards.filt}"
+        " --vcfeval-dirs {params.vcfeval_dirs}"
+        " --samples {params.sample_names}"
+        " --giab-beds {input.giab_beds[0]},{input.giab_beds[1]},{input.giab_beds[2]}"
+        " --giab-names " + ",".join(GIAB_STRAT_DISPLAY) +
+        " --label-b bcftools"
+        " --filter-label '{wildcards.filt} only'"
+        " --title '{REF} Call vs bcftools — detailed (vcfeval)'"
 
 rule vcfeval_fb_chromsplit:
     """Per-contig FP/FN/TP breakdown from vcfeval/aardvark output (FreeBayes)"""
@@ -5114,6 +5145,8 @@ rule summary_bcftools:
         bc_types=f"{OUT_DIR}/merged.bc.sites.pass.variant-types.png",
         bc_per_sample=f"{OUT_DIR}/merged.bc.sites.pass.per-sample-types.png",
         vcfeval=f"{OUT_DIR}/merged.call-vs-bc.pass.vcfeval-compare.png",
+        vcfeval_detailed=([f"{OUT_DIR}/merged.call-vs-bc.pass.vcfeval-detailed.png"]
+                          if giab_strat_configured() else []),
         bc_giab=[f"{OUT_DIR}/merged.bc.sites.pass.giab-strat.png"] if giab_strat_configured() else [],
         annot_snp=[f"{OUT_DIR}/merged.bcftools.annot-snp-tstv.pass.png"] if annotation_inputs() else [],
     output:
@@ -5126,6 +5159,7 @@ rule summary_bcftools:
             [f"'BC Variant Types (PASS):{input.bc_types}'",
              f"'BC Per-Sample Types (PASS):{input.bc_per_sample}'",
              f"'Call vs BC (vcfeval):{input.vcfeval}'"]
+            + ([f"'Call vs BC — detailed:{input.vcfeval_detailed[0]}'"] if input.vcfeval_detailed else [])
             + ([f"'BC GIAB Stratification:{input.bc_giab[0]}'"] if input.bc_giab else [])
             + ([f"'BC SNP Ts/Tv by Annotation:{input.annot_snp[0]}'"] if input.annot_snp else [])
         ),

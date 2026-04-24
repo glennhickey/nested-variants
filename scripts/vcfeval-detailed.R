@@ -1,27 +1,30 @@
 #!/usr/bin/env Rscript
 
-# vcfeval-fb-detailed.R
+# vcfeval-detailed.R
 #
-# Extended vcfeval comparison panel for the FreeBayes-vs-vg-call short-read
-# figure (4b). Parallel to scripts/vcf-compare-vcfeval.R but:
+# Extended vcfeval comparison panel for a generic vg-call-vs-<caller>
+# short-read figure (4b-d for FreeBayes, 4d-d for bcftools, ...).
+# Parallel to scripts/vcf-compare-vcfeval.R but:
 #
-#   1. Splits FB-only (FP) calls into two buckets:
-#        - fb_only_in_graph    — FP (CHROM, POS) appears in that sample's call
-#                                VCF (vg call -a -A emits every graph site, so
-#                                "in sample's call VCF" = "in graph")
-#        - fb_only_not_in_graph — FP (CHROM, POS) absent from the sample's call
-#                                VCF entirely
-#   2. Stacks each bar by GIAB region (Easy / Segdup / Other Difficult / Other)
-#      using the pipeline's augref-space GIAB BEDs.
-#   3. Adds a Ts/Tv annotation above each SNP bar section, averaged across
-#      samples within that (category × ref_context × giab) cell.
+#   1. Splits <caller>-only (FP) calls into two buckets:
+#        - <caller>_only_in_graph    — FP (CHROM, POS) appears in that
+#                                      sample's call VCF (vg call -a -A
+#                                      emits every graph site, so "in
+#                                      sample's call VCF" = "in graph")
+#        - <caller>_only_not_in_graph — FP (CHROM, POS) absent from the
+#                                      sample's call VCF entirely
+#   2. Stacks each bar by the pantree 3-way GIAB partition (Easy /
+#      Segdup / Hard) using the pipeline's augref-space GIAB BEDs.
+#   3. Adds a Ts/Tv annotation inside each SNP bar segment, averaged
+#      across samples within that (category × ref_context × giab) cell.
 #
 # Usage:
-#   Rscript scripts/vcfeval-fb-detailed.R <output_prefix>
+#   Rscript scripts/vcfeval-detailed.R <output_prefix>
 #     --vcfeval-dirs d1,d2,...
 #     --samples s1,s2,...
 #     --giab-beds  easy.bed,segdup.bed,otherdif.bed
 #     --giab-names Easy,Segdup,Other_Difficult
+#     [--label-b NAME]        # caller on the FP side, default "FreeBayes"
 #     [--filter-label STR] [--title TITLE]
 #
 # The "in-graph" lookup uses the baseline VCF that vcfeval was given, which
@@ -44,7 +47,7 @@ suppressPackageStartupMessages({
 
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 1) {
-  cat("Usage: Rscript vcfeval-fb-detailed.R <output_prefix> [options]\n")
+  cat("Usage: Rscript vcfeval-detailed.R <output_prefix> [options]\n")
   quit(status = 1)
 }
 
@@ -55,6 +58,7 @@ sample_names  <- NULL
 giab_beds     <- NULL
 giab_names    <- NULL
 filter_label_arg <- ""
+label_b       <- "FreeBayes"
 
 i <- 2
 while (i <= length(args)) {
@@ -70,6 +74,8 @@ while (i <= length(args)) {
     giab_names <- unlist(strsplit(args[i + 1], ",", fixed = TRUE)); i <- i + 2
   } else if (args[i] == "--filter-label" && i + 1 <= length(args)) {
     filter_label_arg <- args[i + 1]; i <- i + 2
+  } else if (args[i] == "--label-b" && i + 1 <= length(args)) {
+    label_b <- args[i + 1]; i <- i + 2
   } else {
     i <- i + 1
   }
@@ -88,7 +94,14 @@ if (length(giab_beds) != length(giab_names)) {
 }
 n_samples <- length(sample_names)
 filter_label <- if (nzchar(filter_label_arg)) paste0(", ", filter_label_arg) else ""
-if (is.null(title)) title <- "Call vs FreeBayes — detailed (vcfeval)"
+if (is.null(title)) title <- paste("Call vs", label_b, "— detailed (vcfeval)")
+
+# Category labels used throughout the plot + TSV. Parameterising on label_b
+# lets the same script drive panels 4b-d (FreeBayes) and 4d-d (bcftools).
+cat_shared_label   <- "Shared"
+cat_call_only      <- "Call only"
+cat_b_in_graph     <- paste0(label_b, " only (in graph)")
+cat_b_not_in_graph <- paste0(label_b, " only (not in graph)")
 
 # Canonicalise the GIAB names to the display values used throughout the
 # codebase (Easy / Segdup / Other Difficult), matching vcf-stats.R's palette.
@@ -297,10 +310,10 @@ for (si in seq_len(n_samples)) {
   fp[, giab := assign_giab_region(fp, giab_beds, giab_display)]
 
   # --- Tag each subset with its comparison category ---------------------
-  tp[, category := "Shared"]
-  fn[, category := "Call only"]
+  tp[, category := cat_shared_label]
+  fn[, category := cat_call_only]
   if (nrow(fp) > 0) {
-    fp[, category := fifelse(in_graph, "FB only (in graph)", "FB only (not in graph)")]
+    fp[, category := fifelse(in_graph, cat_b_in_graph, cat_b_not_in_graph)]
   } else {
     fp[, category := character(0)]
   }
@@ -329,7 +342,7 @@ counts_dt <- all_dt[, .(count = .N,
                     by = .(sample, ref_context, variant_type, category, giab)]
 
 # Ensure all combinations exist with zeros
-cat_levels  <- c("Shared", "Call only", "FB only (in graph)", "FB only (not in graph)")
+cat_levels  <- c(cat_shared_label, cat_call_only, cat_b_in_graph, cat_b_not_in_graph)
 type_levels <- c("SNP", "Indel/MNP", "SV", "Other")
 present_giab <- intersect(giab_order, unique(counts_dt$giab))
 if (length(present_giab) == 0) present_giab <- giab_order
@@ -388,10 +401,10 @@ snp_bar[, bar_total := sum(mean_count), by = .(ref_context, category)]
 snp_bar[, keep := !is.na(tstv) & bar_total > 0 &
                   mean_count >= 0.12 * bar_total]
 
-cat_colors_shape <- c("Shared" = "forestgreen",
-                      "Call only" = "steelblue",
-                      "FB only (in graph)" = "coral",
-                      "FB only (not in graph)" = "firebrick4")
+cat_colors_shape <- setNames(
+  c("forestgreen", "steelblue", "coral", "firebrick4"),
+  cat_levels
+)
 
 p <- ggplot(bar_summary,
             aes(x = category, y = mean_count, fill = giab)) +
@@ -409,8 +422,8 @@ p <- ggplot(bar_summary,
             position = position_stack(vjust = 0.5),
             size = 2.8, color = "white") +
   labs(title = title,
-       subtitle = paste0("Call vs FreeBayes via vcfeval", filter_label,
-                         " — FB-only split by graph membership",
+       subtitle = paste0("Call vs ", label_b, " via vcfeval", filter_label,
+                         " — ", label_b, "-only split by graph membership",
                          ", stacks = GIAB region, mean across N=",
                          n_samples, " samples",
                          "; text on SNP bars = Ts/Tv"),
