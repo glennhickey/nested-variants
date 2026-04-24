@@ -422,7 +422,9 @@ if (!is.null(segs_file)) {
     system(sprintf("LC_ALL=C sort -k1,1 -k2,2n '%s' > '%s'", tmp_bed, tmp_sorted))
     unlink(tmp_bed)
 
-    # bedtools intersect each GIAB BED
+    # bedtools intersect each GIAB BED. Fold any label that isn't Easy or
+    # Segdup into "Hard" so the chromsplit plot matches the pantree 3-way
+    # partition used by the site-level giab-strat plot.
     contig_giab <- data.table()
     for (k in seq_along(giab_bed_files)) {
       cmd <- sprintf("bedtools intersect -a '%s' -b '%s' -wa -u",
@@ -434,7 +436,9 @@ if (!is.null(segs_file)) {
       )
       if (nrow(hits) > 0) {
         hits <- unique(hits)
-        hits[, giab_region := giab_names[k]]
+        raw_nm <- giab_names[k]
+        nm <- if (raw_nm %in% c("Easy", "Segdup")) raw_nm else "Hard"
+        hits[, giab_region := nm]
         contig_giab <- rbind(contig_giab, hits)
       }
     }
@@ -449,7 +453,8 @@ if (!is.null(segs_file)) {
       giab_bar <- melt(giab_sum, id.vars = "giab_region",
                        measure.vars = c("SNP_TP", "SNP_FP", "SNP_FN"),
                        variable.name = "error_type", value.name = "count")
-      giab_bar[, giab_region := factor(giab_region, levels = giab_names)]
+      giab_bar[, giab_region := factor(giab_region,
+                                       levels = c("Easy", "Segdup", "Hard"))]
 
       giab_title <- sub(" Per-Contig", "", title)
       p_giab <- ggplot(giab_bar, aes(x = giab_region, y = count, fill = error_type)) +

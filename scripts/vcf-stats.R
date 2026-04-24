@@ -798,26 +798,34 @@ if (!is.null(giab_strat_beds_arg)) {
   dt[, c("giab_chrom", "giab_start", "giab_end") := NULL]
   unlink(tmp_bed)
 
-  # Classify each variant into exactly one GIAB region (priority: first hit wins)
-  dt[, giab_region := "Unclassified"]
+  # Classify each variant into the pantree 3-way partition (Dwarshuis et al.
+  # 2023): Easy / Segdup / Hard. Segdup beats Hard when a variant is in both;
+  # Easy and Segdup never overlap by construction (Segdup ⊂ alldifficult, Easy
+  # = complement). Anything not in Easy or Segdup — including the GIAB
+  # "Other Difficult" BED and any position off every BED — collapses to Hard.
+  dt[, giab_region := "Hard"]
   for (k in rev(seq_along(strat_names))) {
     col <- paste0("giab_", k)
-    dt[get(col) == TRUE, giab_region := strat_names[k]]
+    raw_nm <- strat_names[k]
+    # Fold anything that's not Easy/Segdup into Hard (covers the pipeline's
+    # "Other Difficult" input BED).
+    nm <- if (raw_nm %in% c("Easy", "Segdup")) raw_nm else "Hard"
+    dt[get(col) == TRUE, giab_region := nm]
   }
 
   # Summary table — now includes ref_context breakdown
   giab_counts <- dt[, .(count = .N), by = .(variant_type, giab_region, ref_context)]
   giab_counts <- giab_counts[variant_type %in% type_levels]
   giab_counts[, variant_type := factor(variant_type, levels = type_levels)]
-  region_levels <- strat_names
+  region_levels <- c("Easy", "Segdup", "Hard")
   giab_counts[, giab_region := factor(giab_region, levels = region_levels)]
 
   # Grouped bar chart: facet by ref_context × type_class (SNP | Indel/MNP | SV)
   # with free_y so SNP (millions) and SV (hundreds) each get their own scale.
   # Ts/Tv ratio is overlaid as text on the SNP bars.
   region_colors <- c("Easy" = "forestgreen", "Segdup" = "firebrick",
-                     "Other Difficult" = "darkorange")
-  giab_plot_dt <- giab_counts[giab_region != "Unclassified"]
+                     "Hard" = "darkorange")
+  giab_plot_dt <- giab_counts[!is.na(giab_region)]
   if (nrow(giab_plot_dt) == 0) {
     cat("No variants in GIAB stratification regions; creating empty GIAB plot.\n")
     file.create(paste0(prefix, ".giab-strat.png"))
@@ -835,7 +843,7 @@ if (!is.null(giab_strat_beds_arg)) {
       giab_tstv <- dt[variant_type == "SNP" & !is.na(tstv) & giab_region %in% region_levels,
                       .(ts = sum(tstv == "Ts"), tv = sum(tstv == "Tv")),
                       by = .(giab_region, ref_context)]
-      giab_tstv <- giab_tstv[giab_region != "Unclassified" & tv > 0]
+      giab_tstv <- giab_tstv[tv > 0]
       if (nrow(giab_tstv) > 0) {
         giab_tstv[, tstv_ratio := round(ts / tv, 2)]
         giab_tstv[, giab_region := factor(giab_region, levels = region_levels)]
@@ -1260,11 +1268,14 @@ if (per_sample) {
         gt_dt[, c("giab_chrom", "giab_start", "giab_end") := NULL]
         unlink(tmp_bed_ps)
 
-        # Classify each variant into one GIAB region
-        gt_dt[, ps_giab_region := "Unclassified"]
+        # Classify each variant into the pantree 3-way partition
+        # (Easy / Segdup / Hard). See site-level block above for rationale.
+        gt_dt[, ps_giab_region := "Hard"]
         for (k in rev(seq_along(strat_names_ps))) {
           col <- paste0("ps_giab_", k)
-          gt_dt[get(col) == TRUE, ps_giab_region := strat_names_ps[k]]
+          raw_nm <- strat_names_ps[k]
+          nm <- if (raw_nm %in% c("Easy", "Segdup")) raw_nm else "Hard"
+          gt_dt[get(col) == TRUE, ps_giab_region := nm]
         }
 
         # Count per sample × variant_type × giab_region × ref_context
@@ -1281,8 +1292,8 @@ if (per_sample) {
         ps_giab_counts <- rbindlist(ps_giab_list)
         ps_giab_counts <- ps_giab_counts[variant_type %in% type_levels]
 
-        # Ensure all combos exist
-        region_levels_ps <- strat_names_ps
+        # Ensure all combos exist — 3-way Easy/Segdup/Hard partition
+        region_levels_ps <- c("Easy", "Segdup", "Hard")
         all_giab_combos <- CJ(sample = sample_names,
                                variant_type = unique(ps_giab_counts$variant_type),
                                ps_giab_region = region_levels_ps,
@@ -1310,16 +1321,17 @@ if (per_sample) {
         ps_giab_counts[, ps_giab_region := factor(ps_giab_region, levels = region_levels_ps)]
         ps_giab_summary[, ps_giab_region := factor(ps_giab_region, levels = region_levels_ps)]
 
-        # Filter out Unclassified
-        ps_giab_counts_plot <- ps_giab_counts[ps_giab_region != "Unclassified"]
-        ps_giab_summary_plot <- ps_giab_summary[ps_giab_region != "Unclassified"]
+        # Every variant falls into exactly one of Easy/Segdup/Hard now — no
+        # separate "Unclassified" bucket. Keep filter as a no-op guard.
+        ps_giab_counts_plot  <- ps_giab_counts[ps_giab_region %in% region_levels_ps]
+        ps_giab_summary_plot <- ps_giab_summary[ps_giab_region %in% region_levels_ps]
 
         if (nrow(ps_giab_counts_plot) == 0) {
           cat("No variants in per-sample GIAB regions; creating empty plot.\n")
           file.create(paste0(prefix, ".per-sample-giab-strat.png"))
         } else {
           region_colors_ps <- c("Easy" = "forestgreen", "Segdup" = "firebrick",
-                                 "Other Difficult" = "darkorange")
+                                 "Hard" = "darkorange")
 
           sv_type_names <- c("SV Insertion", "SV Deletion")
           ps_giab_counts_plot[, type_class := fcase(
