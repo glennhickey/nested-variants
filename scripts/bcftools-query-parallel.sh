@@ -76,16 +76,19 @@ bcftools view -h "$VCF" 2>/dev/null \
       {
         contig = $1
         length_bp = ($2 == "" ? 0 : $2)
+        # Strip the augref sample#0# prefix if present (deconstruct-space),
+        # then strip a trailing _N_alt to get the main-chrom group (so
+        # chr1, chr1_123_alt, augref_CHM13#0#chr1, and
+        # augref_CHM13#0#chr1_42_alt all group to main="chr1"). Works for
+        # both call-space (plain "chrN[_M_alt]") and augref-space VCFs —
+        # without this fallback, merged.call.vcf.gz produces one shard per
+        # alt contig and fans out to 300k+ shards on HPRC.
         n = split(contig, a, "#0#")
-        if (n < 2) {
-          main = contig
+        tail = (n >= 2) ? a[2] : contig
+        if (match(tail, /_[0-9]+_alt$/)) {
+          main = substr(tail, 1, RSTART - 1)
         } else {
-          tail = a[2]
-          if (match(tail, /_[0-9]+_alt$/)) {
-            main = substr(tail, 1, RSTART - 1)
-          } else {
-            main = tail
-          }
+          main = tail
         }
         # Record original header order so we can preserve it across shards.
         print NR, main, contig, length_bp
