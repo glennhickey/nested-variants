@@ -177,13 +177,17 @@ classify_variants <- function(dt) {
       list(res[1, ], res[2, ])
     }]
   }
+  # Collapse fine-grained types into 3 buckets:
+  #   SNP           — single-base substitution
+  #   Indel/MNP     — any small (<50 bp) indel or MNP
+  #   SV            — any >=50 bp indel
+  # Ts/Tv classification below still only labels single-base SNPs, so merging
+  # indel types doesn't break that. "Other" kept as a fallback for NA sizes.
   dt[, variant_type := fifelse(
     is.na(size), "Other",
     fifelse(size == 0L & ref_len == 1L, "SNP",
-    fifelse(size == 0L,                 "MNP",
-    fifelse(size < 50L & size_signed > 0L, "Insertion",
-    fifelse(size < 50L,                 "Deletion",
-    fifelse(size_signed > 0L, "SV Insertion", "SV Deletion")))))
+    fifelse(size < 50L,                 "Indel/MNP",
+                                        "SV"))
   )]
   dt[, ref_context := fifelse(
     grepl("_[0-9]+_alt$", CHROM), "Off-reference", "On-reference"
@@ -307,7 +311,7 @@ counts_dt <- all_dt[, .(count = .N,
 
 # Ensure all combinations exist with zeros
 cat_levels  <- c("Shared", "Call only", "FB only (in graph)", "FB only (not in graph)")
-type_levels <- c("SNP", "MNP", "Insertion", "Deletion", "SV Insertion", "SV Deletion", "Other")
+type_levels <- c("SNP", "Indel/MNP", "SV", "Other")
 present_giab <- intersect(giab_order, unique(counts_dt$giab))
 if (length(present_giab) == 0) present_giab <- giab_order
 
@@ -371,9 +375,14 @@ cat_colors_shape <- c("Shared" = "forestgreen",
 p <- ggplot(bar_summary,
             aes(x = category, y = mean_count, fill = giab)) +
   geom_col(position = position_stack(), width = 0.7, alpha = 0.9) +
-  facet_grid(ref_context ~ variant_type, scales = "free_y", switch = "y") +
+  # facet_wrap with scales="free" gives each (ref_context × variant_type)
+  # cell its own y-scale — necessary because SNPs outnumber Indel/MNPs by
+  # ~10x and SVs by ~100x, so a shared scale hides the smaller types.
+  # `facet_grid` forces axis alignment across rows/cols and would
+  # squash the non-SNP bars to invisibility.
+  facet_wrap(vars(ref_context, variant_type), scales = "free", ncol = 3) +
   scale_fill_manual(values = giab_colors, name = "GIAB region", drop = FALSE) +
-  scale_y_continuous(labels = scales::comma) +
+  scale_y_continuous(labels = scales::comma, sec.axis = dup_axis(name = NULL)) +
   geom_text(data = snp_bar[keep == TRUE],
             aes(x = category, y = y_center,
                 label = sprintf("%.2f", tstv)),
