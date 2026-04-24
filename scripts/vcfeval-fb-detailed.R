@@ -371,20 +371,22 @@ snp_mean <- snp_sample[, .(tstv = mean(ratio)),
 bar_summary <- counts_dt[, .(mean_count = mean(count)),
                          by = .(ref_context, variant_type, category, giab)]
 
-# Compute stacked y-positions for Ts/Tv labels on SNP bars.
-#   x-axis position of each bar = category (within a given variant_type panel
-#   of the facet). We'll place text at the top of each giab segment.
+# Ts/Tv labels on SNP bars. Let position_stack(vjust = 0.5) compute the
+# midpoint of each giab segment in concert with the geom_col stack — no
+# manual cumsum (which was miscomputing the y because the factor order
+# didn't perfectly match ggplot's internal stack ordering, and the labels
+# drifted away from their bar sections).
+#
+# Drop labels for segments that are too small to be legible: require the
+# segment to be at least 12% of its bar's total height. Prevents a "5.22"
+# sitting half a bar away from its ~0-height giab segment.
 snp_bar <- bar_summary[variant_type == "SNP"]
-setorder(snp_bar, ref_context, category, giab)
-snp_bar[, y_top := cumsum(mean_count), by = .(ref_context, category)]
-snp_bar[, y_center := y_top - mean_count / 2]
-# Join the Ts/Tv ratio for the label
 snp_bar <- merge(snp_bar, snp_mean,
                  by = c("ref_context", "category", "giab"),
                  all.x = TRUE)
-# Only label bars that have meaningful SNP counts (> ~1% of panel total)
-snp_bar[, panel_total := sum(mean_count), by = .(ref_context, category)]
-snp_bar[, keep := !is.na(tstv) & mean_count > 0.05 * panel_total]
+snp_bar[, bar_total := sum(mean_count), by = .(ref_context, category)]
+snp_bar[, keep := !is.na(tstv) & bar_total > 0 &
+                  mean_count >= 0.12 * bar_total]
 
 cat_colors_shape <- c("Shared" = "forestgreen",
                       "Call only" = "steelblue",
@@ -403,9 +405,9 @@ p <- ggplot(bar_summary,
   scale_fill_manual(values = giab_colors, name = "GIAB region", drop = FALSE) +
   scale_y_continuous(labels = scales::comma, sec.axis = dup_axis(name = NULL)) +
   geom_text(data = snp_bar[keep == TRUE],
-            aes(x = category, y = y_center,
-                label = sprintf("%.2f", tstv)),
-            inherit.aes = FALSE, size = 2.8, color = "white") +
+            aes(x = category, y = mean_count, label = sprintf("%.2f", tstv)),
+            position = position_stack(vjust = 0.5),
+            size = 2.8, color = "white") +
   labs(title = title,
        subtitle = paste0("Call vs FreeBayes via vcfeval", filter_label,
                          " — FB-only split by graph membership",
