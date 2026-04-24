@@ -4608,6 +4608,36 @@ rule vcfeval_bc_compare_plot:
         " --title '{REF} Call vs bcftools (vcfeval)'"
         " --no-sv"
 
+rule vcfeval_bc_lr_detailed_plot:
+    """Long-read bcftools-vs-vg-call detailed vcfeval plot — same layout as
+    vcfeval_bc_detailed_plot, but over LR_SAMPLES. Drives a sub-panel of
+    figure 8d (summary_longread_bcftools)."""
+    input:
+        tp_baseline=expand(f"{OUT_DIR}/vcfeval-bc/{{filt}}/{{sample}}/tp-baseline.vcf.gz", sample=LR_SAMPLES, allow_missing=True),
+        fp=expand(f"{OUT_DIR}/vcfeval-bc/{{filt}}/{{sample}}/fp.vcf.gz", sample=LR_SAMPLES, allow_missing=True),
+        fn=expand(f"{OUT_DIR}/vcfeval-bc/{{filt}}/{{sample}}/fn.vcf.gz", sample=LR_SAMPLES, allow_missing=True),
+        giab_beds=augref_giab_strat_beds(),
+    output:
+        f"{OUT_DIR}/merged.lr.call-vs-bc.{{filt}}.vcfeval-detailed.png",
+        f"{OUT_DIR}/merged.lr.call-vs-bc.{{filt}}.vcfeval-detailed.tsv",
+    params:
+        vcfeval_dirs=lambda wc, input: ",".join(
+            [f"{OUT_DIR}/vcfeval-bc/{wc.filt}/{s}" for s in LR_SAMPLES]),
+        sample_names=",".join(LR_SAMPLES),
+    resources:
+        mem_mb=32000,
+        runtime=240,
+    shell:
+        "ulimit -s unlimited && Rscript scripts/vcfeval-detailed.R"
+        " {OUT_DIR}/merged.lr.call-vs-bc.{wildcards.filt}"
+        " --vcfeval-dirs {params.vcfeval_dirs}"
+        " --samples {params.sample_names}"
+        " --giab-beds {input.giab_beds[0]},{input.giab_beds[1]},{input.giab_beds[2]}"
+        " --giab-names " + ",".join(GIAB_STRAT_DISPLAY) +
+        " --label-b bcftools"
+        " --filter-label '{wildcards.filt} only, long-read'"
+        " --title '{REF} Long-Read Call vs bcftools — detailed (vcfeval)'"
+
 rule vcfeval_bc_lr_compare_plot:
     """Aggregate long-read per-sample vcfeval results (bcftools) into comparison plot"""
     input:
@@ -5405,6 +5435,8 @@ rule summary_longread_bcftools:
         bc_types=f"{OUT_DIR}/merged.longread.bc.sites.pass.variant-types.png",
         bc_per_sample=f"{OUT_DIR}/merged.longread.bc.sites.pass.per-sample-types.png",
         vcfeval=f"{OUT_DIR}/merged.lr.call-vs-bc.pass.vcfeval-compare.png",
+        vcfeval_detailed=([f"{OUT_DIR}/merged.lr.call-vs-bc.pass.vcfeval-detailed.png"]
+                          if giab_strat_configured() else []),
         bc_giab=[f"{OUT_DIR}/merged.longread.bc.sites.pass.giab-strat.png"] if giab_strat_configured() else [],
         bc_per_sample_giab=[f"{OUT_DIR}/merged.longread.bc.sites.pass.per-sample-giab-strat.png"] if giab_strat_configured() else [],
         annot_snp=[f"{OUT_DIR}/merged.longread.bc.sites.pass.variant-types-by-annot.png"] if annotation_inputs() else [],
@@ -5418,6 +5450,7 @@ rule summary_longread_bcftools:
             [f"'BC Variant Types (PASS):{input.bc_types}'",
              f"'BC Per-Sample Types (PASS):{input.bc_per_sample}'",
              f"'Call vs BC (vcfeval):{input.vcfeval}'"]
+            + ([f"'Call vs BC — detailed:{input.vcfeval_detailed[0]}'"] if input.vcfeval_detailed else [])
             + ([f"'BC GIAB Stratification:{input.bc_giab[0]}'"] if input.bc_giab else [])
             + ([f"'BC Per-Sample GIAB:{input.bc_per_sample_giab[0]}'"] if input.bc_per_sample_giab else [])
             + ([f"'BC Types by Annotation:{input.annot_snp[0]}'"] if input.annot_snp else [])
