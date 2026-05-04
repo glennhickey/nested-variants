@@ -4075,6 +4075,38 @@ rule vcfeval_fb_detailed_plot:
         " --filter-label '{wildcards.filt} only'"
         " --title '{REF} Call vs FreeBayes — detailed (vcfeval)'"
 
+rule vcfeval_fb_detailed_ingraph_plot:
+    """In-graph-only variant of vcfeval_fb_detailed_plot — drops the FB-only
+    not-in-graph bucket, leaving only Shared / Call only / FreeBayes only
+    (where 'FreeBayes only' = FP positions present in the deconstructed graph
+    VCF). Embedded as a second sub-panel in figure 4b."""
+    input:
+        tp_baseline=expand(f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/tp-baseline.vcf.gz", sample=SAMPLES, allow_missing=True),
+        fp=expand(f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/fp.vcf.gz", sample=SAMPLES, allow_missing=True),
+        fn=expand(f"{OUT_DIR}/vcfeval-fb/{{filt}}/{{sample}}/fn.vcf.gz", sample=SAMPLES, allow_missing=True),
+        giab_beds=augref_giab_strat_beds(),
+    output:
+        f"{OUT_DIR}/merged.call-vs-fb.{{filt}}-ingraph.vcfeval-detailed.png",
+        f"{OUT_DIR}/merged.call-vs-fb.{{filt}}-ingraph.vcfeval-detailed.tsv",
+    params:
+        vcfeval_dirs=lambda wc, input: ",".join(
+            [f"{OUT_DIR}/vcfeval-fb/{wc.filt}/{s}" for s in SAMPLES]),
+        sample_names=",".join(SAMPLES),
+    resources:
+        mem_mb=32000,
+        runtime=240,
+    shell:
+        "ulimit -s unlimited && Rscript scripts/vcfeval-detailed.R"
+        " {OUT_DIR}/merged.call-vs-fb.{wildcards.filt}-ingraph"
+        " --vcfeval-dirs {params.vcfeval_dirs}"
+        " --samples {params.sample_names}"
+        " --giab-beds {input.giab_beds[0]},{input.giab_beds[1]},{input.giab_beds[2]}"
+        " --giab-names " + ",".join(GIAB_STRAT_DISPLAY) +
+        " --label-b FreeBayes"
+        " --in-graph-only"
+        " --filter-label '{wildcards.filt} only'"
+        " --title '{REF} Call vs FreeBayes — detailed (in-graph only)'"
+
 rule vcfeval_bc_detailed_plot:
     """bcftools-vs-vg-call vcfeval plot — sibling of vcfeval_fb_detailed_plot,
     same layout / partition, but with bcftools as the FP side. Kept in
@@ -5146,6 +5178,8 @@ rule summary_freebayes:
         vcfeval=f"{OUT_DIR}/merged.call-vs-fb.pass.vcfeval-compare.png",
         vcfeval_detailed=([f"{OUT_DIR}/merged.call-vs-fb.pass.vcfeval-detailed.png"]
                           if giab_strat_configured() else []),
+        vcfeval_detailed_ingraph=([f"{OUT_DIR}/merged.call-vs-fb.pass-ingraph.vcfeval-detailed.png"]
+                                  if giab_strat_configured() else []),
         fb_giab=[f"{OUT_DIR}/merged.fb.sites.pass.giab-strat.png"] if giab_strat_configured() else [],
         annot_snp=[f"{OUT_DIR}/merged.freebayes.annot-snp-tstv.pass.png"] if annotation_inputs() else [],
     output:
@@ -5159,6 +5193,7 @@ rule summary_freebayes:
              f"'FB Per-Sample Types (PASS):{input.fb_per_sample}'",
              f"'Call vs FB (vcfeval):{input.vcfeval}'"]
             + ([f"'Call vs FB — detailed:{input.vcfeval_detailed[0]}'"] if input.vcfeval_detailed else [])
+            + ([f"'Call vs FB — detailed (in-graph only):{input.vcfeval_detailed_ingraph[0]}'"] if input.vcfeval_detailed_ingraph else [])
             + ([f"'FB GIAB Stratification:{input.fb_giab[0]}'"] if input.fb_giab else [])
             + ([f"'FB SNP Ts/Tv by Annotation:{input.annot_snp[0]}'"] if input.annot_snp else [])
         ),

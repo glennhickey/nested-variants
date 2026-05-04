@@ -59,6 +59,7 @@ giab_beds     <- NULL
 giab_names    <- NULL
 filter_label_arg <- ""
 label_b       <- "FreeBayes"
+in_graph_only <- FALSE
 
 i <- 2
 while (i <= length(args)) {
@@ -76,6 +77,8 @@ while (i <= length(args)) {
     filter_label_arg <- args[i + 1]; i <- i + 2
   } else if (args[i] == "--label-b" && i + 1 <= length(args)) {
     label_b <- args[i + 1]; i <- i + 2
+  } else if (args[i] == "--in-graph-only") {
+    in_graph_only <- TRUE; i <- i + 1
   } else {
     i <- i + 1
   }
@@ -100,7 +103,13 @@ if (is.null(title)) title <- paste("Call vs", label_b, "— detailed (vcfeval)")
 # lets the same script drive panels 4b-d (FreeBayes) and 4d-d (bcftools).
 cat_shared_label   <- "Shared"
 cat_call_only      <- "Call only"
-cat_b_in_graph     <- paste0(label_b, " only (in graph)")
+# When --in-graph-only, drop the not-in-graph bucket entirely and label the
+# remaining FP bucket as plain "<caller> only" (no parenthetical).
+cat_b_in_graph     <- if (in_graph_only) {
+  paste0(label_b, " only")
+} else {
+  paste0(label_b, " only (in graph)")
+}
 cat_b_not_in_graph <- paste0(label_b, " only (not in graph)")
 
 # Canonicalise the GIAB names to the display values used throughout the
@@ -313,7 +322,13 @@ for (si in seq_len(n_samples)) {
   tp[, category := cat_shared_label]
   fn[, category := cat_call_only]
   if (nrow(fp) > 0) {
-    fp[, category := fifelse(in_graph, cat_b_in_graph, cat_b_not_in_graph)]
+    if (in_graph_only) {
+      fp <- fp[in_graph == TRUE]
+      if (nrow(fp) > 0) fp[, category := cat_b_in_graph]
+      else              fp[, category := character(0)]
+    } else {
+      fp[, category := fifelse(in_graph, cat_b_in_graph, cat_b_not_in_graph)]
+    }
   } else {
     fp[, category := character(0)]
   }
@@ -342,7 +357,11 @@ counts_dt <- all_dt[, .(count = .N,
                     by = .(sample, ref_context, variant_type, category, giab)]
 
 # Ensure all combinations exist with zeros
-cat_levels  <- c(cat_shared_label, cat_call_only, cat_b_in_graph, cat_b_not_in_graph)
+cat_levels  <- if (in_graph_only) {
+  c(cat_shared_label, cat_call_only, cat_b_in_graph)
+} else {
+  c(cat_shared_label, cat_call_only, cat_b_in_graph, cat_b_not_in_graph)
+}
 type_levels <- c("SNP", "Indel/MNP", "SV", "Other")
 present_giab <- intersect(giab_order, unique(counts_dt$giab))
 if (length(present_giab) == 0) present_giab <- giab_order
@@ -402,7 +421,7 @@ snp_bar[, keep := !is.na(tstv) & bar_total > 0 &
                   mean_count >= 0.12 * bar_total]
 
 cat_colors_shape <- setNames(
-  c("forestgreen", "steelblue", "coral", "firebrick4"),
+  c("forestgreen", "steelblue", "coral", "firebrick4")[seq_along(cat_levels)],
   cat_levels
 )
 
@@ -423,7 +442,11 @@ p <- ggplot(bar_summary,
             size = 2.8, color = "white") +
   labs(title = title,
        subtitle = paste0("Call vs ", label_b, " via vcfeval", filter_label,
-                         " — ", label_b, "-only split by graph membership",
+                         if (in_graph_only) {
+                           paste0(" — ", label_b, "-only restricted to in-graph")
+                         } else {
+                           paste0(" — ", label_b, "-only split by graph membership")
+                         },
                          ", stacks = GIAB region, mean across N=",
                          n_samples, " samples",
                          "; text on SNP bars = Ts/Tv"),
