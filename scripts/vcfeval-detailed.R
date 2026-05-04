@@ -345,7 +345,9 @@ for (si in seq_len(n_samples)) {
 
 all_dt <- rbindlist(rows, use.names = TRUE, fill = TRUE)
 if (drop_sv && nrow(all_dt) > 0) {
-  all_dt <- all_dt[variant_type != "SV"]
+  # Paper figure layout: when SVs are dropped, also drop the "Other" fallback
+  # type so the facets produce a clean 2-ref_context × 2-variant_type grid.
+  all_dt <- all_dt[variant_type %in% c("SNP", "Indel/MNP")]
 }
 if (nrow(all_dt) == 0) {
   cat("No records found. Writing empty outputs.\n")
@@ -369,7 +371,7 @@ cat_levels  <- if (in_graph_only) {
   c(cat_shared_label, cat_call_only, cat_b_in_graph, cat_b_not_in_graph)
 }
 type_levels <- if (drop_sv) {
-  c("SNP", "Indel/MNP", "Other")
+  c("SNP", "Indel/MNP")
 } else {
   c("SNP", "Indel/MNP", "SV", "Other")
 }
@@ -443,7 +445,8 @@ p <- ggplot(bar_summary,
   # ~10x and SVs by ~100x, so a shared scale hides the smaller types.
   # `facet_grid` forces axis alignment across rows/cols and would
   # squash the non-SNP bars to invisibility.
-  facet_wrap(vars(ref_context, variant_type), scales = "free", ncol = 3) +
+  facet_wrap(vars(ref_context, variant_type), scales = "free",
+             ncol = if (drop_sv) 2 else 3) +
   scale_fill_manual(values = giab_colors, name = "GIAB region", drop = FALSE) +
   scale_y_continuous(labels = scales::comma, sec.axis = dup_axis(name = NULL)) +
   geom_text(data = snp_bar[keep == TRUE],
