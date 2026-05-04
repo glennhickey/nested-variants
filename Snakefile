@@ -4104,6 +4104,7 @@ rule vcfeval_fb_detailed_ingraph_plot:
         " --giab-names " + ",".join(GIAB_STRAT_DISPLAY) +
         " --label-b FreeBayes"
         " --in-graph-only"
+        " --drop-sv"
         " --filter-label '{wildcards.filt} only'"
         " --title '{REF} Call vs FreeBayes — detailed (in-graph only)'"
 

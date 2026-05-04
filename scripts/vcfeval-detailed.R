@@ -60,6 +60,7 @@ giab_names    <- NULL
 filter_label_arg <- ""
 label_b       <- "FreeBayes"
 in_graph_only <- FALSE
+drop_sv       <- FALSE
 
 i <- 2
 while (i <= length(args)) {
@@ -79,6 +80,8 @@ while (i <= length(args)) {
     label_b <- args[i + 1]; i <- i + 2
   } else if (args[i] == "--in-graph-only") {
     in_graph_only <- TRUE; i <- i + 1
+  } else if (args[i] == "--drop-sv") {
+    drop_sv <- TRUE; i <- i + 1
   } else {
     i <- i + 1
   }
@@ -341,6 +344,9 @@ for (si in seq_len(n_samples)) {
 }
 
 all_dt <- rbindlist(rows, use.names = TRUE, fill = TRUE)
+if (drop_sv && nrow(all_dt) > 0) {
+  all_dt <- all_dt[variant_type != "SV"]
+}
 if (nrow(all_dt) == 0) {
   cat("No records found. Writing empty outputs.\n")
   file.create(paste0(prefix, ".vcfeval-detailed.png"))
@@ -362,7 +368,11 @@ cat_levels  <- if (in_graph_only) {
 } else {
   c(cat_shared_label, cat_call_only, cat_b_in_graph, cat_b_not_in_graph)
 }
-type_levels <- c("SNP", "Indel/MNP", "SV", "Other")
+type_levels <- if (drop_sv) {
+  c("SNP", "Indel/MNP", "Other")
+} else {
+  c("SNP", "Indel/MNP", "SV", "Other")
+}
 present_giab <- intersect(giab_order, unique(counts_dt$giab))
 if (length(present_giab) == 0) present_giab <- giab_order
 
