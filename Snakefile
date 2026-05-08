@@ -2533,7 +2533,7 @@ rule deconstruct_sites_stats:
             if giab_strat_configured() else ""),
     shell:
         "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{OUT_NAME}.sites"
-        " --mode sites --af-step 0.05 --title '{REF} Deconstruct'"
+        " --mode sites --af-step 0.05 --title '{REF} GRef'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample"
         " --populations {input.populations} --ref-sample {REF}"
@@ -2578,7 +2578,7 @@ rule deconstruct_variants_stats:
             if giab_strat_configured() else ""),
     shell:
         "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{OUT_NAME}.variants"
-        " --mode variants --af-step 0.05 --title '{REF} Deconstruct'"
+        " --mode variants --af-step 0.05 --title '{REF} GRef'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample --ref-sample {REF}"
         " --threads {threads}"
@@ -4988,7 +4988,7 @@ rule deconstruct_records:
     shell:
         "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input} {OUT_DIR}/{OUT_NAME}"
         " --mode sites --dump-records --records-only"
-        " --title '{REF} Deconstruct'"
+        " --title '{REF} GRef'"
 
 rule pantree_compare:
     """Side-by-side comparison of our deconstruct vs pantree"""
@@ -5008,7 +5008,28 @@ rule pantree_compare:
         "ulimit -s unlimited && Rscript scripts/pantree-compare.R"
         " --ours {input.ours} --pantree {input.pantree}"
         " --prefix {OUT_DIR}/{OUT_NAME}"
-        " --title 'Deconstruct vs Pantree'"
+        " --title 'GRef vs Pantree'"
+
+rule pantree_compare_3panel:
+    """Three-category GRef-vs-pantree summary — SNP / Indel+MNP / SV with
+    independent y-axes, ref-context-stacked bars and Ts/Tv on SNP bars.
+    Reads the same site-level stats TSVs already produced by vcf-stats.R, so
+    no extra heavy work.  Embedded as panel 6f in summary_pantree."""
+    input:
+        ours=f"{OUT_DIR}/{OUT_NAME}.sites.vcf-stats.tsv",
+        pantree=f"{OUT_DIR}/pantree.vcf-stats.tsv",
+    output:
+        f"{OUT_DIR}/{OUT_NAME}.pantree-compare-3panel.png",
+        f"{OUT_DIR}/{OUT_NAME}.pantree-compare-3panel.tsv",
+    resources:
+        mem_mb=4000,
+        runtime=30,
+    shell:
+        "ulimit -s unlimited && Rscript scripts/pantree-compare-3panel.R"
+        " --ours {input.ours} --pantree {input.pantree}"
+        " --prefix {OUT_DIR}/{OUT_NAME}"
+        " --ours-label GRef --pantree-label Pantree"
+        " --title '{REF} GRef vs Pantree'"
 
 rule pantree_density:
     """Pantree records TSV → chromosome density ideogram"""
@@ -5094,7 +5115,7 @@ rule summary_deconstruct:
     shell:
         "python3 scripts/compose-summary.py"
         " --output {output}"
-        " --title 'Deconstruct Variant Catalog'"
+        " --title 'GRef Variant Catalog'"
         " --cols 2"
         " --panels {params.panels}"
 
@@ -5580,6 +5601,7 @@ rule summary_pantree:
         size_dist=f"{OUT_DIR}/{OUT_NAME}.pantree-size-dist.png",
         af=f"{OUT_DIR}/{OUT_NAME}.pantree-af.png",
         density=f"{OUT_DIR}/pantree.density.png",
+        three_panel=f"{OUT_DIR}/{OUT_NAME}.pantree-compare-3panel.png",
     output:
         f"{OUT_DIR}/6.pantree-summary.png",
     resources:
@@ -5596,6 +5618,7 @@ rule summary_pantree:
         " 'Size Distribution:{input.size_dist}'"
         " 'AF Spectrum:{input.af}'"
         " 'Density Ideogram:{input.density}'"
+        " 'GRef vs Pantree (3-category):{input.three_panel}'"
 
 ############################################################################
 # FreeBayes concordance summary panels

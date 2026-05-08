@@ -397,7 +397,7 @@ rule vcf_stats_per_chrom:
         "{RSCRIPT} vcf-stats.R"
         " {input.records} {OUT}/{wildcards.chrom}.sites"
         " --tsv --mode sites --af-step 0.05"
-        " --title '{REF} {wildcards.chrom} Deconstruct'"
+        " --title '{REF} {wildcards.chrom} GRef'"
         " --segs {input.segs}"
         " --per-sample --per-sample-vcf {input.vcf}"
         " --ref-sample {REF}"
@@ -435,7 +435,7 @@ rule vcf_stats_aggregate:
         "{RSCRIPT} vcf-stats.R"
         " {input.records} {OUT}/all.sites"
         " --tsv --mode sites --af-step 0.05"
-        " --title '{REF} Deconstruct (All Chromosomes)'"
+        " --title '{REF} GRef (All Chromosomes)'"
         " --segs {input.segs}"
         " --ref-sample {REF}"
 
@@ -477,7 +477,7 @@ rule summary_deconstruct:
     shell:
         "python3 {SCRIPTS}/compose-summary.py"
         " --output {output}"
-        " --title 'Deconstruct Variant Catalog (All Chromosomes)'"
+        " --title 'GRef Variant Catalog (All Chromosomes)'"
         " --cols 2"
         " --panels"
         " 'Variant Types:{input.types}'"
@@ -547,7 +547,7 @@ rule summary_deconstruct_by_chrom:
     shell:
         "python3 {SCRIPTS}/compose-summary.py"
         " --output {output}"
-        " --title 'Deconstruct by Chromosome'"
+        " --title 'GRef by Chromosome'"
         " --cols 2"
         " --panels"
         " 'SNP Counts:{input.snp}'"
@@ -573,7 +573,7 @@ rule summary_per_sample_by_chrom:
     shell:
         "python3 {SCRIPTS}/compose-summary.py"
         " --output {output}"
-        " --title 'Deconstruct Per-Sample Counts by Chromosome'"
+        " --title 'GRef Per-Sample Counts by Chromosome'"
         " --cols 2"
         " --panels"
         " ' :{input.snp}'"
@@ -615,7 +615,7 @@ rule summary_per_sample_by_chrom_combined:
     shell:
         "python3 {SCRIPTS}/compose-summary.py"
         " --output {output}"
-        " --title 'Deconstruct Per-Sample Counts by Chromosome (off- + on-ref)'"
+        " --title 'GRef Per-Sample Counts by Chromosome (off- + on-ref)'"
         " --cols 1"
         " --panels"
         " ' :{input.snp}'"
@@ -697,7 +697,7 @@ rule summary_per_haplotype_by_chrom_combined:
     shell:
         "python3 {SCRIPTS}/compose-summary.py"
         " --output {output}"
-        " --title 'Deconstruct Per-Haplotype Counts by Chromosome (off- + on-ref)'"
+        " --title 'GRef Per-Haplotype Counts by Chromosome (off- + on-ref)'"
         " --cols 1"
         " --panels"
         " ' :{input.snp}'"

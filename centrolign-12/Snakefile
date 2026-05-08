@@ -382,7 +382,7 @@ rule vcf_stats:
         "Rscript vcf-stats.R"
         " {input.vcf} {OUT}/{NAME}.sites"
         " --mode sites --af-step 0.05"
-        " --title '{REF} chr12 Deconstruct'"
+        " --title '{REF} chr12 GRef'"
         " --segs {input.segs}"
         " --per-sample --ref-sample {REF}"
 
@@ -420,7 +420,7 @@ rule summary_deconstruct:
     shell:
         "python3 {SCRIPTS}/compose-summary.py"
         " --output {output}"
-        " --title 'Deconstruct Variant Catalog'"
+        " --title 'GRef Variant Catalog'"
         " --cols 2"
         " --panels"
         " 'Variant Types:{input.types}'"

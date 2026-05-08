@@ -29,7 +29,7 @@ ours_path    <- NULL
 pantree_path <- NULL
 prefix       <- NULL
 title        <- "Variant Catalog Comparison"
-ours_label   <- "Deconstruct"
+ours_label   <- "GRef"
 pantree_label <- "Pantree"
 
 i <- 1
