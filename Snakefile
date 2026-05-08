@@ -328,6 +328,66 @@ GIAB_STRAT_DISPLAY = ["Easy", "Segdup", "Other_Difficult"]
 def giab_strat_configured():
     return bool(config.get("giab_strat", ""))
 
+# ---------------------------------------------------------------------------
+# vcf-stats.R compute / plot split
+#
+# Each stats target now has two paired rules:
+#   <name>_compute  → runs `vcf-stats.R --no-plots`, writes TSVs only
+#   <name>_plot     → runs `vcf-stats.R --plot-only`, writes PNGs (+ optional
+#                     PDFs) by reading those TSVs back from disk
+#
+# Helpers below produce the per-prefix list of TSV / PNG outputs so the same
+# rule body can be reused across the (~17) stats targets.
+# ---------------------------------------------------------------------------
+def emit_pdf_enabled():
+    return bool(config.get("emit_pdf", False))
+
+def vcf_stats_pdf_arg():
+    return " --pdf" if emit_pdf_enabled() else ""
+
+def vcf_stats_tsv_outputs(prefix, has_annot=False, has_giab=False,
+                          has_per_sample=False, has_populations=False):
+    """TSV outputs of a vcf-stats.R *_compute rule."""
+    out = [
+        f"{prefix}.vcf-stats.tsv",
+        f"{prefix}.size-dist.tsv",
+        f"{prefix}.af-spectrum.tsv",
+    ]
+    if has_annot:
+        out += [f"{prefix}.vcf-stats-by-annot.tsv",
+                f"{prefix}.annot-exclusive.tsv"]
+    if has_giab:
+        out += [f"{prefix}.giab-strat.tsv"]
+    if has_per_sample:
+        out += [f"{prefix}.per-sample-types.tsv"]
+        if has_populations:
+            out += [f"{prefix}.per-sample-types-by-pop.tsv"]
+        if has_giab:
+            out += [f"{prefix}.per-sample-giab-strat.tsv"]
+    return out
+
+def vcf_stats_plot_outputs(prefix, has_annot=False, has_giab=False,
+                           has_per_sample=False, has_populations=False):
+    """PNG outputs of a vcf-stats.R *_plot rule (paths match the legacy rule)."""
+    out = [
+        f"{prefix}.variant-types.png",
+        f"{prefix}.size-dist.png",
+        f"{prefix}.size-dist-log.png",
+        f"{prefix}.af-spectrum.png",
+    ]
+    if has_annot:
+        out += [f"{prefix}.variant-types-by-annot.png"]
+    if has_giab:
+        out += [f"{prefix}.giab-strat.png"]
+    if has_per_sample:
+        out += [f"{prefix}.per-sample-types.png",
+                f"{prefix}.per-sample-sv-types.png"]
+        if has_populations:
+            out += [f"{prefix}.per-sample-types-by-pop.png"]
+        if has_giab:
+            out += [f"{prefix}.per-sample-giab-strat.png"]
+    return out
+
 def giab_strat_beds():
     """Return the 3 source GIAB partition BED paths from config prefix."""
     prefix = config.get("giab_strat", "")
@@ -2492,7 +2552,9 @@ rule merged_pg_plots:
 ############################################################################
 
 rule deconstruct_sites_stats:
-    """Deconstruct VCF → site-level stats + plots (includes AF spectrum)"""
+    """GRef VCF → site-level stats TSVs (heavy: full VCF traversal + per-sample
+    carrier tally). Companion deconstruct_sites_stats_plot reads these TSVs
+    back to render figures, so plot tweaks don't retrigger this rule."""
     input:
         vcf=f"{OUT_DIR}/{OUT_NAME}.tr.vcf.gz",
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
@@ -2501,25 +2563,12 @@ rule deconstruct_sites_stats:
         populations="sample-super-populations.tsv",
     threads: rule_cpus("deconstruct_stats", 32)
     output:
-        f"{OUT_DIR}/{OUT_NAME}.sites.vcf-stats.tsv",
-        f"{OUT_DIR}/{OUT_NAME}.sites.variant-types.png",
-        f"{OUT_DIR}/{OUT_NAME}.sites.size-dist.png",
-        f"{OUT_DIR}/{OUT_NAME}.sites.size-dist-log.png",
-        f"{OUT_DIR}/{OUT_NAME}.sites.af-spectrum.png",
-        *([ f"{OUT_DIR}/{OUT_NAME}.sites.variant-types-by-annot.png",
-            f"{OUT_DIR}/{OUT_NAME}.sites.vcf-stats-by-annot.tsv"]
-          if annotation_inputs() else []),
-        *([ f"{OUT_DIR}/{OUT_NAME}.sites.giab-strat.png",
-            f"{OUT_DIR}/{OUT_NAME}.sites.giab-strat.tsv"]
-          if giab_strat_configured() else []),
-        f"{OUT_DIR}/{OUT_NAME}.sites.per-sample-types.png",
-        f"{OUT_DIR}/{OUT_NAME}.sites.per-sample-types.tsv",
-        f"{OUT_DIR}/{OUT_NAME}.sites.per-sample-types-by-pop.png",
-        f"{OUT_DIR}/{OUT_NAME}.sites.per-sample-types-by-pop.tsv",
-        f"{OUT_DIR}/{OUT_NAME}.sites.per-sample-sv-types.png",
-        *([ f"{OUT_DIR}/{OUT_NAME}.sites.per-sample-giab-strat.png",
-            f"{OUT_DIR}/{OUT_NAME}.sites.per-sample-giab-strat.tsv"]
-          if giab_strat_configured() else []),
+        *vcf_stats_tsv_outputs(
+            f"{OUT_DIR}/{OUT_NAME}.sites",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True,
+            has_populations=True),
     resources:
         mem_mb=int(rule_mem_gb("deconstruct_stats", 512)) * 1024,
         runtime=2880,
@@ -2533,11 +2582,36 @@ rule deconstruct_sites_stats:
             if giab_strat_configured() else ""),
     shell:
         "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{OUT_NAME}.sites"
-        " --mode sites --af-step 0.05 --title '{REF} GRef'"
+        " --mode sites --af-step 0.05 --title '{REF} GRef' --no-plots"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample"
         " --populations {input.populations} --ref-sample {REF}"
         " --threads {threads}"
+
+rule deconstruct_sites_stats_plot:
+    """Render site-level GRef figures from the TSVs produced by
+    deconstruct_sites_stats — cheap; the heavy work is already cached."""
+    input:
+        *vcf_stats_tsv_outputs(
+            f"{OUT_DIR}/{OUT_NAME}.sites",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True,
+            has_populations=True),
+    output:
+        *vcf_stats_plot_outputs(
+            f"{OUT_DIR}/{OUT_NAME}.sites",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True,
+            has_populations=True),
+    resources:
+        mem_mb=8000,
+        runtime=120,
+    shell:
+        "ulimit -s unlimited && Rscript scripts/vcf-stats-plot.R"
+        " {OUT_DIR}/{OUT_NAME}.sites"
+        " --title '{REF} GRef' --mode sites" + vcf_stats_pdf_arg()
 
 rule deconstruct_variants_stats:
     """Deconstruct VCF → variant-level stats + plots (uses pre-normed VCF)"""

@@ -56,6 +56,9 @@ records_only <- FALSE
 segs_file    <- NULL
 segs_strip_prefix <- NULL
 threads      <- 1
+no_plots     <- FALSE   # --no-plots: TSV-only (compute phase)
+plot_only    <- FALSE   # --plot-only: skip VCF read, load TSVs back, replot
+emit_pdf     <- FALSE   # --pdf: emit cairo_pdf alongside each PNG
 
 i <- 3
 while (i <= length(args)) {
@@ -113,9 +116,40 @@ while (i <= length(args)) {
   } else if (args[i] == "--threads" && i + 1 <= length(args)) {
     threads <- as.integer(args[i + 1])
     i <- i + 2
+  } else if (args[i] == "--no-plots") {
+    no_plots <- TRUE
+    i <- i + 1
+  } else if (args[i] == "--plot-only") {
+    plot_only <- TRUE
+    i <- i + 1
+  } else if (args[i] == "--pdf") {
+    emit_pdf <- TRUE
+    i <- i + 1
   } else {
     i <- i + 1
   }
+}
+if (no_plots && plot_only) {
+  cat("Error: --no-plots and --plot-only are mutually exclusive\n")
+  quit(status = 1)
+}
+
+# --plot-only: delegate to scripts/vcf-stats-plot.R, which reads the TSVs
+# already on disk and emits PNGs (and PDFs when --pdf). Skips the entire heavy
+# VCF-reading + per-record + per-sample-carrier compute.
+if (plot_only) {
+  script_dir <- dirname(sub("^--file=", "", grep("^--file=", commandArgs(), value = TRUE)[1]))
+  if (is.na(script_dir) || !nzchar(script_dir)) script_dir <- "scripts"
+  plot_script <- file.path(script_dir, "vcf-stats-plot.R")
+  delegated_args <- c(shQuote(prefix))
+  if (!is.null(title))  delegated_args <- c(delegated_args, "--title", shQuote(title))
+  delegated_args <- c(delegated_args, "--mode",   mode)
+  delegated_args <- c(delegated_args, "--filter", filter)
+  if (emit_pdf) delegated_args <- c(delegated_args, "--pdf")
+  cmd <- paste("Rscript", shQuote(plot_script), paste(delegated_args, collapse = " "))
+  cat("plot-only: ", cmd, "\n", sep = "")
+  status <- system(cmd)
+  quit(status = status)
 }
 if (!mode %in% c("sites", "variants")) {
   cat("Error: --mode must be 'sites' or 'variants', got '", mode, "'\n", sep = "")
@@ -398,24 +432,20 @@ print(summary_dt)
 cat("\n")
 
 # ---------------------------------------------------------------------------
-# Helper: save PNG with cairo/ragg fallback
+# Helper: save PNG (and optional PDF) — shared with all other plotting scripts
 # ---------------------------------------------------------------------------
-save_png <- function(plot, file, width = 8, height = 6) {
-  tryCatch({
-    if (requireNamespace("ragg", quietly = TRUE)) {
-      ragg::agg_png(file, width = width, height = height, units = "in", res = 300)
-      print(plot)
-      dev.off()
-    } else {
-      ggsave(file, plot = plot, width = width, height = height, dpi = 300,
-             device = grDevices::png, type = "cairo")
-    }
-  }, error = function(e) {
-    grDevices::png(file, width = width * 300, height = height * 300, res = 300, type = "cairo")
-    print(plot)
-    dev.off()
-  })
-  cat("Saved:", file, "\n")
+source(file.path(if (is.na(script_dir) || !nzchar(script_dir)) "scripts" else script_dir,
+                 "plot-helpers.R"))
+emit_pdf_resolved <- pdf_enabled(cli_flag = emit_pdf)
+# In --no-plots mode (compute-only), save_png becomes a no-op so the rule
+# emits TSVs but no figures. The companion vcf-stats-plot.R rule renders
+# PNG/PDF from the TSVs — see Snakefile splits *_compute / *_plot.
+save_png <- if (no_plots) {
+  function(plot, file, width = 8, height = 6) invisible(NULL)
+} else {
+  function(plot, file, width = 8, height = 6) {
+    save_plot(plot, file, width = width, height = height, pdf = emit_pdf_resolved)
+  }
 }
 
 # ---------------------------------------------------------------------------
@@ -452,6 +482,8 @@ if (has_tr) {
   indel_types <- c("Insertion", "Deletion", "SV Insertion", "SV Deletion")
   tr_counts <- dt[variant_type %in% indel_types,
                   .(tr_count = sum(is_repeat)), by = .(ref_context, variant_type)]
+  fwrite(tr_counts, paste0(prefix, ".tr-counts.tsv"), sep = "\t")
+  cat("Wrote TR counts:", paste0(prefix, ".tr-counts.tsv"), "\n")
   plot_dt <- merge(plot_dt, tr_counts, by = c("ref_context", "variant_type"), all.x = TRUE)
   plot_dt[is.na(tr_count), tr_count := 0L]
 
@@ -512,6 +544,8 @@ if (nrow(size_dt) > 0) {
   size_dt[, panel := fifelse(size < 50L, "Small (1-49 bp)", "Structural (50-1000 bp)")]
   size_dt[, panel := factor(panel, levels = c("Small (1-49 bp)", "Structural (50-1000 bp)"))]
   size_counts <- size_dt[size <= 1000, .(count = .N), by = .(size, direction, ref_context, panel)]
+  fwrite(size_counts, paste0(prefix, ".size-dist.tsv"), sep = "\t")
+  cat("Wrote size distribution:", paste0(prefix, ".size-dist.tsv"), "\n")
 
   p2 <- ggplot(size_counts, aes(x = size, y = count, color = direction, linetype = ref_context)) +
     geom_line(linewidth = 0.6) +
@@ -544,6 +578,10 @@ if (nrow(size_dt) > 0) {
   # Create empty files so Snakemake sees the outputs
   file.create(paste0(prefix, ".size-dist.png"))
   file.create(paste0(prefix, ".size-dist-log.png"))
+  fwrite(data.table(size = integer(), direction = character(),
+                    ref_context = character(), panel = character(),
+                    count = integer()),
+         paste0(prefix, ".size-dist.tsv"), sep = "\t")
 }
 
 # ---------------------------------------------------------------------------
@@ -566,6 +604,8 @@ if (has_af) {
 
   af_counts <- dt[, .(count = .N), by = .(af_plot, ref_context)]
   af_unique <- sort(unique(af_counts$af_plot))
+  fwrite(af_counts, paste0(prefix, ".af-spectrum.tsv"), sep = "\t")
+  cat("Wrote AF spectrum:", paste0(prefix, ".af-spectrum.tsv"), "\n")
 
   y_label <- if (mode == "sites") "Sites (log scale)" else "Variants (log scale)"
   common_theme <- theme_minimal() +
@@ -594,6 +634,9 @@ if (has_af) {
   cat("No AF field; skipping allele frequency spectrum plot.\n")
   # Create empty file so Snakemake sees the output
   file.create(paste0(prefix, ".af-spectrum.png"))
+  fwrite(data.table(af_plot = numeric(), ref_context = character(),
+                    count = integer()),
+         paste0(prefix, ".af-spectrum.tsv"), sep = "\t")
 }
 
 # ---------------------------------------------------------------------------
@@ -846,6 +889,9 @@ if (!is.null(giab_strat_beds_arg)) {
       giab_tstv <- giab_tstv[tv > 0]
       if (nrow(giab_tstv) > 0) {
         giab_tstv[, tstv_ratio := round(ts / tv, 2)]
+        # Persist for plot-only mode (joined with SNP bar counts later)
+        fwrite(giab_tstv, paste0(prefix, ".giab-strat-tstv.tsv"), sep = "\t")
+        cat("Wrote GIAB Ts/Tv:", paste0(prefix, ".giab-strat-tstv.tsv"), "\n")
         giab_tstv[, giab_region := factor(giab_region, levels = region_levels)]
         giab_tstv[, variant_type := factor("SNP", levels = levels(giab_plot_dt$variant_type))]
         giab_tstv[, type_class := factor("SNP", levels = levels(giab_plot_dt$type_class))]
