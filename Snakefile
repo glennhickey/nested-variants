@@ -2614,7 +2614,7 @@ rule deconstruct_sites_stats_plot:
         " --title '{REF} GRef' --mode sites" + vcf_stats_pdf_arg()
 
 rule deconstruct_variants_stats:
-    """Deconstruct VCF → variant-level stats + plots (uses pre-normed VCF)"""
+    """GRef VCF → variant-level stats TSVs (compute phase; pre-normed VCF)."""
     input:
         vcf=f"{OUT_DIR}/{OUT_NAME}.tr.normed.vcf.gz",
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
@@ -2622,23 +2622,12 @@ rule deconstruct_variants_stats:
         giab_beds=augref_giab_strat_beds(),
     threads: rule_cpus("deconstruct_stats", 32)
     output:
-        f"{OUT_DIR}/{OUT_NAME}.variants.vcf-stats.tsv",
-        f"{OUT_DIR}/{OUT_NAME}.variants.variant-types.png",
-        f"{OUT_DIR}/{OUT_NAME}.variants.size-dist.png",
-        f"{OUT_DIR}/{OUT_NAME}.variants.size-dist-log.png",
-        f"{OUT_DIR}/{OUT_NAME}.variants.af-spectrum.png",
-        *([ f"{OUT_DIR}/{OUT_NAME}.variants.variant-types-by-annot.png",
-            f"{OUT_DIR}/{OUT_NAME}.variants.vcf-stats-by-annot.tsv"]
-          if annotation_inputs() else []),
-        *([ f"{OUT_DIR}/{OUT_NAME}.variants.giab-strat.png",
-            f"{OUT_DIR}/{OUT_NAME}.variants.giab-strat.tsv"]
-          if giab_strat_configured() else []),
-        f"{OUT_DIR}/{OUT_NAME}.variants.per-sample-types.png",
-        f"{OUT_DIR}/{OUT_NAME}.variants.per-sample-types.tsv",
-        f"{OUT_DIR}/{OUT_NAME}.variants.per-sample-sv-types.png",
-        *([ f"{OUT_DIR}/{OUT_NAME}.variants.per-sample-giab-strat.png",
-            f"{OUT_DIR}/{OUT_NAME}.variants.per-sample-giab-strat.tsv"]
-          if giab_strat_configured() else []),
+        *vcf_stats_tsv_outputs(
+            f"{OUT_DIR}/{OUT_NAME}.variants",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True,
+            has_populations=False),
     resources:
         mem_mb=int(rule_mem_gb("deconstruct_stats", 512)) * 1024,
         runtime=2880,
@@ -2652,29 +2641,47 @@ rule deconstruct_variants_stats:
             if giab_strat_configured() else ""),
     shell:
         "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{OUT_NAME}.variants"
-        " --mode variants --af-step 0.05 --title '{REF} GRef'"
+        " --mode variants --af-step 0.05 --title '{REF} GRef' --no-plots"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample --ref-sample {REF}"
         " --threads {threads}"
 
+rule deconstruct_variants_stats_plot:
+    """Render variant-level GRef figures from cached TSVs."""
+    input:
+        *vcf_stats_tsv_outputs(
+            f"{OUT_DIR}/{OUT_NAME}.variants",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True,
+            has_populations=False),
+    output:
+        *vcf_stats_plot_outputs(
+            f"{OUT_DIR}/{OUT_NAME}.variants",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True,
+            has_populations=False),
+    resources:
+        mem_mb=8000,
+        runtime=120,
+    shell:
+        "ulimit -s unlimited && Rscript scripts/vcf-stats-plot.R"
+        " {OUT_DIR}/{OUT_NAME}.variants"
+        " --title '{REF} GRef' --mode variants" + vcf_stats_pdf_arg()
+
 rule call_stats:
-    """Per-sample call VCF → variant stats + plots (one mode/filter combo)"""
+    """Per-sample call VCF → variant stats TSVs (compute phase)."""
     input:
         vcf=lambda wc: f"{OUT_DIR}/{wc.sample}.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/{wc.sample}.vcf.gz",
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
         annot_beds=call_annot_beds(),
         giab_beds=call_giab_strat_beds(),
     output:
-        f"{OUT_DIR}/{{sample}}.call.{{mode}}.{{filt}}.vcf-stats.tsv",
-        f"{OUT_DIR}/{{sample}}.call.{{mode}}.{{filt}}.variant-types.png",
-        f"{OUT_DIR}/{{sample}}.call.{{mode}}.{{filt}}.size-dist.png",
-        f"{OUT_DIR}/{{sample}}.call.{{mode}}.{{filt}}.size-dist-log.png",
-        *([ f"{OUT_DIR}/{{sample}}.call.{{mode}}.{{filt}}.variant-types-by-annot.png",
-            f"{OUT_DIR}/{{sample}}.call.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv"]
-          if annotation_inputs() else []),
-        *([ f"{OUT_DIR}/{{sample}}.call.{{mode}}.{{filt}}.giab-strat.png",
-            f"{OUT_DIR}/{{sample}}.call.{{mode}}.{{filt}}.giab-strat.tsv"]
-          if giab_strat_configured() else []),
+        *vcf_stats_tsv_outputs(
+            f"{OUT_DIR}/{{sample}}.call.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured()),
     resources:
         mem_mb=256000,
         runtime=2880,
@@ -2688,28 +2695,48 @@ rule call_stats:
             if giab_strat_configured() else ""),
     shell:
         "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{wildcards.sample}.call.{wildcards.mode}.{wildcards.filt}"
-        " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Call ({wildcards.sample})'"
+        " --mode {wildcards.mode} --filter {wildcards.filt} --no-plots"
+        " --title '{REF} Call ({wildcards.sample})'"
         " --segs {input.segs} --segs-strip-prefix '{AUGREF}#0#'"
         " {params.annot_arg} {params.giab_arg}"
 
+rule call_stats_plot:
+    """Render per-sample call figures from cached TSVs."""
+    input:
+        *vcf_stats_tsv_outputs(
+            f"{OUT_DIR}/{{sample}}.call.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured()),
+    output:
+        *vcf_stats_plot_outputs(
+            f"{OUT_DIR}/{{sample}}.call.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured()),
+    resources:
+        mem_mb=8000,
+        runtime=120,
+    shell:
+        "ulimit -s unlimited && Rscript scripts/vcf-stats-plot.R"
+        " {OUT_DIR}/{wildcards.sample}.call.{wildcards.mode}.{wildcards.filt}"
+        " --mode {wildcards.mode} --filter {wildcards.filt}"
+        " --title '{REF} Call ({wildcards.sample})'" + vcf_stats_pdf_arg()
+
+def _per_sample_caller_compute_rule(short, long_name, vcf_pattern):
+    """Helper note (Python def, not used by Snakemake) — see actual rules below."""
+    pass
+
 rule dv_stats:
-    """Per-sample DeepVariant VCF → variant stats + plots (one mode/filter combo)"""
+    """Per-sample DeepVariant VCF → variant stats TSVs (compute phase)."""
     input:
         vcf=lambda wc: f"{OUT_DIR}/{wc.sample}.deepvariant.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/{wc.sample}.deepvariant.vcf.gz",
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
         annot_beds=augref_annot_beds(),
         giab_beds=augref_giab_strat_beds(),
     output:
-        f"{OUT_DIR}/{{sample}}.dv.{{mode}}.{{filt}}.vcf-stats.tsv",
-        f"{OUT_DIR}/{{sample}}.dv.{{mode}}.{{filt}}.variant-types.png",
-        f"{OUT_DIR}/{{sample}}.dv.{{mode}}.{{filt}}.size-dist.png",
-        f"{OUT_DIR}/{{sample}}.dv.{{mode}}.{{filt}}.size-dist-log.png",
-        *([ f"{OUT_DIR}/{{sample}}.dv.{{mode}}.{{filt}}.variant-types-by-annot.png",
-            f"{OUT_DIR}/{{sample}}.dv.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv"]
-          if annotation_inputs() else []),
-        *([ f"{OUT_DIR}/{{sample}}.dv.{{mode}}.{{filt}}.giab-strat.png",
-            f"{OUT_DIR}/{{sample}}.dv.{{mode}}.{{filt}}.giab-strat.tsv"]
-          if giab_strat_configured() else []),
+        *vcf_stats_tsv_outputs(
+            f"{OUT_DIR}/{{sample}}.dv.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured()),
     resources:
         mem_mb=256000,
         runtime=2880,
@@ -2723,28 +2750,44 @@ rule dv_stats:
             if giab_strat_configured() else ""),
     shell:
         "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{wildcards.sample}.dv.{wildcards.mode}.{wildcards.filt}"
-        " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} DeepVariant ({wildcards.sample})'"
+        " --mode {wildcards.mode} --filter {wildcards.filt} --no-plots"
+        " --title '{REF} DeepVariant ({wildcards.sample})'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --no-sv"
 
+rule dv_stats_plot:
+    """Render per-sample DeepVariant figures from cached TSVs."""
+    input:
+        *vcf_stats_tsv_outputs(
+            f"{OUT_DIR}/{{sample}}.dv.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured()),
+    output:
+        *vcf_stats_plot_outputs(
+            f"{OUT_DIR}/{{sample}}.dv.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured()),
+    resources:
+        mem_mb=8000,
+        runtime=120,
+    shell:
+        "ulimit -s unlimited && Rscript scripts/vcf-stats-plot.R"
+        " {OUT_DIR}/{wildcards.sample}.dv.{wildcards.mode}.{wildcards.filt}"
+        " --mode {wildcards.mode} --filter {wildcards.filt}"
+        " --title '{REF} DeepVariant ({wildcards.sample})'" + vcf_stats_pdf_arg()
+
 rule fb_stats:
-    """Per-sample FreeBayes VCF → variant stats + plots (one mode/filter combo)"""
+    """Per-sample FreeBayes VCF → variant stats TSVs (compute phase)."""
     input:
         vcf=lambda wc: f"{OUT_DIR}/{wc.sample}.freebayes.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/{wc.sample}.freebayes.vcf.gz",
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
         annot_beds=augref_annot_beds(),
         giab_beds=augref_giab_strat_beds(),
     output:
-        f"{OUT_DIR}/{{sample}}.fb.{{mode}}.{{filt}}.vcf-stats.tsv",
-        f"{OUT_DIR}/{{sample}}.fb.{{mode}}.{{filt}}.variant-types.png",
-        f"{OUT_DIR}/{{sample}}.fb.{{mode}}.{{filt}}.size-dist.png",
-        f"{OUT_DIR}/{{sample}}.fb.{{mode}}.{{filt}}.size-dist-log.png",
-        *([ f"{OUT_DIR}/{{sample}}.fb.{{mode}}.{{filt}}.variant-types-by-annot.png",
-            f"{OUT_DIR}/{{sample}}.fb.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv"]
-          if annotation_inputs() else []),
-        *([ f"{OUT_DIR}/{{sample}}.fb.{{mode}}.{{filt}}.giab-strat.png",
-            f"{OUT_DIR}/{{sample}}.fb.{{mode}}.{{filt}}.giab-strat.tsv"]
-          if giab_strat_configured() else []),
+        *vcf_stats_tsv_outputs(
+            f"{OUT_DIR}/{{sample}}.fb.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured()),
     resources:
         mem_mb=256000,
         runtime=2880,
@@ -2758,28 +2801,44 @@ rule fb_stats:
             if giab_strat_configured() else ""),
     shell:
         "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{wildcards.sample}.fb.{wildcards.mode}.{wildcards.filt}"
-        " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} FreeBayes ({wildcards.sample})'"
+        " --mode {wildcards.mode} --filter {wildcards.filt} --no-plots"
+        " --title '{REF} FreeBayes ({wildcards.sample})'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --no-sv"
 
+rule fb_stats_plot:
+    """Render per-sample FreeBayes figures from cached TSVs."""
+    input:
+        *vcf_stats_tsv_outputs(
+            f"{OUT_DIR}/{{sample}}.fb.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured()),
+    output:
+        *vcf_stats_plot_outputs(
+            f"{OUT_DIR}/{{sample}}.fb.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured()),
+    resources:
+        mem_mb=8000,
+        runtime=120,
+    shell:
+        "ulimit -s unlimited && Rscript scripts/vcf-stats-plot.R"
+        " {OUT_DIR}/{wildcards.sample}.fb.{wildcards.mode}.{wildcards.filt}"
+        " --mode {wildcards.mode} --filter {wildcards.filt}"
+        " --title '{REF} FreeBayes ({wildcards.sample})'" + vcf_stats_pdf_arg()
+
 rule bc_stats:
-    """Per-sample bcftools VCF → variant stats + plots (one mode/filter combo)"""
+    """Per-sample bcftools VCF → variant stats TSVs (compute phase)."""
     input:
         vcf=lambda wc: f"{OUT_DIR}/{wc.sample}.bcftools.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/{wc.sample}.bcftools.vcf.gz",
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
         annot_beds=augref_annot_beds(),
         giab_beds=augref_giab_strat_beds(),
     output:
-        f"{OUT_DIR}/{{sample}}.bc.{{mode}}.{{filt}}.vcf-stats.tsv",
-        f"{OUT_DIR}/{{sample}}.bc.{{mode}}.{{filt}}.variant-types.png",
-        f"{OUT_DIR}/{{sample}}.bc.{{mode}}.{{filt}}.size-dist.png",
-        f"{OUT_DIR}/{{sample}}.bc.{{mode}}.{{filt}}.size-dist-log.png",
-        *([ f"{OUT_DIR}/{{sample}}.bc.{{mode}}.{{filt}}.variant-types-by-annot.png",
-            f"{OUT_DIR}/{{sample}}.bc.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv"]
-          if annotation_inputs() else []),
-        *([ f"{OUT_DIR}/{{sample}}.bc.{{mode}}.{{filt}}.giab-strat.png",
-            f"{OUT_DIR}/{{sample}}.bc.{{mode}}.{{filt}}.giab-strat.tsv"]
-          if giab_strat_configured() else []),
+        *vcf_stats_tsv_outputs(
+            f"{OUT_DIR}/{{sample}}.bc.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured()),
     resources:
         mem_mb=256000,
         runtime=2880,
@@ -2793,28 +2852,44 @@ rule bc_stats:
             if giab_strat_configured() else ""),
     shell:
         "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{wildcards.sample}.bc.{wildcards.mode}.{wildcards.filt}"
-        " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} bcftools ({wildcards.sample})'"
+        " --mode {wildcards.mode} --filter {wildcards.filt} --no-plots"
+        " --title '{REF} bcftools ({wildcards.sample})'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --no-sv"
 
+rule bc_stats_plot:
+    """Render per-sample bcftools figures from cached TSVs."""
+    input:
+        *vcf_stats_tsv_outputs(
+            f"{OUT_DIR}/{{sample}}.bc.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured()),
+    output:
+        *vcf_stats_plot_outputs(
+            f"{OUT_DIR}/{{sample}}.bc.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured()),
+    resources:
+        mem_mb=8000,
+        runtime=120,
+    shell:
+        "ulimit -s unlimited && Rscript scripts/vcf-stats-plot.R"
+        " {OUT_DIR}/{wildcards.sample}.bc.{wildcards.mode}.{wildcards.filt}"
+        " --mode {wildcards.mode} --filter {wildcards.filt}"
+        " --title '{REF} bcftools ({wildcards.sample})'" + vcf_stats_pdf_arg()
+
 rule pg_stats:
-    """Per-sample PanGenie VCF → variant stats + plots (one mode/filter combo)"""
+    """Per-sample PanGenie VCF → variant stats TSVs (compute phase)."""
     input:
         vcf=lambda wc: f"{OUT_DIR}/{wc.sample}.pangenie.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/{wc.sample}.pangenie.vcf.gz",
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
         annot_beds=augref_annot_beds(),
         giab_beds=augref_giab_strat_beds(),
     output:
-        f"{OUT_DIR}/{{sample}}.pg.{{mode}}.{{filt}}.vcf-stats.tsv",
-        f"{OUT_DIR}/{{sample}}.pg.{{mode}}.{{filt}}.variant-types.png",
-        f"{OUT_DIR}/{{sample}}.pg.{{mode}}.{{filt}}.size-dist.png",
-        f"{OUT_DIR}/{{sample}}.pg.{{mode}}.{{filt}}.size-dist-log.png",
-        *([ f"{OUT_DIR}/{{sample}}.pg.{{mode}}.{{filt}}.variant-types-by-annot.png",
-            f"{OUT_DIR}/{{sample}}.pg.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv"]
-          if annotation_inputs() else []),
-        *([ f"{OUT_DIR}/{{sample}}.pg.{{mode}}.{{filt}}.giab-strat.png",
-            f"{OUT_DIR}/{{sample}}.pg.{{mode}}.{{filt}}.giab-strat.tsv"]
-          if giab_strat_configured() else []),
+        *vcf_stats_tsv_outputs(
+            f"{OUT_DIR}/{{sample}}.pg.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured()),
     resources:
         mem_mb=256000,
         runtime=2880,
@@ -2828,12 +2903,34 @@ rule pg_stats:
             if giab_strat_configured() else ""),
     shell:
         "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/{wildcards.sample}.pg.{wildcards.mode}.{wildcards.filt}"
-        " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} PanGenie ({wildcards.sample})'"
+        " --mode {wildcards.mode} --filter {wildcards.filt} --no-plots"
+        " --title '{REF} PanGenie ({wildcards.sample})'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --no-sv"
 
+rule pg_stats_plot:
+    """Render per-sample PanGenie figures from cached TSVs."""
+    input:
+        *vcf_stats_tsv_outputs(
+            f"{OUT_DIR}/{{sample}}.pg.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured()),
+    output:
+        *vcf_stats_plot_outputs(
+            f"{OUT_DIR}/{{sample}}.pg.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured()),
+    resources:
+        mem_mb=8000,
+        runtime=120,
+    shell:
+        "ulimit -s unlimited && Rscript scripts/vcf-stats-plot.R"
+        " {OUT_DIR}/{wildcards.sample}.pg.{wildcards.mode}.{wildcards.filt}"
+        " --mode {wildcards.mode} --filter {wildcards.filt}"
+        " --title '{REF} PanGenie ({wildcards.sample})'" + vcf_stats_pdf_arg()
+
 rule merged_call_stats:
-    """Merged call VCF → variant stats + plots (one mode/filter combo, includes AF spectrum)"""
+    """Merged call VCF → variant stats TSVs (compute phase)."""
     input:
         vcf=lambda wc: f"{OUT_DIR}/merged.call.pass-prefiltered{'.normed' if wc.mode == 'variants' else ''}.vcf.gz" if wc.filt == "pass" else (f"{OUT_DIR}/merged.call.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.call.vcf.gz"),
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
@@ -2841,24 +2938,11 @@ rule merged_call_stats:
         giab_beds=call_giab_strat_beds(),
     threads: rule_cpus("merged_stats", 32)
     output:
-        f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.vcf-stats.tsv",
-        f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.variant-types.png",
-        f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.size-dist.png",
-        f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.size-dist-log.png",
-        f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.af-spectrum.png",
-        *([ f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.variant-types-by-annot.png",
-            f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv",
-            f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.annot-exclusive.tsv"]
-          if annotation_inputs() else []),
-        *([ f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.giab-strat.png",
-            f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.giab-strat.tsv"]
-          if giab_strat_configured() else []),
-        f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.per-sample-types.png",
-        f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.per-sample-types.tsv",
-        f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.per-sample-sv-types.png",
-        *([ f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.per-sample-giab-strat.png",
-            f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}.per-sample-giab-strat.tsv"]
-          if giab_strat_configured() else []),
+        *vcf_stats_tsv_outputs(
+            f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True),
     resources:
         mem_mb=256000,
         runtime=2880,
@@ -2872,13 +2956,43 @@ rule merged_call_stats:
             if giab_strat_configured() else ""),
     shell:
         "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.call.{wildcards.mode}.{wildcards.filt}"
-        " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged Call'"
+        " --mode {wildcards.mode} --filter {wildcards.filt} --no-plots"
+        " --title '{REF} Merged Call'"
         " --segs {input.segs} --segs-strip-prefix '{AUGREF}#0#'"
         " {params.annot_arg} {params.giab_arg} --per-sample"
         " --threads {threads}"
 
+rule merged_call_stats_plot:
+    """Render merged call figures from cached TSVs."""
+    input:
+        *vcf_stats_tsv_outputs(
+            f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True),
+    output:
+        *vcf_stats_plot_outputs(
+            f"{OUT_DIR}/merged.call.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True),
+    resources:
+        mem_mb=8000,
+        runtime=120,
+    shell:
+        "ulimit -s unlimited && Rscript scripts/vcf-stats-plot.R"
+        " {OUT_DIR}/merged.call.{wildcards.mode}.{wildcards.filt}"
+        " --mode {wildcards.mode} --filter {wildcards.filt}"
+        " --title '{REF} Merged Call'" + vcf_stats_pdf_arg()
+
+def _merged_stats_pair(rule_prefix, file_prefix, *, vcf_lambda, annot_call,
+                       segs_strip_call, no_sv, title):
+    """Build the (compute, plot) rule pair body — written below as raw rules.
+    Kept as a comment block to keep the rules grep-friendly."""
+    pass
+
 rule merged_longread_call_stats:
-    """Merged long-read call VCF → variant stats + plots"""
+    """Merged long-read call VCF → variant stats TSVs (compute phase)."""
     input:
         vcf=lambda wc: f"{OUT_DIR}/merged.longread.call.pass-prefiltered{'.normed' if wc.mode == 'variants' else ''}.vcf.gz" if wc.filt == "pass" else (f"{OUT_DIR}/merged.longread.call.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.longread.call.vcf.gz"),
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
@@ -2886,24 +3000,11 @@ rule merged_longread_call_stats:
         giab_beds=call_giab_strat_beds(),
     threads: rule_cpus("merged_stats", 32)
     output:
-        f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.vcf-stats.tsv",
-        f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.variant-types.png",
-        f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.size-dist.png",
-        f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.size-dist-log.png",
-        f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.af-spectrum.png",
-        *([ f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.variant-types-by-annot.png",
-            f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv",
-            f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.annot-exclusive.tsv"]
-          if annotation_inputs() else []),
-        *([ f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.giab-strat.png",
-            f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.giab-strat.tsv"]
-          if giab_strat_configured() else []),
-        f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.per-sample-types.png",
-        f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.per-sample-types.tsv",
-        f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.per-sample-sv-types.png",
-        *([ f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.per-sample-giab-strat.png",
-            f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}.per-sample-giab-strat.tsv"]
-          if giab_strat_configured() else []),
+        *vcf_stats_tsv_outputs(
+            f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True),
     resources:
         mem_mb=256000,
         runtime=2880,
@@ -2917,13 +3018,36 @@ rule merged_longread_call_stats:
             if giab_strat_configured() else ""),
     shell:
         "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.longread.call.{wildcards.mode}.{wildcards.filt}"
-        " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged Long-Read Call'"
+        " --mode {wildcards.mode} --filter {wildcards.filt} --no-plots"
+        " --title '{REF} Merged Long-Read Call'"
         " --segs {input.segs} --segs-strip-prefix '{AUGREF}#0#'"
         " {params.annot_arg} {params.giab_arg} --per-sample"
         " --threads {threads}"
 
+rule merged_longread_call_stats_plot:
+    input:
+        *vcf_stats_tsv_outputs(
+            f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True),
+    output:
+        *vcf_stats_plot_outputs(
+            f"{OUT_DIR}/merged.longread.call.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True),
+    resources:
+        mem_mb=8000,
+        runtime=120,
+    shell:
+        "ulimit -s unlimited && Rscript scripts/vcf-stats-plot.R"
+        " {OUT_DIR}/merged.longread.call.{wildcards.mode}.{wildcards.filt}"
+        " --mode {wildcards.mode} --filter {wildcards.filt}"
+        " --title '{REF} Merged Long-Read Call'" + vcf_stats_pdf_arg()
+
 rule merged_longread_dv_stats:
-    """Merged long-read DeepVariant VCF → variant stats + plots"""
+    """Merged long-read DeepVariant VCF → variant stats TSVs (compute phase)."""
     input:
         vcf=lambda wc: f"{OUT_DIR}/merged.longread.deepvariant.pass-prefiltered{'.normed' if wc.mode == 'variants' else ''}.vcf.gz" if wc.filt == "pass" else (f"{OUT_DIR}/merged.longread.deepvariant.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.longread.deepvariant.vcf.gz"),
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
@@ -2931,23 +3055,11 @@ rule merged_longread_dv_stats:
         giab_beds=augref_giab_strat_beds(),
     threads: rule_cpus("merged_stats", 32)
     output:
-        f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.vcf-stats.tsv",
-        f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.variant-types.png",
-        f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.size-dist.png",
-        f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.size-dist-log.png",
-        f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.af-spectrum.png",
-        *([ f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.variant-types-by-annot.png",
-            f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv"]
-          if annotation_inputs() else []),
-        *([ f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.giab-strat.png",
-            f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.giab-strat.tsv"]
-          if giab_strat_configured() else []),
-        f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.per-sample-types.png",
-        f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.per-sample-types.tsv",
-        f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.per-sample-sv-types.png",
-        *([ f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.per-sample-giab-strat.png",
-            f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}.per-sample-giab-strat.tsv"]
-          if giab_strat_configured() else []),
+        *vcf_stats_tsv_outputs(
+            f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True),
     resources:
         mem_mb=256000,
         runtime=2880,
@@ -2961,13 +3073,36 @@ rule merged_longread_dv_stats:
             if giab_strat_configured() else ""),
     shell:
         "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.longread.dv.{wildcards.mode}.{wildcards.filt}"
-        " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged Long-Read DeepVariant'"
+        " --mode {wildcards.mode} --filter {wildcards.filt} --no-plots"
+        " --title '{REF} Merged Long-Read DeepVariant'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample --no-sv"
         " --threads {threads}"
 
+rule merged_longread_dv_stats_plot:
+    input:
+        *vcf_stats_tsv_outputs(
+            f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True),
+    output:
+        *vcf_stats_plot_outputs(
+            f"{OUT_DIR}/merged.longread.dv.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True),
+    resources:
+        mem_mb=8000,
+        runtime=120,
+    shell:
+        "ulimit -s unlimited && Rscript scripts/vcf-stats-plot.R"
+        " {OUT_DIR}/merged.longread.dv.{wildcards.mode}.{wildcards.filt}"
+        " --mode {wildcards.mode} --filter {wildcards.filt}"
+        " --title '{REF} Merged Long-Read DeepVariant'" + vcf_stats_pdf_arg()
+
 rule merged_dv_stats:
-    """Merged DeepVariant VCF → variant stats + plots (one mode/filter combo, includes AF spectrum)"""
+    """Merged DeepVariant VCF → variant stats TSVs (compute phase)."""
     input:
         vcf=lambda wc: f"{OUT_DIR}/merged.deepvariant.pass-prefiltered{'.normed' if wc.mode == 'variants' else ''}.vcf.gz" if wc.filt == "pass" else (f"{OUT_DIR}/merged.deepvariant.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.deepvariant.vcf.gz"),
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
@@ -2975,23 +3110,11 @@ rule merged_dv_stats:
         giab_beds=augref_giab_strat_beds(),
     threads: rule_cpus("merged_stats", 32)
     output:
-        f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.vcf-stats.tsv",
-        f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.variant-types.png",
-        f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.size-dist.png",
-        f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.size-dist-log.png",
-        f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.af-spectrum.png",
-        *([ f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.variant-types-by-annot.png",
-            f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv"]
-          if annotation_inputs() else []),
-        *([ f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.giab-strat.png",
-            f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.giab-strat.tsv"]
-          if giab_strat_configured() else []),
-        f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.per-sample-types.png",
-        f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.per-sample-types.tsv",
-        f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.per-sample-sv-types.png",
-        *([ f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.per-sample-giab-strat.png",
-            f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}.per-sample-giab-strat.tsv"]
-          if giab_strat_configured() else []),
+        *vcf_stats_tsv_outputs(
+            f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True),
     resources:
         mem_mb=256000,
         runtime=2880,
@@ -3005,13 +3128,36 @@ rule merged_dv_stats:
             if giab_strat_configured() else ""),
     shell:
         "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.dv.{wildcards.mode}.{wildcards.filt}"
-        " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged DeepVariant'"
+        " --mode {wildcards.mode} --filter {wildcards.filt} --no-plots"
+        " --title '{REF} Merged DeepVariant'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample --no-sv"
         " --threads {threads}"
 
+rule merged_dv_stats_plot:
+    input:
+        *vcf_stats_tsv_outputs(
+            f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True),
+    output:
+        *vcf_stats_plot_outputs(
+            f"{OUT_DIR}/merged.dv.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True),
+    resources:
+        mem_mb=8000,
+        runtime=120,
+    shell:
+        "ulimit -s unlimited && Rscript scripts/vcf-stats-plot.R"
+        " {OUT_DIR}/merged.dv.{wildcards.mode}.{wildcards.filt}"
+        " --mode {wildcards.mode} --filter {wildcards.filt}"
+        " --title '{REF} Merged DeepVariant'" + vcf_stats_pdf_arg()
+
 rule merged_fb_stats:
-    """Merged FreeBayes VCF → variant stats + plots (one mode/filter combo, includes AF spectrum)"""
+    """Merged FreeBayes VCF → variant stats TSVs (compute phase)."""
     input:
         vcf=lambda wc: f"{OUT_DIR}/merged.freebayes.pass-prefiltered{'.normed' if wc.mode == 'variants' else ''}.vcf.gz" if wc.filt == "pass" else (f"{OUT_DIR}/merged.freebayes.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.freebayes.vcf.gz"),
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
@@ -3019,23 +3165,11 @@ rule merged_fb_stats:
         giab_beds=augref_giab_strat_beds(),
     threads: rule_cpus("merged_stats", 32)
     output:
-        f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}.vcf-stats.tsv",
-        f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}.variant-types.png",
-        f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}.size-dist.png",
-        f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}.size-dist-log.png",
-        f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}.af-spectrum.png",
-        *([ f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}.variant-types-by-annot.png",
-            f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv"]
-          if annotation_inputs() else []),
-        *([ f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}.giab-strat.png",
-            f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}.giab-strat.tsv"]
-          if giab_strat_configured() else []),
-        f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}.per-sample-types.png",
-        f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}.per-sample-types.tsv",
-        f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}.per-sample-sv-types.png",
-        *([ f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}.per-sample-giab-strat.png",
-            f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}.per-sample-giab-strat.tsv"]
-          if giab_strat_configured() else []),
+        *vcf_stats_tsv_outputs(
+            f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True),
     resources:
         mem_mb=256000,
         runtime=2880,
@@ -3049,13 +3183,36 @@ rule merged_fb_stats:
             if giab_strat_configured() else ""),
     shell:
         "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.fb.{wildcards.mode}.{wildcards.filt}"
-        " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged FreeBayes'"
+        " --mode {wildcards.mode} --filter {wildcards.filt} --no-plots"
+        " --title '{REF} Merged FreeBayes'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample --no-sv"
         " --threads {threads}"
 
+rule merged_fb_stats_plot:
+    input:
+        *vcf_stats_tsv_outputs(
+            f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True),
+    output:
+        *vcf_stats_plot_outputs(
+            f"{OUT_DIR}/merged.fb.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True),
+    resources:
+        mem_mb=8000,
+        runtime=120,
+    shell:
+        "ulimit -s unlimited && Rscript scripts/vcf-stats-plot.R"
+        " {OUT_DIR}/merged.fb.{wildcards.mode}.{wildcards.filt}"
+        " --mode {wildcards.mode} --filter {wildcards.filt}"
+        " --title '{REF} Merged FreeBayes'" + vcf_stats_pdf_arg()
+
 rule merged_longread_fb_stats:
-    """Merged long-read FreeBayes VCF → variant stats + plots"""
+    """Merged long-read FreeBayes VCF → variant stats TSVs (compute phase)."""
     input:
         vcf=lambda wc: f"{OUT_DIR}/merged.longread.freebayes.pass-prefiltered{'.normed' if wc.mode == 'variants' else ''}.vcf.gz" if wc.filt == "pass" else (f"{OUT_DIR}/merged.longread.freebayes.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.longread.freebayes.vcf.gz"),
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
@@ -3063,23 +3220,11 @@ rule merged_longread_fb_stats:
         giab_beds=augref_giab_strat_beds(),
     threads: rule_cpus("merged_stats", 32)
     output:
-        f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}.vcf-stats.tsv",
-        f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}.variant-types.png",
-        f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}.size-dist.png",
-        f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}.size-dist-log.png",
-        f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}.af-spectrum.png",
-        *([ f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}.variant-types-by-annot.png",
-            f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv"]
-          if annotation_inputs() else []),
-        *([ f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}.giab-strat.png",
-            f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}.giab-strat.tsv"]
-          if giab_strat_configured() else []),
-        f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}.per-sample-types.png",
-        f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}.per-sample-types.tsv",
-        f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}.per-sample-sv-types.png",
-        *([ f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}.per-sample-giab-strat.png",
-            f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}.per-sample-giab-strat.tsv"]
-          if giab_strat_configured() else []),
+        *vcf_stats_tsv_outputs(
+            f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True),
     resources:
         mem_mb=256000,
         runtime=2880,
@@ -3093,13 +3238,36 @@ rule merged_longread_fb_stats:
             if giab_strat_configured() else ""),
     shell:
         "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.longread.fb.{wildcards.mode}.{wildcards.filt}"
-        " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged Long-Read FreeBayes'"
+        " --mode {wildcards.mode} --filter {wildcards.filt} --no-plots"
+        " --title '{REF} Merged Long-Read FreeBayes'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample --no-sv"
         " --threads {threads}"
 
+rule merged_longread_fb_stats_plot:
+    input:
+        *vcf_stats_tsv_outputs(
+            f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True),
+    output:
+        *vcf_stats_plot_outputs(
+            f"{OUT_DIR}/merged.longread.fb.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True),
+    resources:
+        mem_mb=8000,
+        runtime=120,
+    shell:
+        "ulimit -s unlimited && Rscript scripts/vcf-stats-plot.R"
+        " {OUT_DIR}/merged.longread.fb.{wildcards.mode}.{wildcards.filt}"
+        " --mode {wildcards.mode} --filter {wildcards.filt}"
+        " --title '{REF} Merged Long-Read FreeBayes'" + vcf_stats_pdf_arg()
+
 rule merged_bc_stats:
-    """Merged bcftools VCF → variant stats + plots (one mode/filter combo, includes AF spectrum)"""
+    """Merged bcftools VCF → variant stats TSVs (compute phase)."""
     input:
         vcf=lambda wc: f"{OUT_DIR}/merged.bcftools.pass-prefiltered{'.normed' if wc.mode == 'variants' else ''}.vcf.gz" if wc.filt == "pass" else (f"{OUT_DIR}/merged.bcftools.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.bcftools.vcf.gz"),
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
@@ -3107,23 +3275,11 @@ rule merged_bc_stats:
         giab_beds=augref_giab_strat_beds(),
     threads: rule_cpus("merged_stats", 32)
     output:
-        f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}.vcf-stats.tsv",
-        f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}.variant-types.png",
-        f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}.size-dist.png",
-        f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}.size-dist-log.png",
-        f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}.af-spectrum.png",
-        *([ f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}.variant-types-by-annot.png",
-            f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv"]
-          if annotation_inputs() else []),
-        *([ f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}.giab-strat.png",
-            f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}.giab-strat.tsv"]
-          if giab_strat_configured() else []),
-        f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}.per-sample-types.png",
-        f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}.per-sample-types.tsv",
-        f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}.per-sample-sv-types.png",
-        *([ f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}.per-sample-giab-strat.png",
-            f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}.per-sample-giab-strat.tsv"]
-          if giab_strat_configured() else []),
+        *vcf_stats_tsv_outputs(
+            f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True),
     resources:
         mem_mb=256000,
         runtime=2880,
@@ -3137,13 +3293,36 @@ rule merged_bc_stats:
             if giab_strat_configured() else ""),
     shell:
         "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.bc.{wildcards.mode}.{wildcards.filt}"
-        " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged bcftools'"
+        " --mode {wildcards.mode} --filter {wildcards.filt} --no-plots"
+        " --title '{REF} Merged bcftools'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample --no-sv"
         " --threads {threads}"
 
+rule merged_bc_stats_plot:
+    input:
+        *vcf_stats_tsv_outputs(
+            f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True),
+    output:
+        *vcf_stats_plot_outputs(
+            f"{OUT_DIR}/merged.bc.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True),
+    resources:
+        mem_mb=8000,
+        runtime=120,
+    shell:
+        "ulimit -s unlimited && Rscript scripts/vcf-stats-plot.R"
+        " {OUT_DIR}/merged.bc.{wildcards.mode}.{wildcards.filt}"
+        " --mode {wildcards.mode} --filter {wildcards.filt}"
+        " --title '{REF} Merged bcftools'" + vcf_stats_pdf_arg()
+
 rule merged_longread_bc_stats:
-    """Merged long-read bcftools VCF → variant stats + plots"""
+    """Merged long-read bcftools VCF → variant stats TSVs (compute phase)."""
     input:
         vcf=lambda wc: f"{OUT_DIR}/merged.longread.bcftools.pass-prefiltered{'.normed' if wc.mode == 'variants' else ''}.vcf.gz" if wc.filt == "pass" else (f"{OUT_DIR}/merged.longread.bcftools.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.longread.bcftools.vcf.gz"),
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
@@ -3151,23 +3330,11 @@ rule merged_longread_bc_stats:
         giab_beds=augref_giab_strat_beds(),
     threads: rule_cpus("merged_stats", 32)
     output:
-        f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}.vcf-stats.tsv",
-        f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}.variant-types.png",
-        f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}.size-dist.png",
-        f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}.size-dist-log.png",
-        f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}.af-spectrum.png",
-        *([ f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}.variant-types-by-annot.png",
-            f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv"]
-          if annotation_inputs() else []),
-        *([ f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}.giab-strat.png",
-            f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}.giab-strat.tsv"]
-          if giab_strat_configured() else []),
-        f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}.per-sample-types.png",
-        f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}.per-sample-types.tsv",
-        f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}.per-sample-sv-types.png",
-        *([ f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}.per-sample-giab-strat.png",
-            f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}.per-sample-giab-strat.tsv"]
-          if giab_strat_configured() else []),
+        *vcf_stats_tsv_outputs(
+            f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True),
     resources:
         mem_mb=256000,
         runtime=2880,
@@ -3181,13 +3348,36 @@ rule merged_longread_bc_stats:
             if giab_strat_configured() else ""),
     shell:
         "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.longread.bc.{wildcards.mode}.{wildcards.filt}"
-        " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged Long-Read bcftools'"
+        " --mode {wildcards.mode} --filter {wildcards.filt} --no-plots"
+        " --title '{REF} Merged Long-Read bcftools'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample --no-sv"
         " --threads {threads}"
 
+rule merged_longread_bc_stats_plot:
+    input:
+        *vcf_stats_tsv_outputs(
+            f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True),
+    output:
+        *vcf_stats_plot_outputs(
+            f"{OUT_DIR}/merged.longread.bc.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True),
+    resources:
+        mem_mb=8000,
+        runtime=120,
+    shell:
+        "ulimit -s unlimited && Rscript scripts/vcf-stats-plot.R"
+        " {OUT_DIR}/merged.longread.bc.{wildcards.mode}.{wildcards.filt}"
+        " --mode {wildcards.mode} --filter {wildcards.filt}"
+        " --title '{REF} Merged Long-Read bcftools'" + vcf_stats_pdf_arg()
+
 rule merged_pg_stats:
-    """Merged PanGenie VCF → variant stats + plots (one mode/filter combo, includes AF spectrum)"""
+    """Merged PanGenie VCF → variant stats TSVs (compute phase)."""
     input:
         vcf=lambda wc: f"{OUT_DIR}/merged.pangenie.pass-prefiltered{'.normed' if wc.mode == 'variants' else ''}.vcf.gz" if wc.filt == "pass" else (f"{OUT_DIR}/merged.pangenie.normed.vcf.gz" if wc.mode == "variants" else f"{OUT_DIR}/merged.pangenie.vcf.gz"),
         segs=f"{OUT_DIR}/{OUT_NAME}.augref-segs.tsv",
@@ -3195,23 +3385,11 @@ rule merged_pg_stats:
         giab_beds=augref_giab_strat_beds(),
     threads: rule_cpus("merged_stats", 32)
     output:
-        f"{OUT_DIR}/merged.pg.{{mode}}.{{filt}}.vcf-stats.tsv",
-        f"{OUT_DIR}/merged.pg.{{mode}}.{{filt}}.variant-types.png",
-        f"{OUT_DIR}/merged.pg.{{mode}}.{{filt}}.size-dist.png",
-        f"{OUT_DIR}/merged.pg.{{mode}}.{{filt}}.size-dist-log.png",
-        f"{OUT_DIR}/merged.pg.{{mode}}.{{filt}}.af-spectrum.png",
-        *([ f"{OUT_DIR}/merged.pg.{{mode}}.{{filt}}.variant-types-by-annot.png",
-            f"{OUT_DIR}/merged.pg.{{mode}}.{{filt}}.vcf-stats-by-annot.tsv"]
-          if annotation_inputs() else []),
-        *([ f"{OUT_DIR}/merged.pg.{{mode}}.{{filt}}.giab-strat.png",
-            f"{OUT_DIR}/merged.pg.{{mode}}.{{filt}}.giab-strat.tsv"]
-          if giab_strat_configured() else []),
-        f"{OUT_DIR}/merged.pg.{{mode}}.{{filt}}.per-sample-types.png",
-        f"{OUT_DIR}/merged.pg.{{mode}}.{{filt}}.per-sample-types.tsv",
-        f"{OUT_DIR}/merged.pg.{{mode}}.{{filt}}.per-sample-sv-types.png",
-        *([ f"{OUT_DIR}/merged.pg.{{mode}}.{{filt}}.per-sample-giab-strat.png",
-            f"{OUT_DIR}/merged.pg.{{mode}}.{{filt}}.per-sample-giab-strat.tsv"]
-          if giab_strat_configured() else []),
+        *vcf_stats_tsv_outputs(
+            f"{OUT_DIR}/merged.pg.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True),
     resources:
         mem_mb=256000,
         runtime=2880,
@@ -3225,10 +3403,33 @@ rule merged_pg_stats:
             if giab_strat_configured() else ""),
     shell:
         "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input.vcf} {OUT_DIR}/merged.pg.{wildcards.mode}.{wildcards.filt}"
-        " --mode {wildcards.mode} --filter {wildcards.filt} --title '{REF} Merged PanGenie'"
+        " --mode {wildcards.mode} --filter {wildcards.filt} --no-plots"
+        " --title '{REF} Merged PanGenie'"
         " --segs {input.segs}"
         " {params.annot_arg} {params.giab_arg} --per-sample --no-sv"
         " --threads {threads}"
+
+rule merged_pg_stats_plot:
+    input:
+        *vcf_stats_tsv_outputs(
+            f"{OUT_DIR}/merged.pg.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True),
+    output:
+        *vcf_stats_plot_outputs(
+            f"{OUT_DIR}/merged.pg.{{mode}}.{{filt}}",
+            has_annot=annotation_inputs(),
+            has_giab=giab_strat_configured(),
+            has_per_sample=True),
+    resources:
+        mem_mb=8000,
+        runtime=120,
+    shell:
+        "ulimit -s unlimited && Rscript scripts/vcf-stats-plot.R"
+        " {OUT_DIR}/merged.pg.{wildcards.mode}.{wildcards.filt}"
+        " --mode {wildcards.mode} --filter {wildcards.filt}"
+        " --title '{REF} Merged PanGenie'" + vcf_stats_pdf_arg()
 
 ############################################################################
 # Call vs DeepVariant comparison
@@ -5048,7 +5249,7 @@ rule pantree_stats:
         runtime=120,
     shell:
         "ulimit -s unlimited && Rscript scripts/vcf-stats.R {input} {OUT_DIR}/pantree"
-        " --tsv --title 'Pantree'"
+        " --tsv --title 'Pantree'" + vcf_stats_pdf_arg()
 
 rule deconstruct_records:
     """Export deconstruct VCF as records TSV for comparison"""
