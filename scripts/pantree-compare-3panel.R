@@ -89,12 +89,20 @@ agg <- all_dt[, .(count = sum(count, na.rm = TRUE),
                   tv    = sum(tv,    na.rm = TRUE)),
               by = .(source, category, ref_context)]
 
-# Bar totals (over ref_context) for label placement and per-bar Ts/Tv on SNPs.
-bar_totals <- agg[, .(bar_total = sum(count),
-                      ts_total  = sum(ts),
-                      tv_total  = sum(tv)),
+# Bar totals (over ref_context) — used for the legibility threshold on
+# per-segment Ts/Tv labels.
+bar_totals <- agg[, .(bar_total = sum(count)),
                   by = .(source, category)]
-bar_totals[, tstv := fifelse(tv_total > 0, ts_total / tv_total, NA_real_)]
+
+# Per-segment Ts/Tv (one label per (source × ref_context) inside each SNP bar)
+# placed at the segment midpoint via position_stack(vjust = 0.5).  Suppress
+# labels whose segment is < 12 % of the bar total — too small to read.
+seg_tstv <- agg[, .(tstv = fifelse(tv > 0, ts / tv, NA_real_)),
+                by = .(source, category, ref_context, count)]
+seg_tstv <- merge(seg_tstv, bar_totals, by = c("source", "category"))
+seg_tstv[, keep := !is.na(tstv) & bar_total > 0 &
+                   count >= 0.12 * bar_total]
+seg_tstv[, label := sprintf("Ts/Tv = %.2f", tstv)]
 
 # Factor levels — fixed source order so colours stay consistent across runs.
 source_levels <- c(ours_label, pantree_label)
@@ -104,9 +112,12 @@ bar_totals[, source := factor(source, levels = source_levels)]
 cat_levels <- c("SNP", "Indel/MNP", "SV")
 agg[, category := factor(category, levels = cat_levels)]
 bar_totals[, category := factor(category, levels = cat_levels)]
+seg_tstv[, source := factor(source, levels = source_levels)]
+seg_tstv[, category := factor(category, levels = cat_levels)]
 
 ref_levels <- c("Off-reference", "On-reference")
 agg[, ref_context := factor(ref_context, levels = ref_levels)]
+seg_tstv[, ref_context := factor(ref_context, levels = ref_levels)]
 
 # Persist the aggregated table for reproducibility.
 fwrite(agg[order(category, source, ref_context),
@@ -114,17 +125,18 @@ fwrite(agg[order(category, source, ref_context),
        paste0(prefix, ".pantree-compare-3panel.tsv"), sep = "\t")
 cat("Wrote:", paste0(prefix, ".pantree-compare-3panel.tsv"), "\n")
 
-# Ts/Tv labels: only on the SNP facet, one per bar (placed above the bar top).
-snp_labels <- bar_totals[category == "SNP" & !is.na(tstv)]
-
 ref_colors <- c("Off-reference" = "coral", "On-reference" = "steelblue")
+
+# Per-segment Ts/Tv labels: only on the SNP facet, one per (source × ref_context)
+# placed at the segment midpoint inside the stacked bar.
+snp_seg_labels <- seg_tstv[category == "SNP" & keep == TRUE]
 
 p <- ggplot(agg, aes(x = source, y = count, fill = ref_context)) +
   geom_col(width = 0.65, alpha = 0.95) +
-  geom_text(data = snp_labels,
-            aes(x = source, y = bar_total, label = sprintf("Ts/Tv = %.2f", tstv)),
-            inherit.aes = FALSE,
-            vjust = -0.4, size = 3.4, color = "grey20") +
+  geom_text(data = snp_seg_labels,
+            aes(x = source, y = count, label = label, group = ref_context),
+            position = position_stack(vjust = 0.5),
+            size = 3.2, color = "white") +
   facet_wrap(vars(category), scales = "free_y", nrow = 1) +
   scale_fill_manual(values = ref_colors, name = NULL, drop = FALSE) +
   scale_y_continuous(labels = scales::comma,
@@ -132,7 +144,7 @@ p <- ggplot(agg, aes(x = source, y = count, fill = ref_context)) +
   labs(title = title,
        subtitle = paste0(ours_label, " vs ", pantree_label,
                          " — variant counts by category (stacks = ref-context",
-                         "; Ts/Tv on SNP bars)"),
+                         "; Ts/Tv per ref-context inside SNP bars)"),
        x = NULL, y = "Count") +
   theme_minimal(base_size = 12) +
   theme(
