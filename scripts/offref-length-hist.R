@@ -4,6 +4,11 @@
 library(ggplot2)
 library(RColorBrewer)
 
+# Title suppression for paper figures (FIGURE_TITLES=0 → labs() titles → NULL).
+.script_dir <- dirname(sub("^--file=", "", grep("^--file=", commandArgs(), value = TRUE)[1]))
+if (is.na(.script_dir) || !nzchar(.script_dir)) .script_dir <- "scripts"
+source(file.path(.script_dir, "plot-helpers.R"))
+
 # Get command line arguments
 args <- commandArgs(trailingOnly = TRUE)
 
@@ -157,9 +162,9 @@ if (cumulative) {
       scale_x_log10(labels = scales::comma,
                     breaks = scales::breaks_log(n = 10)) +
       scale_y_log10(labels = scales::comma) +
-      labs(title = "Off-Reference Segment Lengths (Cumulative Count)",
-           subtitle = sprintf("Grey: each of %d chromosomes.  Black: all chromosomes combined.",
-                              n_datasets),
+      labs(title = if_titles("Off-Reference Segment Lengths (Cumulative Count)"),
+           subtitle = if_titles(sprintf("Grey: each of %d chromosomes.  Black: all chromosomes combined.",
+                              n_datasets)),
            x = "Length (log scale)",
            y = "Count >= Length (log scale)") +
       theme_minimal()
@@ -171,7 +176,7 @@ if (cumulative) {
                     breaks = scales::breaks_log(n = 10)) +
       scale_y_log10(labels = scales::comma) +
       scale_color_manual(values = color_map) +
-      labs(title = "Off-Reference Segment Lengths (Cumulative Count)",
+      labs(title = if_titles("Off-Reference Segment Lengths (Cumulative Count)"),
            x = "Length (log scale)",
            y = "Count >= Length (log scale)",
            color = "Dataset") +
@@ -186,7 +191,7 @@ if (cumulative) {
                    linewidth = 0.4) +
       scale_y_log10(labels = scales::comma,
                     breaks = scales::breaks_log(n = 10)) +
-      labs(title = "Off-Reference Interval Lengths by Chromosome",
+      labs(title = if_titles("Off-Reference Interval Lengths by Chromosome"),
            x = NULL, y = "Length (log scale)") +
       theme_minimal() +
       theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
@@ -203,7 +208,7 @@ if (cumulative) {
       scale_y_continuous(trans = "log1p", labels = scales::comma) +
       scale_fill_manual(values = color_map) +
       scale_color_manual(values = color_map) +
-      labs(title = "Off-Reference Interval Lengths (Log Scale)",
+      labs(title = if_titles("Off-Reference Interval Lengths (Log Scale)"),
            x = "Value (log scale)",
            y = "Frequency (log scale)",
            fill = "Dataset") +
@@ -246,7 +251,7 @@ p_loglog <- ggplot(ccdf_df, aes(x = length, y = rank, color = dataset)) +
   scale_x_log10(labels = scales::comma, breaks = scales::breaks_log(n = 10)) +
   scale_y_log10(labels = scales::comma) +
   scale_color_manual(values = color_map) +
-  labs(title = "Off-Reference Segment Lengths (Cumulative Count)",
+  labs(title = if_titles("Off-Reference Segment Lengths (Cumulative Count)"),
        x = "Length (log scale)", y = "Count >= Length (log scale)",
        color = "Dataset") +
   theme_minimal()

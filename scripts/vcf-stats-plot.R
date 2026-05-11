@@ -70,6 +70,11 @@ filter_label <- if (filter == "pass") ", PASS only" else ""
 script_dir <- dirname(sub("^--file=", "", grep("^--file=", commandArgs(), value = TRUE)[1]))
 if (is.na(script_dir) || !nzchar(script_dir)) script_dir <- "scripts"
 source(file.path(script_dir, "plot-helpers.R"))
+
+# Paper-figure title suppression — clear the title up front so every
+# `title = title` inside labs() below resolves to NULL when the user has
+# disabled titles. Subtitles are wrapped with if_titles() at each call site.
+if (!titles_on()) title <- NULL
 emit_pdf <- pdf_enabled(cli_flag = emit_pdf)
 save_png <- function(plot, file, width = 8, height = 6) {
   save_plot(plot, file, width = width, height = height, pdf = emit_pdf)
@@ -148,8 +153,8 @@ p1 <- ggplot(plot_dt, aes(x = variant_type, y = count, fill = ref_context)) +
                     name = NULL) +
   scale_y_continuous(labels = scales::comma) +
   labs(title = title,
-       subtitle = paste0("Variant Type Counts ", mode_label, filter_label,
-                         if (has_tr) " (faded = tandem repeat)" else ""),
+       subtitle = if_titles(paste0("Variant Type Counts ", mode_label, filter_label,
+                         if (has_tr) " (faded = tandem repeat)" else "")),
        x = "Variant Type", y = "Count") +
   theme_common
 save_png(p1, paste0(prefix, ".variant-types.png"))
@@ -169,7 +174,7 @@ if (!is.null(size_counts) && nrow(size_counts) > 0) {
                           name = "Context") +
     scale_y_continuous(labels = scales::comma, expand = expansion(mult = c(0, 0.1))) +
     labs(title = title,
-         subtitle = paste0("Indel / SV Size Distribution ", mode_label, filter_label),
+         subtitle = if_titles(paste0("Indel / SV Size Distribution ", mode_label, filter_label)),
          x = "Size (bp)", y = "Count") +
     theme_common +
     theme(axis.line = element_line(color = "black", linewidth = 0.5),
@@ -197,8 +202,8 @@ if (!is.null(af_counts) && nrow(af_counts) > 0) {
     scale_y_log10(labels = scales::comma) +
     scale_x_continuous(limits = c(-0.02, 1.02)) +
     labs(title = title,
-         subtitle = paste0("Non-Reference Allele Frequency Spectrum ",
-                           mode_label, filter_label),
+         subtitle = if_titles(paste0("Non-Reference Allele Frequency Spectrum ",
+                           mode_label, filter_label)),
          x = "Non-Reference Frequency", y = y_label) +
     theme_common
   save_png(p3, paste0(prefix, ".af-spectrum.png"), height = 6)
@@ -219,7 +224,7 @@ if (!is.null(ann_counts) && nrow(ann_counts) > 0) {
     scale_fill_manual(values = c("On-reference" = "steelblue", "Off-reference" = "coral"),
                       name = NULL) +
     scale_y_continuous(labels = scales::comma) +
-    labs(title = title, subtitle = "Variant Types by Annotation Region") +
+    labs(title = title, subtitle = if_titles("Variant Types by Annotation Region")) +
     theme_common +
     coord_flip()
   save_png(p_annot, paste0(prefix, ".variant-types-by-annot.png"), width = 12, height = 8)
@@ -263,7 +268,7 @@ if (!is.null(giab_counts) && nrow(giab_counts) > 0) {
       scale_y_continuous(labels = scales::comma, expand = expansion(mult = c(0.02, 0.15))) +
       facet_wrap(vars(ref_context, type_class), scales = "free", ncol = 3) +
       labs(title = title,
-           subtitle = paste0("GIAB Genome Stratification ", mode_label, filter_label),
+           subtitle = if_titles(paste0("GIAB Genome Stratification ", mode_label, filter_label)),
            x = "Variant Type", y = "Count") +
       theme_common
     if (!is.null(giab_tstv) && nrow(giab_tstv) > 0) {
@@ -316,8 +321,8 @@ if (!is.null(ps_counts) && nrow(ps_counts) > 0) {
     scale_y_continuous(labels = scales::comma) +
     facet_wrap(vars(ref_context, type_class), scales = "free", ncol = 3) +
     labs(title = title,
-         subtitle = paste0("Per-Sample Variant Counts ", mode_label, filter_label,
-                           " (N=", n_samples, " samples)"),
+         subtitle = if_titles(paste0("Per-Sample Variant Counts ", mode_label, filter_label,
+                           " (N=", n_samples, " samples)")),
          x = "Variant Type", y = "Count") +
     theme_common
   save_png(p_ps, paste0(prefix, ".per-sample-types.png"), width = 12)
@@ -345,8 +350,8 @@ if (!is.null(ps_counts) && nrow(ps_counts) > 0) {
         scale_y_continuous(labels = scales::comma) +
         facet_wrap(~ ref_context, scales = "free_y") +
         labs(title = title,
-             subtitle = paste0("Per-Sample SV Counts ", mode_label, filter_label,
-                               " (N=", n_samples, " samples, bars=mean)"),
+             subtitle = if_titles(paste0("Per-Sample SV Counts ", mode_label, filter_label,
+                               " (N=", n_samples, " samples, bars=mean)")),
              x = "Variant Type", y = "Count") +
         theme_common
     } else {
@@ -358,8 +363,8 @@ if (!is.null(ps_counts) && nrow(ps_counts) > 0) {
         scale_y_continuous(labels = scales::comma) +
         facet_wrap(~ ref_context, scales = "free_y") +
         labs(title = title,
-             subtitle = paste0("Per-Sample SV Counts ", mode_label, filter_label,
-                               " (N=", n_samples, " samples)"),
+             subtitle = if_titles(paste0("Per-Sample SV Counts ", mode_label, filter_label,
+                               " (N=", n_samples, " samples)")),
              x = "Variant Type", y = "Count") +
         theme_common
     }
@@ -403,9 +408,9 @@ if (!is.null(ps_pop) && nrow(ps_pop) > 0) {
     scale_y_continuous(labels = scales::comma) +
     facet_wrap(vars(ref_context, type_class), scales = "free", ncol = 3) +
     labs(title = title,
-         subtitle = paste0("Per-Sample Variant Counts by Super-Population ",
+         subtitle = if_titles(paste0("Per-Sample Variant Counts by Super-Population ",
                            mode_label, filter_label,
-                           " (N=", n_samples_pop, " samples)"),
+                           " (N=", n_samples_pop, " samples)")),
          x = "Variant Type", y = "Count") +
     theme_common
   save_png(p_ps_pop, paste0(prefix, ".per-sample-types-by-pop.png"), width = 12)
@@ -444,8 +449,8 @@ if (!is.null(ps_giab) && nrow(ps_giab) > 0) {
       scale_y_continuous(labels = scales::comma) +
       facet_wrap(vars(ref_context, type_class), scales = "free", ncol = 3) +
       labs(title = title,
-           subtitle = paste0("Per-Sample GIAB Stratification ", mode_label, filter_label,
-                             " (N=", n_samples_giab, " samples)"),
+           subtitle = if_titles(paste0("Per-Sample GIAB Stratification ", mode_label, filter_label,
+                             " (N=", n_samples_giab, " samples)")),
            x = "Variant Type", y = "Count") +
       theme_common
     save_png(p_ps_giab, paste0(prefix, ".per-sample-giab-strat.png"), width = 12)

@@ -14,6 +14,11 @@
 library(data.table)
 library(ggplot2)
 
+# Title suppression for paper figures (FIGURE_TITLES=0 → labs() titles → NULL).
+.script_dir <- dirname(sub("^--file=", "", grep("^--file=", commandArgs(), value = TRUE)[1]))
+if (is.na(.script_dir) || !nzchar(.script_dir)) .script_dir <- "scripts"
+source(file.path(.script_dir, "plot-helpers.R"))
+
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 2) {
   cat("Usage: Rscript augref-frequency.R <depth.tsv> <out-prefix>\n")
@@ -77,9 +82,9 @@ p_hist <- ggplot(ccdf_dt, aes(x = depth, y = n_segments)) +
   geom_point(size = 2, color = "steelblue") +
   scale_x_continuous(breaks = scales::pretty_breaks(n = min(10, max_depth))) +
   scale_y_continuous(labels = scales::comma) +
-  labs(title = "Off-Reference Segment Frequency (CCDF)",
-       subtitle = paste0("# segments supported by at least N graph paths (N=",
-                         format(nrow(dt_alt), big.mark = ","), " off-ref segments)"),
+  labs(title = if_titles("Off-Reference Segment Frequency (CCDF)"),
+       subtitle = if_titles(paste0("# segments supported by at least N graph paths (N=",
+                         format(nrow(dt_alt), big.mark = ","), " off-ref segments)")),
        x = "# paths covering segment ≥ N (including augref)",
        y = "# segments with depth ≥ N") +
   theme_minimal() +
@@ -98,8 +103,8 @@ p_scatter <- ggplot(ccdf_dt, aes(x = depth, y = total_bp)) +
   geom_point(size = 2, color = "firebrick") +
   scale_x_continuous(breaks = scales::pretty_breaks(n = min(10, max_depth))) +
   scale_y_continuous(labels = scales::comma) +
-  labs(title = "Off-Reference Sequence Content (CCDF)",
-       subtitle = paste0("Total bp in segments supported by at least N graph paths"),
+  labs(title = if_titles("Off-Reference Sequence Content (CCDF)"),
+       subtitle = if_titles(paste0("Total bp in segments supported by at least N graph paths")),
        x = "# paths covering segment ≥ N (including augref)",
        y = "Total bp (segments with depth ≥ N)") +
   theme_minimal() +

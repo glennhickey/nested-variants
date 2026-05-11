@@ -17,6 +17,31 @@ pdf_enabled <- function(cli_flag = FALSE) {
   cli_flag || env %in% c("1", "true", "TRUE", "yes")
 }
 
+# Paper-figure title suppression: set FIGURE_TITLES=0 in the environment (or
+# `figure_titles: false` in the Snakemake config) to drop every plot's
+# title/subtitle. Captions live in the manuscript instead, so the rendered
+# panel is self-contained — axis labels and legends only.
+titles_on <- function() {
+  env <- Sys.getenv("FIGURE_TITLES", unset = "1")
+  !(env %in% c("0", "false", "FALSE", "no", "off"))
+}
+
+# Convenience helper used inside labs(): returns its argument when titles are
+# enabled, NULL (ggplot's "no label") otherwise.  Use as:
+#   labs(title = if_titles("My title"), subtitle = if_titles("…"), x = …, y = …)
+if_titles <- function(x) if (titles_on()) x else NULL
+
+# Drop title/subtitle from every ggplot2::labs() call in the current R session
+# when FIGURE_TITLES is disabled.  Saves us from sprinkling if_titles() at
+# every call site; scripts that source plot-helpers.R pick this up
+# automatically. Axes, fills, colour, etc. are passed through unchanged.
+if (!titles_on()) {
+  .orig_labs <- ggplot2::labs
+  labs <- function(..., title = NULL, subtitle = NULL, caption = NULL, tag = NULL) {
+    .orig_labs(..., title = NULL, subtitle = NULL, caption = NULL, tag = NULL)
+  }
+}
+
 save_plot <- function(plot, file, width = 8, height = 6, pdf = FALSE) {
   # PNG (ragg-preferred → cairo fallback)
   tryCatch({

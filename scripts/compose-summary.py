@@ -26,6 +26,13 @@ LABEL_PAD = 10
 CANVAS_WIDTH = 4800  # 16 inches at 300 dpi
 
 
+def titles_on():
+    """Paper-figure mode: FIGURE_TITLES=0 suppresses the wrapper title bar
+    and the per-panel caption text (the letter labels stay)."""
+    env = os.environ.get("FIGURE_TITLES", "1")
+    return env not in ("0", "false", "FALSE", "no", "off")
+
+
 def load_font(size):
     """Try system fonts, fall back to Pillow default."""
     for path in [
@@ -92,9 +99,12 @@ def main():
     if row:
         rows.append(row)
 
+    show_titles = titles_on()
+    title_band = TITLE_HEIGHT if show_titles else 0
+
     # Compute canvas height
     row_heights = [max(img.height for _, img in r) for r in rows]
-    canvas_h = (TITLE_HEIGHT + GUTTER
+    canvas_h = (title_band + GUTTER
                 + sum(row_heights)
                 + (len(rows) - 1) * GUTTER
                 + GUTTER)
@@ -103,18 +113,19 @@ def main():
     canvas = Image.new("RGB", (CANVAS_WIDTH, canvas_h), "white")
     draw = ImageDraw.Draw(canvas)
 
-    # Draw title
-    title_font = load_font(48)
-    bbox = draw.textbbox((0, 0), args.title, font=title_font)
-    tw = bbox[2] - bbox[0]
-    draw.text(((CANVAS_WIDTH - tw) // 2, GUTTER // 2), args.title,
-              fill="black", font=title_font)
+    # Draw title (only when titles are enabled — paper mode hides it)
+    if show_titles:
+        title_font = load_font(48)
+        bbox = draw.textbbox((0, 0), args.title, font=title_font)
+        tw = bbox[2] - bbox[0]
+        draw.text(((CANVAS_WIDTH - tw) // 2, GUTTER // 2), args.title,
+                  fill="black", font=title_font)
 
     # Draw panels
     label_font = load_font(36)
     caption_font = load_font(28)
     letter_idx = 0
-    y = TITLE_HEIGHT + GUTTER
+    y = title_band + GUTTER
     for ri, row in enumerate(rows):
         x = GUTTER
         for label, img in row:
@@ -127,9 +138,12 @@ def main():
             draw.text((x + LABEL_PAD, y + LABEL_PAD),
                       letter, fill="black", font=label_font)
 
-            # Caption below letter
-            draw.text((x + LABEL_PAD + 40, y + LABEL_PAD + 4),
-                      label, fill="grey", font=caption_font)
+            # Caption next to the letter — only when titles enabled.
+            # Paper mode keeps just the letter; descriptions live in the
+            # manuscript caption.
+            if show_titles:
+                draw.text((x + LABEL_PAD + 40, y + LABEL_PAD + 4),
+                          label, fill="grey", font=caption_font)
 
             x += cell_w + GUTTER
         y += row_heights[ri] + GUTTER

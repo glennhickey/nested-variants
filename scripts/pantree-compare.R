@@ -21,6 +21,11 @@ suppressPackageStartupMessages({
   library(ggplot2)
 })
 
+# Shared helpers (titles_on/if_titles, save_plot)
+.script_dir <- dirname(sub("^--file=", "", grep("^--file=", commandArgs(), value = TRUE)[1]))
+if (is.na(.script_dir) || !nzchar(.script_dir)) .script_dir <- "scripts"
+source(file.path(.script_dir, "plot-helpers.R"))
+
 # ---------------------------------------------------------------------------
 # Parse arguments
 # ---------------------------------------------------------------------------
@@ -202,7 +207,7 @@ p1 <- ggplot(counts_all, aes(x = variant_type, y = count, fill = fill_var)) +
     name = NULL
   ) +
   scale_y_continuous(labels = scales::comma) +
-  labs(title = title, subtitle = "Variant Type Counts",
+  labs(title = if_titles(title), subtitle = if_titles("Variant Type Counts"),
        x = "Variant Type", y = "Count") +
   theme_minimal() +
   theme(
@@ -228,7 +233,7 @@ p2 <- ggplot(counts_all, aes(x = variant_type, y = pct, fill = fill_var)) +
     name = NULL
   ) +
   scale_y_continuous(labels = function(x) paste0(x, "%")) +
-  labs(title = title, subtitle = "Variant Type Proportions",
+  labs(title = if_titles(title), subtitle = if_titles("Variant Type Proportions"),
        x = "Variant Type", y = "Percent of Total") +
   theme_minimal() +
   theme(
@@ -269,7 +274,7 @@ if (nrow(dt_indels) > 0) {
       scale_color_manual(values = setNames(c("steelblue", "coral"), c(ours_label, pantree_label))) +
       scale_y_continuous(labels = scales::comma) +
       facet_grid(ref_context ~ size_panel, scales = "free") +
-      labs(title = title, subtitle = "Indel Size Distribution",
+      labs(title = if_titles(title), subtitle = if_titles("Indel Size Distribution"),
            x = "Size (bp)", y = "Count") +
       theme_minimal() +
       theme(
@@ -306,7 +311,7 @@ if (has_af_ours && has_af_pt) {
     geom_line(linewidth = 0.7) + geom_point(size = 1.5) +
     scale_color_manual(values = setNames(c("steelblue", "coral"), c(ours_label, pantree_label))) +
     scale_y_log10(labels = scales::comma) +
-    labs(title = title, subtitle = "Allele Frequency Spectrum",
+    labs(title = if_titles(title), subtitle = if_titles("Allele Frequency Spectrum"),
          x = "Non-reference Allele Frequency", y = "Count (log scale)") +
     theme_minimal() +
     theme(

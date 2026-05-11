@@ -11,6 +11,11 @@ suppressPackageStartupMessages({
   library(data.table)
 })
 
+# Title suppression for paper figures (FIGURE_TITLES=0 → labs() titles → NULL).
+.script_dir <- dirname(sub("^--file=", "", grep("^--file=", commandArgs(), value = TRUE)[1]))
+if (is.na(.script_dir) || !nzchar(.script_dir)) .script_dir <- "scripts"
+source(file.path(.script_dir, "plot-helpers.R"))
+
 #' Get chromosome lengths for a known reference assembly
 #'
 #' @param ref Reference name: "CHM13", "GRCh38", or NULL/other for auto-detect
@@ -269,7 +274,7 @@ plot_ideogram <- function(density_data, chrom_lengths, bed_data, plot_title, sca
                        expand = c(0.02, 0)) +
     scale_x_continuous(labels = unit_format(unit = "Mb", scale = 1e-6),
                        expand = c(0.01, 0)) +
-    labs(title = plot_title, x = "Position", y = "Chromosome") +
+    labs(title = if_titles(plot_title), x = "Position", y = "Chromosome") +
     theme_minimal() +
     theme(
       panel.grid.major.y = element_blank(),

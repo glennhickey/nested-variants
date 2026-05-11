@@ -45,6 +45,11 @@ suppressPackageStartupMessages({
   library(ggplot2)
 })
 
+# Shared helpers (titles_on / if_titles, save_plot)
+.script_dir <- dirname(sub("^--file=", "", grep("^--file=", commandArgs(), value = TRUE)[1]))
+if (is.na(.script_dir) || !nzchar(.script_dir)) .script_dir <- "scripts"
+source(file.path(.script_dir, "plot-helpers.R"))
+
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 1) {
   cat("Usage: Rscript vcfeval-detailed.R <output_prefix> [options]\n")
@@ -453,8 +458,8 @@ p <- ggplot(bar_summary,
             aes(x = category, y = mean_count, label = sprintf("%.2f", tstv)),
             position = position_stack(vjust = 0.5),
             size = 2.8, color = "white") +
-  labs(title = title,
-       subtitle = paste0("Call vs ", label_b, " via vcfeval", filter_label,
+  labs(title = if_titles(title),
+       subtitle = if_titles(paste0("Call vs ", label_b, " via vcfeval", filter_label,
                          if (in_graph_only) {
                            paste0(" — ", label_b, "-only restricted to in-graph")
                          } else {
@@ -462,7 +467,7 @@ p <- ggplot(bar_summary,
                          },
                          ", stacks = GIAB region, mean across N=",
                          n_samples, " samples",
-                         "; text on SNP bars = Ts/Tv"),
+                         "; text on SNP bars = Ts/Tv")),
        x = NULL, y = "Mean count") +
   theme_minimal() +
   theme(

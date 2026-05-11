@@ -29,6 +29,12 @@ suppressPackageStartupMessages({
   library(scales)
 })
 
+# Title suppression for paper figures (FIGURE_TITLES=0 → labs() titles → NULL).
+.script_dir <- dirname(sub("^--file=", "", grep("^--file=", commandArgs(), value = TRUE)[1]))
+if (is.na(.script_dir) || !nzchar(.script_dir)) .script_dir <- "scripts"
+source(file.path(.script_dir, "plot-helpers.R"))
+.titles_on <- titles_on
+
 # ---------------------------------------------------------------------------
 # Parse arguments
 # ---------------------------------------------------------------------------
@@ -72,6 +78,10 @@ while (i <= length(args)) {
   }
 }
 if (is.null(title)) title <- "Annotation Overlap"
+# Paper-figure title suppression — null the title up front so every
+# `title = title` in labs() below resolves to NULL.  Subtitles are wrapped
+# with if_titles() at each call site.
+if (!.titles_on()) title <- NULL
 vcf_mode <- !is.null(vcf_file)
 
 # ---------------------------------------------------------------------------

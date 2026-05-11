@@ -13,6 +13,17 @@ AUGREF   = f"augref_{REF}"
 OUT_DIR  = config["out_dir"]
 OUT_NAME = config["out_name"]
 
+# Paper-figure title suppression — when `figure_titles: false` (or
+# `--config figure_titles=false`) every rule's shell sees FIGURE_TITLES=0
+# in its environment and downstream R / Python plot scripts skip titles
+# and subtitles.  Default true preserves the old behaviour for QC/debug.
+# Implemented via shell.prefix so every rule (local or SLURM) inherits the
+# var without each rule having to declare it.
+def _truthy(v):
+    return str(v).strip().lower() in ("1", "true", "yes", "on")
+if not _truthy(config.get("figure_titles", True)):
+    shell.prefix("export FIGURE_TITLES=0; ")
+
 # Expand VG input glob (supports bash extglob patterns like !(*.d*).vg)
 import subprocess as _sp
 _vg_result = _sp.run(

@@ -25,6 +25,11 @@ suppressPackageStartupMessages({
   library(ggplot2)
 })
 
+# Shared helpers (titles_on/if_titles, save_plot, etc.)
+script_dir <- dirname(sub("^--file=", "", grep("^--file=", commandArgs(), value = TRUE)[1]))
+if (is.na(script_dir) || !nzchar(script_dir)) script_dir <- "scripts"
+source(file.path(script_dir, "plot-helpers.R"))
+
 args <- commandArgs(trailingOnly = TRUE)
 ours_path     <- NULL
 pantree_path  <- NULL
@@ -141,10 +146,10 @@ p <- ggplot(agg, aes(x = source, y = count, fill = ref_context)) +
   scale_fill_manual(values = ref_colors, name = NULL, drop = FALSE) +
   scale_y_continuous(labels = scales::comma,
                      expand = expansion(mult = c(0.02, 0.12))) +
-  labs(title = title,
-       subtitle = paste0(ours_label, " vs ", pantree_label,
+  labs(title = if_titles(title),
+       subtitle = if_titles(paste0(ours_label, " vs ", pantree_label,
                          " — variant counts by category (stacks = ref-context",
-                         "; Ts/Tv per ref-context inside SNP bars)"),
+                         "; Ts/Tv per ref-context inside SNP bars)")),
        x = NULL, y = "Count") +
   theme_minimal(base_size = 12) +
   theme(

@@ -18,6 +18,11 @@ suppressPackageStartupMessages({
   library(ggplot2)
 })
 
+# Shared helpers (titles_on / if_titles, save_plot)
+.script_dir <- dirname(sub("^--file=", "", grep("^--file=", commandArgs(), value = TRUE)[1]))
+if (is.na(.script_dir) || !nzchar(.script_dir)) .script_dir <- "scripts"
+source(file.path(.script_dir, "plot-helpers.R"))
+
 args <- commandArgs(trailingOnly = TRUE)
 ps_path     <- NULL
 annot_path  <- NULL
@@ -239,8 +244,8 @@ p <- ggplot(plot_dt, aes(x = bar_cat, y = bar_value, fill = annotation)) +
   scale_fill_manual(values = annot_colors,
                     name = "Annotation") +
   scale_y_continuous(labels = scales::comma, expand = expansion(mult = c(0, 0.05))) +
-  labs(title = title,
-       subtitle = paste0("Mean per sample (N=", n_samples, ", PASS)"),
+  labs(title = if_titles(title),
+       subtitle = if_titles(paste0("Mean per sample (N=", n_samples, ", PASS)")),
        x = NULL, y = "Mean Variant Count per Sample") +
   theme_minimal() +
   theme(
