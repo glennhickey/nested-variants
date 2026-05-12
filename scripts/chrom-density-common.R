@@ -301,6 +301,21 @@ save_and_summarize <- function(p, output_file, data) {
   cat("Saving plot to:", output_file, "\n")
   ggsave(output_file, p, width = 12, height = 10, dpi = 300, bg = "white",
          device = grDevices::png, type = "cairo")
+
+  # Companion vector PDF when emit_pdf is enabled (paper figures).
+  if (pdf_enabled()) {
+    pdf_file <- sub("\\.png$", ".pdf", output_file)
+    tryCatch({
+      ggsave(pdf_file, p, width = 12, height = 10, bg = "white",
+             device = grDevices::cairo_pdf)
+      cat("Saved:", pdf_file, "\n")
+    }, error = function(e) {
+      cat("PDF emit failed for ", pdf_file, ": ", conditionMessage(e), "\n", sep = "")
+      if (file.exists(pdf_file) && file.info(pdf_file)$size == 0) {
+        file.remove(pdf_file)
+      }
+    })
+  }
   cat("Done!\n")
 
   cat("\nSummary by chromosome:\n")

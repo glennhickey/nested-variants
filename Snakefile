@@ -21,8 +21,18 @@ OUT_NAME = config["out_name"]
 # var without each rule having to declare it.
 def _truthy(v):
     return str(v).strip().lower() in ("1", "true", "yes", "on")
+
+# Build a single shell.prefix carrying both toggles so every rule (local or
+# SLURM) inherits them.  Plot scripts that check the env vars (titles_on /
+# pdf_enabled in scripts/plot-helpers.R; the matching helpers in
+# compose-summary.py / chrom-density-common.R) react accordingly.
+_shell_env_exports = []
 if not _truthy(config.get("figure_titles", True)):
-    shell.prefix("export FIGURE_TITLES=0; ")
+    _shell_env_exports.append("export FIGURE_TITLES=0")
+if _truthy(config.get("emit_pdf", False)):
+    _shell_env_exports.append("export EMIT_PDF=1")
+if _shell_env_exports:
+    shell.prefix("; ".join(_shell_env_exports) + "; ")
 
 # Expand VG input glob (supports bash extglob patterns like !(*.d*).vg)
 import subprocess as _sp
