@@ -457,7 +457,7 @@ if (!is.null(ps_pop) && nrow(ps_pop) > 0) {
       scale_fill_manual(values = ancestry_colors, name = NULL, drop = FALSE) +
       scale_color_manual(values = ancestry_colors, name = NULL, drop = FALSE) +
       scale_y_continuous(labels = scales::comma) +
-      labs(x = NULL, y = "Count") +
+      labs(x = NULL, y = "GRef Sites per Sample") +
       theme_common
     save_png(p_ps_afr_off,
              paste0(prefix, ".per-sample-types-by-afr-offref.png"),
