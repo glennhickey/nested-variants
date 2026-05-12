@@ -405,7 +405,8 @@ def vcf_stats_plot_outputs(prefix, has_annot=False, has_giab=False,
                 f"{prefix}.per-sample-sv-types.png"]
         if has_populations:
             out += [f"{prefix}.per-sample-types-by-pop.png",
-                    f"{prefix}.per-sample-types-by-afr.png"]
+                    f"{prefix}.per-sample-types-by-afr.png",
+                    f"{prefix}.per-sample-types-by-afr-offref.png"]
         if has_giab:
             out += [f"{prefix}.per-sample-giab-strat.png"]
     return out
@@ -5394,6 +5395,7 @@ rule summary_deconstruct:
         per_sample=f"{OUT_DIR}/{OUT_NAME}.sites.per-sample-types.png",
         per_sample_pop=f"{OUT_DIR}/{OUT_NAME}.sites.per-sample-types-by-pop.png",
         per_sample_afr=f"{OUT_DIR}/{OUT_NAME}.sites.per-sample-types-by-afr.png",
+        per_sample_afr_off=f"{OUT_DIR}/{OUT_NAME}.sites.per-sample-types-by-afr-offref.png",
         annot_snp=[f"{OUT_DIR}/{OUT_NAME}.annot-snp-tstv.all.png"] if annotation_inputs() else [],
         giab_strat=[f"{OUT_DIR}/{OUT_NAME}.sites.giab-strat.png"] if giab_strat_configured() else [],
     output:
@@ -5409,7 +5411,8 @@ rule summary_deconstruct:
              f"'Per-Sample Types by Super-Population:{input.per_sample_pop}'"]
             + ([f"'SNP Ts/Tv by Annotation:{input.annot_snp[0]}'"] if input.annot_snp else [])
             + ([f"'GIAB Stratification:{input.giab_strat[0]}'"] if input.giab_strat else [])
-            + [f"'Per-Sample Types AFR vs non-AFR:{input.per_sample_afr}'"]
+            + [f"'Per-Sample Types AFR vs non-AFR:{input.per_sample_afr}'",
+               f"'Per-Sample Off-ref Types AFR vs non-AFR:{input.per_sample_afr_off}'"]
         ),
     shell:
         "python3 scripts/compose-summary.py"

@@ -442,6 +442,27 @@ if (!is.null(ps_pop) && nrow(ps_pop) > 0) {
     labs(x = NULL, y = "Count") +
     theme_common
   save_png(p_ps_afr, paste0(prefix, ".per-sample-types-by-afr.png"), width = 12)
+
+  # 7b. Off-reference only, single y-axis: x = {SNP, Indel/MNP, SV},
+  # fill = AFR vs non-AFR. Side-by-side violins per variant type.
+  ps_afr_off <- ps_afr[ref_context == "Off-reference"]
+  if (nrow(ps_afr_off) > 0) {
+    p_ps_afr_off <- ggplot(ps_afr_off,
+                           aes(x = type_class, y = count, fill = ancestry)) +
+      geom_violin(width = 0.7, alpha = 0.55, scale = "width",
+                  position = position_dodge(width = 0.8)) +
+      geom_jitter(aes(color = ancestry),
+                  position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.8),
+                  size = 1.0, alpha = 0.85) +
+      scale_fill_manual(values = ancestry_colors, name = NULL, drop = FALSE) +
+      scale_color_manual(values = ancestry_colors, name = NULL, drop = FALSE) +
+      scale_y_continuous(labels = scales::comma) +
+      labs(x = NULL, y = "Count") +
+      theme_common
+    save_png(p_ps_afr_off,
+             paste0(prefix, ".per-sample-types-by-afr-offref.png"),
+             width = 8)
+  }
 }
 
 # ---------------------------------------------------------------------------
