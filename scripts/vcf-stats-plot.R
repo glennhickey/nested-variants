@@ -414,6 +414,34 @@ if (!is.null(ps_pop) && nrow(ps_pop) > 0) {
          x = "Variant Type", y = "Count") +
     theme_common
   save_png(p_ps_pop, paste0(prefix, ".per-sample-types-by-pop.png"), width = 12)
+
+  # 7a. Per-sample violins coloured by AFR vs non-AFR, with variant types
+  # collapsed to SNP / Indel/MNP / SV.  Used as figure 2G in the manuscript.
+  # Drops 'Unknown' / reference-tagged samples (already filtered above) and
+  # bins everything outside AFR (AMR, EAS, EUR, SAS) into "non-AFR".
+  ps_afr <- copy(ps_pop)
+  ps_afr[, type_class := factor(type_class, levels = c("SNP", "Indel/MNP", "SV"))]
+  ps_afr <- ps_afr[, .(count = sum(count)),
+                   by = .(sample, ref_context, type_class, super_pop)]
+  ps_afr[, ancestry := fifelse(as.character(super_pop) == "AFR", "AFR", "non-AFR")]
+  ps_afr[, ancestry := factor(ancestry, levels = c("AFR", "non-AFR"))]
+  n_per_ancestry <- ps_afr[, .(n = uniqueN(sample)), by = ancestry]
+  cat("Samples per ancestry bin:\n"); print(n_per_ancestry)
+  ancestry_colors <- c("AFR" = "#e31a1c", "non-AFR" = "#1f78b4")
+
+  p_ps_afr <- ggplot(ps_afr,
+                     aes(x = ancestry, y = count, fill = ancestry)) +
+    geom_violin(width = 0.7, alpha = 0.55, scale = "width") +
+    geom_jitter(aes(color = ancestry),
+                position = position_jitter(width = 0.15, height = 0),
+                size = 1.0, alpha = 0.8) +
+    scale_fill_manual(values = ancestry_colors, name = NULL, drop = FALSE) +
+    scale_color_manual(values = ancestry_colors, name = NULL, drop = FALSE) +
+    scale_y_continuous(labels = scales::comma) +
+    facet_wrap(vars(ref_context, type_class), scales = "free", ncol = 3) +
+    labs(x = NULL, y = "Count") +
+    theme_common
+  save_png(p_ps_afr, paste0(prefix, ".per-sample-types-by-afr.png"), width = 12)
 }
 
 # ---------------------------------------------------------------------------
