@@ -251,11 +251,25 @@ p_loglog <- ggplot(ccdf_df, aes(x = length, y = rank, color = dataset)) +
   scale_x_log10(labels = scales::comma, breaks = scales::breaks_log(n = 10)) +
   scale_y_log10(labels = scales::comma) +
   scale_color_manual(values = color_map) +
-  labs(title = if_titles("Off-Reference Segment Lengths (Cumulative Count)"),
-       x = "Length (log scale)", y = "Count >= Length (log scale)",
-       color = "Dataset") +
+  labs(x = "GRef Segment Length", y = "Count >= Length") +
+  guides(color = "none") +
   theme_minimal()
 save_plot(p_loglog, loglog_output)
+
+# Always emit a PDF companion of the log-log CCDF — used as figure 1B in
+# the manuscript, so vector output matters.
+loglog_pdf_output <- sub("\\.png$", ".pdf", loglog_output)
+tryCatch({
+  ggsave(loglog_pdf_output, plot = p_loglog, width = 8, height = 6,
+         device = grDevices::cairo_pdf)
+  cat("PDF saved to", loglog_pdf_output, "\n")
+}, error = function(e) {
+  cat("PDF emit failed for ", loglog_pdf_output, ": ", conditionMessage(e),
+      "\n", sep = "")
+  if (file.exists(loglog_pdf_output) && file.info(loglog_pdf_output)$size == 0) {
+    file.remove(loglog_pdf_output)
+  }
+})
 
 cat("Histogram saved to", output, "\n")
 
