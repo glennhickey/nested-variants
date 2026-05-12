@@ -447,18 +447,16 @@ if (!is.null(ps_pop) && nrow(ps_pop) > 0) {
   # fill = AFR vs non-AFR. Side-by-side violins per variant type.
   ps_afr_off <- ps_afr[ref_context == "Off-reference"]
   if (nrow(ps_afr_off) > 0) {
-    # Violin width matches the dodge width so AFR / non-AFR halves touch
-    # without any horizontal gap (paired violins look like a single bell
-    # split down the middle).  Legend sits inside the top-right corner of
-    # the panel — the SV cluster is small enough that the space is empty.
+    # One violin per variant type spanning all samples (no dodging), with
+    # individual sample dots coloured by AFR vs non-AFR. Legend sits over
+    # the empty space above the small SV cluster.
     p_ps_afr_off <- ggplot(ps_afr_off,
-                           aes(x = type_class, y = count, fill = ancestry)) +
-      geom_violin(width = 0.9, alpha = 0.55, scale = "width",
-                  position = position_dodge(width = 0.9)) +
+                           aes(x = type_class, y = count)) +
+      geom_violin(width = 0.85, alpha = 0.45, scale = "width",
+                  fill = "steelblue", color = "steelblue4") +
       geom_jitter(aes(color = ancestry),
-                  position = position_jitterdodge(jitter.width = 0.18, dodge.width = 0.9),
+                  position = position_jitter(width = 0.18, height = 0),
                   size = 1.0, alpha = 0.85) +
-      scale_fill_manual(values = ancestry_colors, name = NULL, drop = FALSE) +
       scale_color_manual(values = ancestry_colors, name = NULL, drop = FALSE) +
       scale_y_continuous(labels = scales::comma) +
       labs(x = NULL, y = "GRef Sites per Sample") +
