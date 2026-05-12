@@ -146,11 +146,8 @@ p <- ggplot(agg, aes(x = source, y = count, fill = ref_context)) +
   scale_fill_manual(values = ref_colors, name = NULL, drop = FALSE) +
   scale_y_continuous(labels = scales::comma,
                      expand = expansion(mult = c(0.02, 0.12))) +
-  labs(title = if_titles(title),
-       subtitle = if_titles(paste0(ours_label, " vs ", pantree_label,
-                         " — variant counts by category (stacks = ref-context",
-                         "; Ts/Tv per ref-context inside SNP bars)")),
-       x = NULL, y = "Count") +
+  # No title / subtitle — paper figure (caption supplies the description).
+  labs(x = NULL, y = "Count") +
   theme_minimal(base_size = 12) +
   theme(
     plot.title = element_text(hjust = 0.5, face = "bold"),
@@ -161,20 +158,7 @@ p <- ggplot(agg, aes(x = source, y = count, fill = ref_context)) +
     legend.position = "bottom"
   )
 
-save_png <- function(plot, path, w = 11, h = 5) {
-  tryCatch({
-    if (requireNamespace("ragg", quietly = TRUE)) {
-      ragg::agg_png(path, width = w, height = h, units = "in", res = 300)
-      print(plot); dev.off()
-    } else {
-      ggsave(path, plot = plot, width = w, height = h, dpi = 300,
-             device = grDevices::png, type = "cairo")
-    }
-  }, error = function(e) {
-    grDevices::png(path, width = w * 300, height = h * 300, res = 300, type = "cairo")
-    print(plot); dev.off()
-  })
-}
-save_png(p, paste0(prefix, ".pantree-compare-3panel.png"))
+save_plot(p, paste0(prefix, ".pantree-compare-3panel.png"),
+          width = 11, height = 5, pdf = pdf_enabled())
 cat("Saved:", paste0(prefix, ".pantree-compare-3panel.png"), "\n")
 cat("Done.\n")
