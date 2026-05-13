@@ -55,22 +55,10 @@ if (is.null(ps_path) || is.null(output)) {
   quit(status = 1)
 }
 
+# Local save_png delegates to the shared save_plot helper so emit_pdf=true
+# (EMIT_PDF=1) also produces a cairo_pdf companion next to the PNG.
 save_png <- function(plot, file, width = 10, height = 5) {
-  tryCatch({
-    if (requireNamespace("ragg", quietly = TRUE)) {
-      ragg::agg_png(file, width = width, height = height, units = "in", res = 300)
-      print(plot)
-      dev.off()
-    } else {
-      ggsave(file, plot = plot, width = width, height = height, dpi = 300,
-             device = grDevices::png, type = "cairo")
-    }
-  }, error = function(e) {
-    grDevices::png(file, width = width * 300, height = height * 300, res = 300, type = "cairo")
-    print(plot)
-    dev.off()
-  })
-  cat("Saved:", file, "\n")
+  save_plot(plot, file, width = width, height = height, pdf = pdf_enabled())
 }
 
 # ---------------------------------------------------------------------------
@@ -244,9 +232,8 @@ p <- ggplot(plot_dt, aes(x = bar_cat, y = bar_value, fill = annotation)) +
   scale_fill_manual(values = annot_colors,
                     name = "Annotation") +
   scale_y_continuous(labels = scales::comma, expand = expansion(mult = c(0, 0.05))) +
-  labs(title = if_titles(title),
-       subtitle = if_titles(paste0("Mean per sample (N=", n_samples, ", PASS)")),
-       x = NULL, y = "Mean Variant Count per Sample") +
+  # No title / subtitle — paper figure (caption supplies description).
+  labs(x = NULL, y = "Mean Variant Count per Sample") +
   theme_minimal() +
   theme(
     plot.title = element_text(hjust = 0.5, face = "bold", size = 13),

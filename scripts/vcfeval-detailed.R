@@ -458,17 +458,8 @@ p <- ggplot(bar_summary,
             aes(x = category, y = mean_count, label = sprintf("%.2f", tstv)),
             position = position_stack(vjust = 0.5),
             size = 2.8, color = "white") +
-  labs(title = if_titles(title),
-       subtitle = if_titles(paste0("Call vs ", label_b, " via vcfeval", filter_label,
-                         if (in_graph_only) {
-                           paste0(" — ", label_b, "-only restricted to in-graph")
-                         } else {
-                           paste0(" — ", label_b, "-only split by graph membership")
-                         },
-                         ", stacks = GIAB region, mean across N=",
-                         n_samples, " samples",
-                         "; text on SNP bars = Ts/Tv")),
-       x = NULL, y = "Mean count") +
+  # No title / subtitle — paper figure (caption supplies description).
+  labs(x = NULL, y = "Mean count") +
   theme_minimal() +
   theme(
     plot.title = element_text(hjust = 0.5, face = "bold"),
@@ -479,19 +470,10 @@ p <- ggplot(bar_summary,
     strip.placement = "outside"
   )
 
+# Local save_png delegates to the shared save_plot helper so emit_pdf=true
+# (EMIT_PDF=1) also produces a cairo_pdf companion next to the PNG.
 save_png <- function(plot, path, w = 14, h = 8) {
-  tryCatch({
-    if (requireNamespace("ragg", quietly = TRUE)) {
-      ragg::agg_png(path, width = w, height = h, units = "in", res = 300)
-      print(plot); dev.off()
-    } else {
-      ggsave(path, plot = plot, width = w, height = h, dpi = 300,
-             device = grDevices::png, type = "cairo")
-    }
-  }, error = function(e) {
-    grDevices::png(path, width = w * 300, height = h * 300, res = 300, type = "cairo")
-    print(plot); dev.off()
-  })
+  save_plot(plot, path, width = w, height = h, pdf = pdf_enabled())
 }
 save_png(p, paste0(prefix, ".vcfeval-detailed.png"))
 cat("Saved:", paste0(prefix, ".vcfeval-detailed.png"), "\n")
