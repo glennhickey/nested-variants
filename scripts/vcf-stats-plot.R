@@ -467,6 +467,12 @@ if (!is.null(ps_pop) && nrow(ps_pop) > 0) {
     save_png(p_ps_afr_off,
              paste0(prefix, ".per-sample-types-by-afr-offref.png"),
              width = 8)
+    # Backing TSV for the off-ref AFR vs non-AFR violins (figure 2H).
+    afr_tsv <- paste0(prefix, ".per-sample-types-by-afr-offref.tsv")
+    fwrite(ps_afr_off[order(type_class, ancestry, sample),
+                      .(sample, type_class, ancestry, super_pop, count)],
+           afr_tsv, sep = "\t")
+    cat("Wrote:", afr_tsv, "\n")
   }
 }
 

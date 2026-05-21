@@ -256,6 +256,18 @@ p_loglog <- ggplot(ccdf_df, aes(x = length, y = rank, color = dataset)) +
   theme_minimal()
 save_plot(p_loglog, loglog_output)
 
+# Backing TSV (figure 1B): (dataset, length, rank) — one row per segment,
+# sorted by length descending; rank = count of segments with length >= row's length.
+loglog_tsv <- sub("\\.png$", ".tsv", loglog_output)
+tryCatch({
+  utils::write.table(ccdf_df[, c("dataset", "length", "rank")],
+                     file = loglog_tsv, sep = "\t",
+                     quote = FALSE, row.names = FALSE)
+  cat("TSV saved to", loglog_tsv, "\n")
+}, error = function(e) {
+  cat("TSV emit failed for ", loglog_tsv, ": ", conditionMessage(e), "\n", sep = "")
+})
+
 # Always emit a PDF companion of the log-log CCDF — used as figure 1B in
 # the manuscript, so vector output matters.
 loglog_pdf_output <- sub("\\.png$", ".pdf", loglog_output)
