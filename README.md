@@ -303,6 +303,42 @@ snakemake --profile profiles/slurm all \
     pangenie_exclude_samples=CHM13
 ```
 
+### 4. Run HPRC v2.0 GRCh38 (paper-figure graph_only)
+
+Builds figures 1, 2, and 6 (augref summary, GRef variant catalog, GRef-vs-Pantree
+comparison) from the HPRC v2.0 GRCh38 graph. No mapping or per-sample genotyping
+— just the deconstruct / annotation / pantree-comparison chain. Titles are
+suppressed and PDFs are emitted alongside every PNG so figures are paper-ready.
+
+```bash
+snakemake --profile profiles/slurm graph_only \
+    --default-resources slurm_partition=high_priority runtime=960 mem_mb=32000 tmpdir=/data/tmp \
+    --config \
+      ref=GRCh38 \
+      vg='/private/home/ghickey/dev/work/hprc-v2.0-feb28/hprc-v2.0-mc-grch38/hprc-v2.0-mc-grch38.chroms/chr*.vg' \
+      out_dir=output/v2.0-grch38 \
+      out_name=hprc-v2.0-mc-grch38.nested \
+      min_augref_len=50 \
+      annot_genes=data/hprc-v2-annotations/hprc-v2-genes-grch38-chm13.bed \
+      annot_repeats=data/hprc-v2-annotations/hprc-v2-rm-grch38-chm13.bed \
+      annot_segdups=data/hprc-v2-annotations/hprc-v2-sd-grch38-chm13.bed \
+      annot_censat=data/hprc-v2-annotations/hprc-v2-censat-grch38-chm13.bed \
+      annot_pclai=data/hprc-v2-annotations/hprc-v2-pclai-grch38-chm13.bed \
+      giab_strat=data/hprc-v2-annotations/hprc-v2-giab \
+      refgaps_bed=/private/home/ghickey/dev/work/hprc-v2.0-feb28/hprc-v2.0-mc-grch38/hprc-v2.0-mc-grch38.refgaps.bed \
+      pantree_vcf=/private/home/ghickey/dev/work/pantree/GRCh38-464.MCv2.0.noY.vcf.gz \
+      figure_titles=false emit_pdf=true
+```
+
+Notes:
+- The pantree VCF is the `noY` split because the chrY variant has an
+  inconsistent sample count. `pantree_compare.R` restricts to the intersection
+  of base chromosomes between the two VCFs, so chrY is dropped from the
+  comparison cleanly — note it in the caption.
+- `--default-resources` repeats all four SLURM defaults from
+  `profiles/slurm/config.yaml` because Snakemake does not merge them; only
+  `slurm_partition` actually changes here.
+
 ### Output
 
 Each run produces the full set of outputs plus annotation overlap files:
