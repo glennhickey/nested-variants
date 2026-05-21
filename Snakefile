@@ -859,6 +859,8 @@ def pantree_outputs():
         f"{OUT_DIR}/{OUT_NAME}.pantree-size-dist.png",
         f"{OUT_DIR}/{OUT_NAME}.pantree-af.png",
         f"{OUT_DIR}/{OUT_NAME}.pantree-compare.tsv",
+        f"{OUT_DIR}/{OUT_NAME}.pantree-compare-3panel.png",
+        f"{OUT_DIR}/6.pantree-summary.png",
     ]
 
 def summary_figure_outputs():
