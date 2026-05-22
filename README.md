@@ -348,6 +348,33 @@ Notes:
   `profiles/slurm/config.yaml` because Snakemake does not merge them; only
   `slurm_partition` actually changes here.
 
+### 5. Run HPRC v2.0 GRCh38-eval (graph + short-read mapping + call + FreeBayes)
+
+Same scope as the `graph_only` run above plus short-read giraffe mapping,
+`vg call` genotyping, FreeBayes, and call-vs-FB concordance — on the `-eval`
+variant of the v2.0 GRCh38 graph (`hprc-v2.0-mc-grch38-eval`, same file
+layout as `-grch38` with `-eval` in every path component). Long reads,
+DeepVariant, PanGenie, and the bcftools caller are disabled.
+
+Wrapper: [`scripts/run-v2.0-grch38-eval-paper.sh`](scripts/run-v2.0-grch38-eval-paper.sh).
+
+```bash
+bash scripts/run-v2.0-grch38-eval-paper.sh --dry-run   # verify the DAG
+bash scripts/run-v2.0-grch38-eval-paper.sh             # live run
+```
+
+Targets (`rule all` with `enable_deepvariant=false enable_pangenie=false enable_bcftools=false`
+and no `longread_samples=…`):
+
+- `1.augref-summary.png` / `2.deconstruct-summary.png` / `6.pantree-summary.png` — same as graph_only
+- `3.call-summary.png` — vg call genotyping summary
+- `4b.freebayes-summary.png` — FreeBayes + call-vs-FB vcfeval
+- `5c.coverage-summary.png` / `5d.mapq-summary.png` — short-read mapping QC
+- `10.freebayes-concordance-summary.png` / `10b.freebayes-concordance-onref-summary.png` — per-contig concordance
+
+Samples: HG001–HG007 + NA12891 + NA12892 (the short-read GIAB set in `data/giab-reads/`).
+Edit the script to subset if you only want a few samples.
+
 ### Manuscript tables for the v2.0 GRCh38 run
 
 Two summary tables are checked into `output/v2.0-grch38/` for the paper:
