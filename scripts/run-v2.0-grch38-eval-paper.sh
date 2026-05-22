@@ -43,7 +43,7 @@ snakemake --profile profiles/slurm $DRY all \
         annot_censat=data/hprc-v2-annotations/hprc-v2-censat-grch38-chm13.bed \
         annot_pclai=data/hprc-v2-annotations/hprc-v2-pclai-grch38-chm13.bed \
         giab_strat=data/hprc-v2-annotations/hprc-v2-giab \
-        refgaps_bed=/private/home/ghickey/dev/work/hprc-v2.0-feb28/hprc-v2.0-mc-grch38-eval/hprc-v2.0-mc-grch38-eval.refgaps.bed \
+        refgaps_bed=/private/home/ghickey/dev/work/hprc-v2.0-feb28/hprc-v2.0-mc-grch38/hprc-v2.0-mc-grch38.refgaps.bed \
         pantree_vcf=/private/home/ghickey/dev/work/pantree/GRCh38-464.MCv2.0.noY.vcf.gz \
         enable_deepvariant=false \
         enable_pangenie=false \
