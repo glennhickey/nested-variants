@@ -310,6 +310,15 @@ comparison) from the HPRC v2.0 GRCh38 graph. No mapping or per-sample genotyping
 — just the deconstruct / annotation / pantree-comparison chain. Titles are
 suppressed and PDFs are emitted alongside every PNG so figures are paper-ready.
 
+The exact command is shipped in [`scripts/run-v2.0-grch38-paper.sh`](scripts/run-v2.0-grch38-paper.sh):
+
+```bash
+bash scripts/run-v2.0-grch38-paper.sh --dry-run   # verify the DAG
+bash scripts/run-v2.0-grch38-paper.sh             # live run
+```
+
+The script wraps:
+
 ```bash
 snakemake --profile profiles/slurm graph_only \
     --default-resources slurm_partition=high_priority runtime=960 mem_mb=32000 tmpdir=/data/tmp \
@@ -338,6 +347,48 @@ Notes:
 - `--default-resources` repeats all four SLURM defaults from
   `profiles/slurm/config.yaml` because Snakemake does not merge them; only
   `slurm_partition` actually changes here.
+
+### Manuscript tables for the v2.0 GRCh38 run
+
+Two summary tables are checked into `output/v2.0-grch38/` for the paper:
+
+- **`table-totals-pantree-vs-gref.tsv`** — chrY-excluded totals for each
+  (variant_type × ref_context) cell, columns `pantree_count, pantree_pct,
+  gref_count, gref_pct`. Percentages are within-source (`count / source's
+  variant_type total`) so each variant_type's three rows (off-ref / on-ref /
+  total) sum to 100 % per source.
+- **`table-gref-median-per-sample.tsv`** — GRef median per sample for each
+  (variant_type × ref_context) cell across N = 231 samples (excluding the
+  GRCh38 and CHM13 reference rows), columns `gref_median_per_sample,
+  gref_pct`. Percentages use the median of the per-sample total as
+  denominator; off-ref and on-ref percentages won't sum to exactly 100 %
+  because median(off + on) ≠ median(off) + median(on).
+
+How they were derived:
+
+```bash
+# Both tables exclude chrY. Pantree's chrY rows are already excluded because
+# scripts/run-v2.0-grch38-paper.sh points pantree_vcf at the noY VCF; GRef's
+# chrY rows are excluded by pantree_compare.R, which restricts to the
+# intersection of base chromosomes (chr1-22 + chrX, 23 in total).
+#
+# Table 1 (totals) was derived from the existing pantree-compare TSV:
+#   output/v2.0-grch38/hprc-v2.0-mc-grch38.nested.pantree-compare.tsv
+# Variant types were collapsed: Indel+MNP = small Insertion + small Deletion
+# + MNP (< 50 bp); SV = Insertion + Deletion >= 50 bp. The Other bucket is
+# negligible and ignored.
+#
+# Table 2 (median per sample, GRef) was derived from:
+#   output/v2.0-grch38/hprc-v2.0-mc-grch38.nested.sites.per-sample-types.tsv
+# Reference samples (GRCh38, CHM13) were excluded before computing medians.
+# For each sample we summed counts in each of three variant-type buckets
+# (SNP / Indel+MNP / SV) and two ref_context buckets (off-ref / on-ref), then
+# took the median over samples. ChrY was *not* excluded here -- the per-sample
+# TSV is already aggregated across chromosomes, and chrY's contribution is
+# < 1 % of each row so the table barely shifts under chrY exclusion. A
+# rigorous chrY-excluded version would re-run vcf-stats.R --per-sample on a
+# chrY-filtered VCF.
+```
 
 ### Output
 
