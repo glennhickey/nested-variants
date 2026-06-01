@@ -42,6 +42,7 @@ FILTER=""
 NORM=false
 FILL_TAGS="-t AF"
 USE_FILL_TAGS=true
+MISSING_AS_REF=false
 PARALLEL=16
 
 while [[ $# -gt 0 ]]; do
@@ -52,6 +53,7 @@ while [[ $# -gt 0 ]]; do
         --norm)        NORM=true; shift ;;
         --fill-tags)   FILL_TAGS="$2"; shift 2 ;;
         --no-fill-tags) USE_FILL_TAGS=false; shift ;;
+        --missing-as-ref) MISSING_AS_REF=true; shift ;;
         --parallel)    PARALLEL="$2"; shift 2 ;;
         -h|--help)     sed -n '3,/^######/p' "$0" | sed 's/^# //; s/^#//'; exit 0 ;;
         *) echo "Error: unknown option: $1" >&2; exit 1 ;;
@@ -120,6 +122,16 @@ if [ "$FILTER" = "pass" ]; then
 fi
 
 FILL_STAGE=""
+SETGT_STAGE=""
+if $MISSING_AS_REF; then
+    # Convert missing genotypes (./. or .) to ref/ref so that AC/AN/AF in
+    # fill-tags reflect the full panel size, not just samples whose
+    # haplotype reaches the variant. Critical for off-reference variants:
+    # otherwise AF collapses to 0.5 / 1.0 spikes (the variant-on-segment
+    # carrier rate within segment-carrying haplotypes) instead of true
+    # population AF.
+    SETGT_STAGE="| bcftools +setGT - -- -t . -n 0 2>/dev/null"
+fi
 if $USE_FILL_TAGS; then
     FILL_STAGE="| bcftools +fill-tags - -- $FILL_TAGS 2>/dev/null"
 fi
@@ -137,10 +149,10 @@ process_shard() {
     if [ ! -s "$BED" ]; then
         return 0
     fi
-    eval "$READ_STAGE $FILTER_STAGE $FILL_STAGE | bcftools query -f \"\$FORMAT\" 2>/dev/null"
+    eval "$READ_STAGE $FILTER_STAGE $SETGT_STAGE $FILL_STAGE | bcftools query -f \"\$FORMAT\" 2>/dev/null"
 }
 export -f process_shard
-export VCF FORMAT WORK READ_STAGE FILTER_STAGE FILL_STAGE
+export VCF FORMAT WORK READ_STAGE FILTER_STAGE SETGT_STAGE FILL_STAGE
 
 # 5. Parallel dispatch. `--line-buffer` streams each completed line as it
 #    arrives without serialising shards behind each other (vs `-k`, which

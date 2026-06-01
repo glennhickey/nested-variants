@@ -59,6 +59,13 @@ threads      <- 1
 no_plots     <- FALSE   # --no-plots: TSV-only (compute phase)
 plot_only    <- FALSE   # --plot-only: skip VCF read, load TSVs back, replot
 emit_pdf     <- FALSE   # --pdf: emit cairo_pdf alongside each PNG
+# AF baseline = 2 * N_samples_in_VCF (treat missing genotypes as ref/ref).
+# Without this, bcftools +fill-tags computes AF = AC/AN where AN excludes
+# missing GTs — fine for on-reference variants (everyone is called) but
+# wrong for off-reference variants on _alt contigs, where AN drops to the
+# count of haplotypes that reach the segment and AF spikes at 0.5/1.0.
+# Default true so every new compute run gets the correct population AF.
+missing_as_ref <- TRUE
 
 i <- 3
 while (i <= length(args)) {
@@ -125,6 +132,12 @@ while (i <= length(args)) {
   } else if (args[i] == "--pdf") {
     emit_pdf <- TRUE
     i <- i + 1
+  } else if (args[i] == "--no-missing-as-ref") {
+    missing_as_ref <- FALSE
+    i <- i + 1
+  } else if (args[i] == "--missing-as-ref") {
+    missing_as_ref <- TRUE
+    i <- i + 1
   } else {
     i <- i + 1
   }
@@ -189,6 +202,7 @@ bcftools_query <- function(format_str, filter = "all", norm = FALSE) {
   )
   if (filter == "pass") args <- c(args, "--filter", "pass")
   if (norm) args <- c(args, "--norm")
+  if (missing_as_ref) args <- c(args, "--missing-as-ref")
   paste(shQuote(parallel_wrapper), paste(args, collapse = " "))
 }
 

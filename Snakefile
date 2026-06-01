@@ -366,6 +366,19 @@ def emit_pdf_enabled():
 def vcf_stats_pdf_arg():
     return " --pdf" if emit_pdf_enabled() else ""
 
+def missing_as_ref_enabled():
+    # Default true: compute AF as AC / (2 * N_samples_in_VCF). Required for
+    # off-reference variants to get a meaningful population frequency
+    # (otherwise bcftools +fill-tags's AC/AN spikes at 0.5/1.0 because AN
+    # excludes the many samples whose haplotype doesn't reach the _alt
+    # segment). Set missing_as_ref=false in config to restore the legacy
+    # AC/AN behavior.
+    val = config.get("missing_as_ref", True)
+    return str(val).strip().lower() not in ("false", "0", "no", "off", "")
+
+def vcf_stats_missing_as_ref_arg():
+    return "" if missing_as_ref_enabled() else " --no-missing-as-ref"
+
 def vcf_stats_tsv_outputs(prefix, has_annot=False, has_giab=False,
                           has_per_sample=False, has_populations=False):
     """TSV outputs of a vcf-stats.R *_compute rule."""
