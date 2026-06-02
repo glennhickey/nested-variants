@@ -29,6 +29,7 @@ GRAPH_DIR=/private/groups/hprc/hprc-graphs/hprc-v2.1-dec23/hprc-v2.1-mc-chm13-ev
 
 snakemake --profile profiles/slurm $DRY all \
     --rerun-incomplete \
+    --rerun-triggers mtime \
     --default-resources \
         slurm_partition=high_priority \
         runtime=960 \
