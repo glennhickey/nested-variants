@@ -884,6 +884,9 @@ def summary_figure_outputs():
     ]
     if SAMPLES:
         outputs.append(f"{OUT_DIR}/3.call-summary.png")
+        # Paper-figure variant of the call-summary panel (figure 3B without
+        # the on-ref SV bars) — built once SAMPLES are configured.
+        outputs.append(f"{OUT_DIR}/merged.call.sites.pass.call-summary-panel-no-sv.png")
         if deepvariant_enabled():
             outputs.append(f"{OUT_DIR}/4.deepvariant-summary.png")
         outputs.append(f"{OUT_DIR}/4b.freebayes-summary.png")
