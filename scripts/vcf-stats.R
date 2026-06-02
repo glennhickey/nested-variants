@@ -638,7 +638,7 @@ if (has_af) {
     scale_y_log10(labels = scales::comma) +
     scale_x_continuous(limits = c(-0.02, 1.02)) +
     labs(title = title, subtitle = paste0("Non-Reference Allele Frequency Spectrum ", mode_label, filter_label),
-         x = "Non-Reference Frequency", y = y_label) +
+         x = "Allele Frequency", y = y_label) +
     common_theme
 
   dt[, af_plot := NULL]

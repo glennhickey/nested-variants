@@ -204,7 +204,7 @@ if (!is.null(af_counts) && nrow(af_counts) > 0) {
     labs(title = title,
          subtitle = if_titles(paste0("Non-Reference Allele Frequency Spectrum ",
                            mode_label, filter_label)),
-         x = "Non-Reference Frequency", y = y_label) +
+         x = "Allele Frequency", y = y_label) +
     theme_common
   save_png(p3, paste0(prefix, ".af-spectrum.png"), height = 6)
 } else {

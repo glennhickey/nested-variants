@@ -173,7 +173,7 @@ if (length(rec_pairs) > 0) {
       labs(title = "SNP Allele Frequency Spectrum by Chromosome",
            subtitle = sprintf("Grey: each of %d chromosomes.  Black: all chromosomes combined.",
                               n_chroms),
-           x = "Non-Reference Frequency", y = "Sites (log scale)",
+           x = "Allele Frequency", y = "Sites (log scale)",
            linetype = NULL) +
       theme_bw(base_size = 13) +
       theme(plot.title = element_text(face = "bold"))
@@ -186,7 +186,7 @@ if (length(rec_pairs) > 0) {
       scale_linetype_manual(values = c("Off-reference" = "solid",
                                        "On-reference" = "dashed")) +
       labs(title = "SNP Allele Frequency Spectrum by Chromosome",
-           x = "Non-Reference Frequency", y = "Sites (log scale)",
+           x = "Allele Frequency", y = "Sites (log scale)",
            color = "Chromosome", linetype = NULL) +
       theme_bw(base_size = 13) +
       theme(plot.title = element_text(face = "bold"))

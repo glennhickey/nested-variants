@@ -79,7 +79,7 @@ p <- ggplot(af_counts, aes(x = af_plot, y = count, color = ref_context)) +
                      name = NULL) +
   scale_y_log10(labels = scales::comma) +
   scale_x_continuous(limits = c(-0.02, 1.02)) +
-  labs(x = "Non-Reference Frequency", y = "Sites (log scale)") +
+  labs(x = "Allele Frequency", y = "Sites (log scale)") +
   theme_minimal(base_size = 12) +
   theme(
     panel.background = element_rect(fill = "white", color = NA),
