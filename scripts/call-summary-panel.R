@@ -30,6 +30,7 @@ vcf_path    <- NULL
 min_sv_size <- 50L
 output      <- NULL
 title       <- "vg call Summary"
+no_sv       <- FALSE   # --no-sv: drop the On-ref SV Ins / On-ref SV Del bars
 
 i <- 1
 while (i <= length(args)) {
@@ -45,6 +46,8 @@ while (i <= length(args)) {
     output <- args[i + 1]; i <- i + 2
   } else if (args[i] == "--title" && i + 1 <= length(args)) {
     title <- args[i + 1]; i <- i + 2
+  } else if (args[i] == "--no-sv") {
+    no_sv <- TRUE; i <- i + 1
   } else {
     i <- i + 1
   }
@@ -81,8 +84,12 @@ if (length(offref_snp) == 0)   offref_snp   <- 0
 if (length(offref_mnp) == 0)   offref_mnp   <- 0
 if (length(offref_indel) == 0) offref_indel <- 0
 
-# On-ref SV count: use VCF with size threshold if --vcf given, else per-sample-types.tsv
-if (!is.null(vcf_path)) {
+# On-ref SV count: use VCF with size threshold if --vcf given, else per-sample-types.tsv.
+# In --no-sv mode the SV bars are dropped entirely; skip the heavy VCF read.
+if (no_sv) {
+  onref_sv_ins <- 0
+  onref_sv_del <- 0
+} else if (!is.null(vcf_path)) {
   cat("Computing on-ref SVs from VCF (size >=", min_sv_size, "bp):", vcf_path, "\n")
   # Pre-filter to indels only (skip SNPs/MNPs) and PASS, then read CHROM/REF/ALT/GTs
   sv_cmd <- sprintf(
@@ -148,8 +155,13 @@ annot_colors <- c("genes" = "forestgreen", "repeats" = "orange",
                   "Other" = "grey70")
 annot_order  <- c("genes", "repeats", "segdups", "censat", "Other")
 
-# Define bar categories
-bar_cats <- c("Off-ref SNPs", "Off-ref MNPs", "Off-ref Indels", "On-ref SV Ins", "On-ref SV Del")
+# Define bar categories. --no-sv drops the on-ref SV rows so paper-figure
+# variant tells only the off-reference small-variant story.
+bar_cats <- if (no_sv) {
+  c("Off-ref SNPs", "Off-ref MNPs", "Off-ref Indels")
+} else {
+  c("Off-ref SNPs", "Off-ref MNPs", "Off-ref Indels", "On-ref SV Ins", "On-ref SV Del")
+}
 
 if (!is.null(annot_path) && file.exists(annot_path)) {
   annot <- fread(annot_path)
@@ -179,7 +191,9 @@ if (!is.null(annot_path) && file.exists(annot_path)) {
   # Mean per-sample count for each bar_cat
   bar_totals <- data.table(
     bar_cat = bar_cats,
-    mean_total = c(offref_snp, offref_mnp, offref_indel, onref_sv_ins, onref_sv_del))
+    mean_total = if (no_sv) c(offref_snp, offref_mnp, offref_indel)
+                 else      c(offref_snp, offref_mnp, offref_indel,
+                             onref_sv_ins, onref_sv_del))
 
   annot_agg <- merge(annot_agg, bar_totals, by = "bar_cat")
   annot_agg[, bar_value := prop * mean_total]
@@ -198,7 +212,9 @@ if (!is.null(annot_path) && file.exists(annot_path)) {
   plot_dt <- data.table(
     bar_cat = bar_cats,
     annotation = factor("Other", levels = "Other"),
-    bar_value = c(offref_snp, offref_mnp, offref_indel, onref_sv_ins, onref_sv_del),
+    bar_value = if (no_sv) c(offref_snp, offref_mnp, offref_indel)
+                else      c(offref_snp, offref_mnp, offref_indel,
+                            onref_sv_ins, onref_sv_del),
     tstv_ratio = NA_real_)
 }
 

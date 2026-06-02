@@ -5459,6 +5459,26 @@ rule call_summary_panel:
         " --output {output}"
         " --title 'Off-reference genotyping'"
 
+rule call_summary_panel_no_sv:
+    """Per-sample call summary without the on-ref SV bars (figure 3B variant)."""
+    input:
+        per_sample=f"{OUT_DIR}/merged.call.sites.pass.per-sample-types.tsv",
+        annot=[f"{OUT_DIR}/merged.call.sites.pass.annot-exclusive.tsv"] if annotation_inputs() else [],
+    output:
+        f"{OUT_DIR}/merged.call.sites.pass.call-summary-panel-no-sv.png",
+    resources:
+        mem_mb=8000,
+        runtime=30,
+    params:
+        annot_arg=lambda wc, input: f"--annot {input.annot[0]}" if input.annot else "",
+    shell:
+        "ulimit -s unlimited && Rscript scripts/call-summary-panel.R"
+        " --per-sample {input.per_sample}"
+        " --no-sv"
+        " {params.annot_arg}"
+        " --output {output}"
+        " --title 'Off-reference genotyping (no SVs)'"
+
 rule summary_call:
     """Compose vg call genotyping summary figure"""
     input:
