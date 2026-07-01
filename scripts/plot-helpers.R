@@ -43,18 +43,30 @@ if (!titles_on()) {
 }
 
 save_plot <- function(plot, file, width = 8, height = 6, pdf = FALSE) {
+  # For raw gtable/grob objects (e.g. gridExtra::arrangeGrob output), print()
+  # is a no-op on some devices (notably cairo_pdf) and produces empty files.
+  # Use grid::grid.draw() with a fresh page in that case; keep print() for
+  # ggplot objects (their print method handles page setup for us).
+  is_grob <- inherits(plot, c("gtable", "grob"))
+  render <- if (is_grob) {
+    function() { grid::grid.newpage(); grid::grid.draw(plot) }
+  } else {
+    function() print(plot)
+  }
+
   # PNG (ragg-preferred → cairo fallback)
   tryCatch({
     if (requireNamespace("ragg", quietly = TRUE)) {
       ragg::agg_png(file, width = width, height = height, units = "in", res = 300)
-      print(plot); dev.off()
+      render(); dev.off()
     } else {
-      ggplot2::ggsave(file, plot = plot, width = width, height = height, dpi = 300,
-                      device = grDevices::png, type = "cairo")
+      grDevices::png(file, width = width * 300, height = height * 300,
+                     res = 300, type = "cairo")
+      render(); dev.off()
     }
   }, error = function(e) {
     grDevices::png(file, width = width * 300, height = height * 300, res = 300, type = "cairo")
-    print(plot); dev.off()
+    render(); dev.off()
   })
   cat("Saved:", file, "\n")
 
@@ -62,7 +74,7 @@ save_plot <- function(plot, file, width = 8, height = 6, pdf = FALSE) {
     pdf_file <- sub("\\.png$", ".pdf", file)
     tryCatch({
       grDevices::cairo_pdf(pdf_file, width = width, height = height)
-      print(plot); dev.off()
+      render(); dev.off()
       cat("Saved:", pdf_file, "\n")
     }, error = function(e) {
       cat("PDF emit failed for ", pdf_file, ": ", conditionMessage(e), "\n", sep = "")
