@@ -148,6 +148,19 @@ OUTPUT_NAME="${OUTPUT_NAME%.gfa}"
 # Compute augmented reference sample name
 AUGREF_SAMPLE="augref_${REF}"
 
+# vg v1.74.0 renamed augref to gref without changing the algorithm.  Its -N option
+# keeps our augref_ sample name, so map the flags for either version.  vg >= 1.76
+# dropped -N (the gref_ prefix is fixed), which the rest of the pipeline cannot use.
+PATHS_HELP=$(vg paths --help 2>&1 || true)
+if grep -q -- '--compute-augref' <<< "$PATHS_HELP"; then
+    AUGREF_OPTS="--compute-augref --min-augref-len ${MIN_AUGREF_LEN} --augref-sample ${AUGREF_SAMPLE} --augref-segs"
+elif grep -q -- '--gref-sample' <<< "$PATHS_HELP"; then
+    AUGREF_OPTS="--compute-gref --min-gref-len ${MIN_AUGREF_LEN} --gref-sample ${AUGREF_SAMPLE} --gref-segs"
+else
+    echo "Error: vg paths has neither --compute-augref nor --gref-sample; use vg <= 1.75" >&2
+    exit 1
+fi
+
 set -x
 
 mkdir -p "$OUTPUT_DIR"
@@ -181,7 +194,7 @@ for VG in "${VG_FILES[@]}"; do
         SEGS="${WORK_DIR}/${BASE}.augref-segs.tsv"
 
         # Build the command to run (threads split across parallel jobs)
-        CMD="set -eo pipefail; /usr/bin/time -v vg paths -x \"$VG\" -Q ${REF} --compute-augref --min-augref-len ${MIN_AUGREF_LEN} --augref-sample ${AUGREF_SAMPLE} --augref-segs \"${SEGS}\" -t ${THREADS_PER_JOB} | /usr/bin/time -v vg convert -f - > \"${GFA}\""
+        CMD="set -eo pipefail; /usr/bin/time -v vg paths -x \"$VG\" -Q ${REF} ${AUGREF_OPTS} \"${SEGS}\" -t ${THREADS_PER_JOB} | /usr/bin/time -v vg convert -f - > \"${GFA}\""
 
         LOG="${WORK_DIR}/${OUTPUT_NAME}.${BASE}.log"
         if $LOCAL; then
@@ -236,8 +249,9 @@ for SEGS in "$WORK_DIR"/*.augref-segs.tsv; do
             cat "$SEGS"
             FIRST=false
         else
-            # Skip header line from subsequent files
-            tail -n +2 "$SEGS"
+            # Skip any '#' header from subsequent files.  augref and vg 1.74 tables have
+            # no header, so a blind tail -n +2 would drop each file's first segment.
+            grep -v '^#' "$SEGS" || true
         fi
     fi
 done > "$SEGS_MERGED"
