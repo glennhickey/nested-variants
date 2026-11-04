@@ -165,6 +165,9 @@ fi
 
 # 4. Worker function: one shard → stdout (stdout captured by parallel).
 process_shard() {
+    # A shard that dies (e.g. out of memory) must fail the run. bcftools stderr
+    # is silenced below, so otherwise the output is just silently truncated.
+    set -o pipefail
     local shard="$1"
     local BED="$WORK/beds/$shard.bed"
     if [ ! -s "$BED" ]; then
@@ -186,7 +189,7 @@ if [ "$PARALLEL" -le 1 ]; then
         process_shard "$shard"
     done
 else
-    echo "$SHARD_ORDER" | parallel --will-cite -j "$PARALLEL" --line-buffer process_shard {}
+    echo "$SHARD_ORDER" | parallel --will-cite -j "$PARALLEL" --line-buffer --halt now,fail=1 process_shard {}
 fi
 
 echo "[bcftools-query-parallel] done" >&2
