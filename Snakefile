@@ -367,7 +367,7 @@ def vcf_stats_pdf_arg():
     return " --pdf" if emit_pdf_enabled() else ""
 
 def missing_as_ref_enabled():
-    # Default true: compute AF as AC / (2 * N_samples_in_VCF). Required for
+    # Default true: compute AF as AC / haplotypes in the panel. Required for
     # off-reference variants to get a meaningful population frequency
     # (otherwise bcftools +fill-tags's AC/AN spikes at 0.5/1.0 because AN
     # excludes the many samples whose haplotype doesn't reach the _alt

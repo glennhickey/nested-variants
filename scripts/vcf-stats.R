@@ -59,8 +59,8 @@ threads      <- 1
 no_plots     <- FALSE   # --no-plots: TSV-only (compute phase)
 plot_only    <- FALSE   # --plot-only: skip VCF read, load TSVs back, replot
 emit_pdf     <- FALSE   # --pdf: emit cairo_pdf alongside each PNG
-# AF baseline = 2 * N_samples_in_VCF (treat missing genotypes as ref/ref).
-# Without this, bcftools +fill-tags computes AF = AC/AN where AN excludes
+# AF baseline = haplotypes in the panel (missing alleles count as ref in the
+# denominator; genotypes themselves are not changed). Without this, bcftools +fill-tags computes AF = AC/AN where AN excludes
 # missing GTs — fine for on-reference variants (everyone is called) but
 # wrong for off-reference variants on _alt contigs, where AN drops to the
 # count of haplotypes that reach the segment and AF spikes at 0.5/1.0.

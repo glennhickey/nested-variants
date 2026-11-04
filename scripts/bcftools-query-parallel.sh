@@ -28,6 +28,8 @@
 #                              [--fill-tags STR]    (default: "-t AF")
 #                              [--parallel N]       (default: 16)
 #                              [--no-fill-tags]     (skip +fill-tags entirely)
+#                              [--missing-as-ref]   (%INFO/AF becomes AC / haplotypes in
+#                                                    the panel; replaces --fill-tags)
 #
 # Output: concatenated bcftools query TSV on stdout (one line per record across
 # all shards). Order follows the VCF header's contig declaration order. Stderr
@@ -122,18 +124,37 @@ if [ "$FILTER" = "pass" ]; then
 fi
 
 FILL_STAGE=""
-SETGT_STAGE=""
-if $MISSING_AS_REF; then
-    # Convert missing genotypes (./. or .) to ref/ref so that AC/AN/AF in
-    # fill-tags reflect the full panel size, not just samples whose
-    # haplotype reaches the variant. Critical for off-reference variants:
-    # otherwise AF collapses to 0.5 / 1.0 spikes (the variant-on-segment
-    # carrier rate within segment-carrying haplotypes) instead of true
-    # population AF.
-    SETGT_STAGE="| bcftools +setGT - -- -t . -n 0 2>/dev/null"
-fi
 if $USE_FILL_TAGS; then
     FILL_STAGE="| bcftools +fill-tags - -- $FILL_TAGS 2>/dev/null"
+fi
+if $MISSING_AS_REF && $USE_FILL_TAGS; then
+    # Population AF: AC over every haplotype in the panel, so a missing allele
+    # counts as ref, not just the haplotypes that reach the variant. Critical
+    # for off-reference variants: otherwise AF collapses to 0.5 / 1.0 spikes
+    # (the carrier rate within segment-carrying haplotypes).
+    #
+    # Genotypes must stay untouched. `+setGT -t . -n 0` also rewrites partially
+    # missing genotypes, turning .|1 into 0/0 and losing the called allele.
+    #
+    # The panel size is a sum of per-sample ploidies, since reference samples
+    # are haploid. Taken over the first records because a missing genotype can
+    # be written with lower ploidy. head closes the pipe, so no pipefail here.
+    N_HAP=$(set +o pipefail
+            bcftools view -H "$VCF" 2>/dev/null | head -1000 | cut -f10- | awk -F'\t' '
+              { for (i = 1; i <= NF; i++) {
+                  split($i, g, ":")
+                  ploidy = gsub(/[|\/]/, "", g[1]) + 1
+                  if (ploidy > max_ploidy[i]) max_ploidy[i] = ploidy
+              } }
+              END { for (i in max_ploidy) total += max_ploidy[i]; print total + 0 }')
+    if [ "$N_HAP" -eq 0 ]; then
+        N_HAP=1   # no records, so the denominator is never used
+    fi
+    echo "[bcftools-query-parallel] population AF over $N_HAP haplotypes" >&2
+    # A new tag, because bcftools >= 1.17 refuses to redefine AF (Number=A) as a
+    # single value. Multi-allelic records get their total non-ref frequency.
+    FILL_STAGE="| bcftools +fill-tags - -- -t AC 2>/dev/null | bcftools +fill-tags - -- -t 'PANEL_AF:1=sum(AC)/$N_HAP' 2>/dev/null"
+    FORMAT="${FORMAT//%INFO\/AF/%INFO/PANEL_AF}"
 fi
 
 if $NORM; then
@@ -149,10 +170,10 @@ process_shard() {
     if [ ! -s "$BED" ]; then
         return 0
     fi
-    eval "$READ_STAGE $FILTER_STAGE $SETGT_STAGE $FILL_STAGE | bcftools query -f \"\$FORMAT\" 2>/dev/null"
+    eval "$READ_STAGE $FILTER_STAGE $FILL_STAGE | bcftools query -f \"\$FORMAT\" 2>/dev/null"
 }
 export -f process_shard
-export VCF FORMAT WORK READ_STAGE FILTER_STAGE SETGT_STAGE FILL_STAGE
+export VCF FORMAT WORK READ_STAGE FILTER_STAGE FILL_STAGE
 
 # 5. Parallel dispatch. `--line-buffer` streams each completed line as it
 #    arrives without serialising shards behind each other (vs `-k`, which

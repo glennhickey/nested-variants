@@ -8,9 +8,9 @@
 #
 # Pipeline (re-shards by chromosome via scripts/bcftools-query-parallel.sh):
 #   bcftools view <vcf>
-#     | bcftools +setGT -t . -n 0       # missing → ref/ref
-#     | bcftools +fill-tags -t AF        # AF = AC / (2 * N_samples_in_VCF)
-#     | bcftools query -f '<chr>\t<af>\t<ref_context>'
+#     | bcftools +fill-tags -t AC
+#     | bcftools +fill-tags -t PANEL_AF  # AF = AC / haplotypes in the panel
+#     | bcftools query -f '<chr>\t<af>'
 # Then R re-bins and emits {prefix}.af-spectrum-pop.{tsv,png,pdf}.
 #
 # Usage:
@@ -44,12 +44,11 @@ REBIN_R="$SCRIPT_DIR/af-spectrum-pop-bin.R"
 AC_TSV="${PREFIX}.af-spectrum-pop.ac.tsv"
 
 # Pull (CHROM, ref_context_marker via the _N_alt suffix, AF) from every
-# record. AF here is computed AFTER setGT, so missing → ref and AN = 2N.
+# record. --missing-as-ref makes %INFO/AF the frequency over the full panel.
 echo "[af-spectrum-pop] dumping per-record AF (this is the slow step)" >&2
 bash "$WRAPPER" \
     --vcf "$VCF" \
     --format '%CHROM\t%INFO/AF\n' \
-    --fill-tags "-t AF" \
     --missing-as-ref \
     --parallel "$PAR" \
   > "$AC_TSV"
