@@ -1399,8 +1399,8 @@ rule segment_density:
         "ulimit -s unlimited && Rscript scripts/chrom-density-tsv.R"
         " {input} {output}"
         " '{REF} Off-Reference Segment Density'"
-        " {config[min_augref_len]} '{config[refgaps_bed]}' {config[scale_type]}"
-        " --ref {REF}"
+        " 0 '{config[refgaps_bed]}' {config[scale_type]}"
+        " --ref {REF} --count-label 'GRef segment count'"
         " {params.annot_args}"
 
 rule plots:

@@ -127,7 +127,7 @@ if (is.null(chrom_lengths)) {
 chrom_lengths$chromosome <- factor(chrom_lengths$chromosome, levels = chrom_levels)
 
 # Read BED overlay
-bed_data <- read_bed_overlay(bed_file, chrom_levels)
+bed_data <- read_bed_overlay(bed_file, chrom_levels, ref = ref)
 
 # Build ideogram and save
 p <- plot_ideogram(density_data, chrom_lengths, bed_data, plot_title, scale_type)

@@ -33,7 +33,7 @@ get_chrom_lengths <- function(ref = NULL) {
       length = c(
         248387328, 242696752, 201105948, 193574945, 182045439,
         172126628, 160567428, 146259331, 150617247, 134758134,
-        135127769, 133324548, 113566686, 101991189, 99753195,
+        135127769, 133324548, 113566686, 101161492, 99753195,
         96330374, 84276897, 80542538, 61707364, 66210255,
         45090682, 51324926, 154259566, 62460029
       )
@@ -54,6 +54,17 @@ get_chrom_lengths <- function(ref = NULL) {
   } else {
     NULL
   }
+}
+
+#' Legend name for the --censat annotation track
+#'
+#' GRCh38 has no CenSat annotation: its rows in the annotation BEDs are UCSC's
+#' centromere models, so the track is named for what it shows.
+#'
+#' @param ref Reference name or NULL
+#' @return Track name
+censat_track_name <- function(ref = NULL) {
+  if (!is.null(ref) && toupper(ref) == "GRCH38") "Centromere" else "CenSat"
 }
 
 #' Filter and order chromosomes from data
@@ -128,8 +139,10 @@ compute_density_bins <- function(data, chrom_lengths, chrom_levels, bin_size = N
 #'
 #' @param bed_file Path to BED file (3-column: contig, start, end)
 #' @param chrom_levels Character vector of chromosome levels to keep
+#' @param ref Reference name, or NULL to keep every contig. Annotation BEDs can hold
+#'   several assemblies, whose chromosome names collide once the prefix is stripped.
 #' @return data.frame with chromosome, start, end columns, or NULL
-read_bed_overlay <- function(bed_file, chrom_levels) {
+read_bed_overlay <- function(bed_file, chrom_levels, ref = NULL) {
   if (is.null(bed_file) || !nzchar(bed_file)) return(NULL)
   if (!file.exists(bed_file)) {
     stop("BED overlay file not found: ", bed_file)
@@ -142,6 +155,13 @@ read_bed_overlay <- function(bed_file, chrom_levels) {
   bed_data[, contig := as.character(contig)]
   bed_data[, start := as.integer(start)]
   bed_data[, end := as.integer(end)]
+
+  # Keep this reference's rows, plus any contig with no assembly prefix
+  if (!is.null(ref)) {
+    keep <- !grepl("#", bed_data$contig, fixed = TRUE) |
+      startsWith(toupper(bed_data$contig), paste0(toupper(ref), "#"))
+    bed_data <- bed_data[keep, ]
+  }
 
   # Extract chromosome from contig (handles PREFIX#HAPLOTYPE#chr format)
   bed_data$chromosome <- sub(".*#", "", bed_data$contig)
@@ -162,18 +182,23 @@ read_bed_overlay <- function(bed_file, chrom_levels) {
 #' @param bed_data data.frame from read_bed_overlay() or NULL
 #' @param plot_title Plot title string
 #' @param scale_type Fill scale transform: "log1p", "sqrt", "log", "identity"
+#' @param count_label What the fill colour counts, for the legend title
 #' @return ggplot object
 plot_ideogram <- function(density_data, chrom_lengths, bed_data, plot_title, scale_type = "log1p",
-                          annot_tracks = NULL) {
+                          annot_tracks = NULL, count_label = "Variant count") {
   # annot_tracks: named list of data.frames from read_bed_overlay(), e.g.
   #   list(CenSat = censat_df, SegDups = segdups_df, Genes = genes_df)
   chrom_levels <- levels(chrom_lengths$chromosome)
 
   # Layout parameters
   ideogram_height  <- 0.6
-  ideogram_spacing <- 1.0
   track_height     <- 0.12
-  track_gap        <- 0.04
+  track_gap        <- 0.02
+  # Annotation strips sit tight under their own bar; this wider gap below them keeps
+  # them from reading as belonging to the next chromosome down
+  row_gap          <- 0.30
+  n_tracks <- sum(vapply(annot_tracks, function(td) !is.null(td) && nrow(td) > 0, logical(1)))
+  ideogram_spacing <- max(1.0, ideogram_height + n_tracks * (track_height + track_gap) + row_gap)
   y_positions <- seq(length(chrom_levels), 1, by = -1) * ideogram_spacing
 
   chrom_y_map <- data.frame(
@@ -189,7 +214,8 @@ plot_ideogram <- function(density_data, chrom_lengths, bed_data, plot_title, sca
   }
 
   # Annotation track colors
-  track_colors <- c(CenSat = "mediumpurple", SegDups = "#E69F00", Genes = "#56B4E9")
+  track_colors <- c(CenSat = "mediumpurple", Centromere = "mediumpurple",
+                    SegDups = "#E69F00", Genes = "#56B4E9")
 
   # Prepare annotation tracks: merge y positions, compute vertical offset
   track_list <- list()
@@ -244,7 +270,7 @@ plot_ideogram <- function(density_data, chrom_lengths, bed_data, plot_title, sca
     scale_fill_gradientn(
       colors = c("#FFFACD", "yellow", "orange", "#FF4500", "#FF0000"),
       trans  = scale_type,
-      name   = paste0("Variant count\n(", scale_type, " scale)"),
+      name   = paste0(count_label, "\n(", scale_type, " scale)"),
       labels = comma,
       na.value = "white",
       breaks = c(0, 10, 100, 1000, 10000, 100000),

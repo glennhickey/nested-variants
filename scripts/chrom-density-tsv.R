@@ -1,7 +1,8 @@
 #!/usr/bin/env Rscript
 
 # Chromosome density plot as ideograms for nested variants from TSV file
-# Usage: ./chrom-density-tsv.R <input.tsv> <output.png> [title] [min_length] [bed_file] [scale] [--ref REF]
+# Usage: ./chrom-density-tsv.R <input.tsv> <output.png> [title] [min_length] [bed_file] [scale] [--ref REF] [--count-label LABEL]
+# min_length is applied to the reference span (ref_end - ref_start), not to the record's own length.
 
 # Source shared functions (relative to this script's location)
 script_dir <- dirname(normalizePath(commandArgs(trailingOnly = FALSE)[
@@ -20,8 +21,16 @@ if (length(ref_idx) > 0) {
   args <- args[-c(ref_idx, ref_idx + 1)]
 }
 
+# Extract --count-label flag if present (colour scale title)
+count_label <- "Variant count"
+label_idx <- which(args == "--count-label")
+if (length(label_idx) > 0) {
+  count_label <- args[label_idx + 1]
+  args <- args[-c(label_idx, label_idx + 1)]
+}
+
 # Extract annotation track flags (--censat, --segdups, --genes)
-track_display_names <- c(censat = "CenSat", segdups = "SegDups", genes = "Genes")
+track_display_names <- c(censat = censat_track_name(ref), segdups = "SegDups", genes = "Genes")
 annot_track_files <- list()
 for (flag in c("--censat", "--segdups", "--genes")) {
   idx <- which(args == flag)
@@ -33,7 +42,7 @@ for (flag in c("--censat", "--segdups", "--genes")) {
 }
 
 if (length(args) < 2) {
-  cat("Usage: ./chrom-density-tsv.R <input.tsv> <output.png> [title] [min_length] [bed_file] [scale] [--ref REF]\n")
+  cat("Usage: ./chrom-density-tsv.R <input.tsv> <output.png> [title] [min_length] [bed_file] [scale] [--ref REF] [--count-label LABEL]\n")
   cat("Example: ./chrom-density-tsv.R nesting.tsv density.png \"Nested Variants\" 50 refgaps.bed log1p --ref CHM13\n")
   cat("\nInput TSV format: Uses columns 5-7 (ref_contig, ref_start, ref_end)\n")
   cat("Scale options: log1p (default), sqrt, log, identity (linear)\n")
@@ -98,10 +107,10 @@ if (is.null(chrom_lengths)) {
 chrom_lengths$chromosome <- factor(chrom_lengths$chromosome, levels = chrom_levels)
 
 # Read BED overlay and annotation tracks
-bed_data <- read_bed_overlay(bed_file, chrom_levels)
-annot_tracks <- lapply(annot_track_files, read_bed_overlay, chrom_levels = chrom_levels)
+bed_data <- read_bed_overlay(bed_file, chrom_levels, ref = ref)
+annot_tracks <- lapply(annot_track_files, read_bed_overlay, chrom_levels = chrom_levels, ref = ref)
 
 # Build ideogram and save
 p <- plot_ideogram(density_data, chrom_lengths, bed_data, plot_title, scale_type,
-                   annot_tracks = annot_tracks)
+                   annot_tracks = annot_tracks, count_label = count_label)
 save_and_summarize(p, output_file, as.data.frame(tsv_data))

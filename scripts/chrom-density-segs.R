@@ -38,7 +38,7 @@ if (length(bin_idx) > 0) {
 }
 
 # Extract annotation track flags (--censat, --segdups, --genes)
-track_display_names <- c(censat = "CenSat", segdups = "SegDups", genes = "Genes")
+track_display_names <- c(censat = censat_track_name(ref), segdups = "SegDups", genes = "Genes")
 annot_track_files <- list()
 for (flag in c("--censat", "--segdups", "--genes")) {
   idx <- which(args == flag)
@@ -156,8 +156,8 @@ if (is.null(chrom_lengths)) {
 chrom_lengths$chromosome <- factor(chrom_lengths$chromosome, levels = chrom_levels)
 
 # Read BED overlay and annotation tracks
-bed_data <- read_bed_overlay(bed_file, chrom_levels)
-annot_tracks <- lapply(annot_track_files, read_bed_overlay, chrom_levels = chrom_levels)
+bed_data <- read_bed_overlay(bed_file, chrom_levels, ref = ref)
+annot_tracks <- lapply(annot_track_files, read_bed_overlay, chrom_levels = chrom_levels, ref = ref)
 
 # Build ideogram and save
 p <- plot_ideogram(density_data, chrom_lengths, bed_data, plot_title, scale_type,
